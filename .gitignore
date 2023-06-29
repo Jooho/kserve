@@ -63,3 +63,9 @@ python/kserve/tox.ini
 
 # Downloaded by hack install
 hack/istio-*
+
+# Opendatahub
+.temp_new_kserve_manifests
+kustomize/
+.cache/
+

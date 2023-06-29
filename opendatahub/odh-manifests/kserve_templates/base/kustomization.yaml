@@ -1,0 +1,75 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../kserve-controller/overlays/odh
+  
+namespace: opendatahub
+
+configMapGenerator:
+- envs:
+  - params.env
+  name: kserve-parameters
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+vars:
+- fieldref:
+    fieldPath: metadata.namespace
+  name: kserveNamespace
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-controller
+  name: kserve-controller
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-alibi-explainer
+  name: kserve-alibi-explainer
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-art-explainer
+  name: kserve-art-explainer
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-explainer-version
+  name: kserve-explainer-version
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-storage-initializer
+  name: kserve-storage-initializer
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-agent
+  name: kserve-agent
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+- fieldref:
+    fieldpath: data.kserve-router
+  name: kserve-router
+  objref:
+    apiVersion: v1
+    kind: ConfigMap
+    name: kserve-parameters
+
+commonLabels:
+  app.kubernetes.io/part-of: kserve

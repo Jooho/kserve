@@ -1,0 +1,37 @@
+apiVersion: kfdef.apps.kubeflow.org/v1
+kind: KfDef
+metadata:
+  name: kserve-opendatahub
+  namespace: kserve
+spec:
+  applications:
+    - kustomizeConfig:
+        repoRef:
+          name: odh-manifests
+          path: odh-common
+      name: odh-common
+    - kustomizeConfig:
+        parameters:
+        - name: kserve-alibi-explainer
+          value: kserve/alibi-explainer
+        - name: kserve-art-explainer
+          value: kserve/art-explainer
+        - name: kserve-agent
+          value: kserve/agent
+        - name: kserve-router
+          value: kserve/router
+        - name: kserve-storage-initializer
+          value: kserve/storage-initializer
+        - name: kserve-controller
+          value: quay.io/rlehmann/kserve-controller:v0.10.2
+        repoRef:
+          name: manifests
+          path: opendatahub/odh-manifests/kserve
+      name: kserve
+  repos:
+    - name: odh-manifests
+      uri: https://api.github.com/repos/opendatahub-io/odh-manifests/tarball/master
+    - name: manifests
+      # uri: https://api.github.com/repos/%mm_user%/kserve/tarball/%mm_branch%
+      uri: file:///tmp/odh-manifests.gzip
+  version: master
