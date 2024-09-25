@@ -103,12 +103,12 @@ func createRawDeployment(componentMeta metav1.ObjectMeta, workerComponentMeta me
 	defaultDeployment := createRawDefaultDeployment(componentMeta, componentExt, podSpec)
 	// Set the environment variable "isvc name" to the model name when multiNodeEnabled is enabled.
 	if multiNodeEnabled {
-		addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, "SERVED_MODEL_NAME", isvcName)
+		addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, "MODEL_NAME", isvcName)
 
 		deploymentAnnotations := componentMeta.GetAnnotations()[constants.StorageInitializerSourceUriInternalAnnotationKey]
 		storageProtocol := strings.Split(deploymentAnnotations, "://")[0]
 		if storageProtocol == "pvc" {
-			addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, "MODEL_NAME", constants.DefaultModelLocalMountPath)
+			addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, "MODEL_DIR", constants.DefaultModelLocalMountPath)
 		} 
 	}
 	deploymentList = append(deploymentList, defaultDeployment)
