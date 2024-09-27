@@ -300,7 +300,11 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 			})
 			return ctrl.Result{}, errors.Wrapf(err, "failed to get runtime container")
 		}
-
+		if isvc.Spec.Predictor.WorkerSpec == nil {
+			isvc.Spec.Predictor.WorkerSpec = &v1beta1.WorkerSpec{
+				PodSpec: v1beta1.PodSpec{},
+			}
+		}
 		mergedWorkerPodSpec, err := isvcutils.MergePodSpec(&sRuntime.WorkerSpec.ServingRuntimePodSpec, &isvc.Spec.Predictor.WorkerSpec.PodSpec)
 		if err != nil {
 			isvc.Status.UpdateModelTransitionStatus(v1beta1.InvalidSpec, &v1beta1.FailureInfo{
@@ -310,7 +314,7 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 			return ctrl.Result{}, errors.Wrapf(err, "failed to consolidate serving runtime WorkerSpec PodSpecs")
 		}
 
-		// Set infereneservice worker.size to servingruntime
+		// Set the worker size from InferenceService to ServingRuntime worker size
 		if isvc.Spec.Predictor.WorkerSpec.Size != 0 {
 			sRuntime.WorkerSpec.Size = isvc.Spec.Predictor.WorkerSpec.Size
 		}
@@ -334,11 +338,15 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 			return !utils.Includes(constants.ServiceAnnotationDisallowedList, key)
 		})
 
+		//
 		workerSize := constants.DefaultWorkerMinSize
 		if sRuntime.WorkerSpec.Size > constants.DefaultWorkerMinSize {
 			workerSize = sRuntime.WorkerSpec.Size
 		}
 		// Check if the PIPELINE_PARALLEL_SIZE environment variable specified
+		// Priority for worker node count:
+		// 	1. PIPELINE_PARALLEL_SIZE environment variable
+		// 	2. Worker.Size
 		for _, container := range podSpec.Containers {
 			if container.Name == constants.InferenceServiceContainerName {
 				if envPipelineParallelSize, exists := utils.GetEnvVarValue(container.Env, constants.PipelineParallelSizeEnvName); exists {
