@@ -311,7 +311,7 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 		}
 
 		// Set infereneservice worker.size to servingruntime
-		if isvc.Spec.Predictor.WorkerSpec.Size !=0 {
+		if isvc.Spec.Predictor.WorkerSpec.Size != 0 {
 			sRuntime.WorkerSpec.Size = isvc.Spec.Predictor.WorkerSpec.Size
 		}
 
@@ -345,7 +345,7 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 					// if pipelineParallelSize is bigger than 1  (head + worker)
 					if intPipelineParallelSize, err := strconv.Atoi(envPipelineParallelSize); err == nil && intPipelineParallelSize > 1 {
 						// pipelineParallelSize is higher priority than workerSpec.Size
-						if intPipelineParallelSize - 1 != workerSize{
+						if intPipelineParallelSize-1 != workerSize {
 							workerSize = intPipelineParallelSize - 1
 						}
 					} else {
