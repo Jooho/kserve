@@ -116,6 +116,7 @@ var (
 	AgentModelDirAnnotationKey                       = InferenceServiceInternalAnnotationsPrefix + "/modelDir"
 	PredictorHostAnnotationKey                       = InferenceServiceInternalAnnotationsPrefix + "/predictor-host"
 	PredictorProtocolAnnotationKey                   = InferenceServiceInternalAnnotationsPrefix + "/predictor-protocol"
+	WorkerNodeSize                                   = KServeAPIGroupName + "/worker-node-size"
 )
 
 // kserve networking constants
@@ -136,6 +137,7 @@ var (
 	ControllerLabelName             = KServeName + "-controller-manager"
 	DefaultIstioSidecarUID          = int64(1337)
 	DefaultMinReplicas              = 1
+	DefaultWorkerMinSize            = 1
 	IstioInitContainerName          = "istio-init"
 	IstioInterceptModeRedirect      = "REDIRECT"
 	IstioInterceptionModeAnnotation = "sidecar.istio.io/interceptionMode"
@@ -459,8 +461,7 @@ const (
 
 // Model Parallel Options Default value
 const (
-	DefaultTensorParallelSize   = "1"
-	DefaultPipelineParallelSize = "2"
+	DefaultTensorParallelSize = "1"
 )
 
 // GetRawServiceLabel generate native service label

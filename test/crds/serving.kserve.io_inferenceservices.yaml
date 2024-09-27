@@ -3213,6 +3213,8 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  size:
+                    type: integer
                   tolerations:
                     items:
                       properties:
@@ -21499,6 +21501,8 @@ spec:
                         type: boolean
                       shareProcessNamespace:
                         type: boolean
+                      size:
+                        type: integer
                       subdomain:
                         type: string
                       terminationGracePeriodSeconds:
@@ -29352,6 +29356,8 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  size:
+                    type: integer
                   tolerations:
                     items:
                       properties:

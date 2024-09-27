@@ -19,6 +19,7 @@ package components
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -247,7 +248,7 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 	}
 
 	if isvc.Spec.Predictor.WorkerSpec != nil {
-		mergedWorkerServingRuntimeSpec, err := isvcutils.MergeServingRuntimePodSpec(&sRuntime.WorkerSpec.ServingRuntimePodSpec, isvc.Spec.Predictor.WorkerSpec)
+		mergedWorkerServingRuntimeSpec, err := isvcutils.MergeServingRuntimePodSpec(&sRuntime.WorkerSpec.ServingRuntimePodSpec, &isvc.Spec.Predictor.WorkerSpec.PodSpec)
 		if err != nil {
 			isvc.Status.UpdateModelTransitionStatus(v1beta1.InvalidSpec, &v1beta1.FailureInfo{
 				Reason:  v1beta1.InvalidPredictorSpec,
@@ -285,7 +286,7 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 		}
 
 		var workerSpecContainer *v1.Container
-		if isvc.Spec.Predictor.WorkerSpec != nil {
+		if isvc.Spec.Predictor.WorkerSpec != nil && isvc.Spec.Predictor.WorkerSpec.Containers != nil {
 			workerSpecContainer = &isvc.Spec.Predictor.WorkerSpec.Containers[0]
 		} else {
 			workerSpecContainer = &v1.Container{}
@@ -300,13 +301,18 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 			return ctrl.Result{}, errors.Wrapf(err, "failed to get runtime container")
 		}
 
-		mergedWorkerPodSpec, err := isvcutils.MergePodSpec(&sRuntime.WorkerSpec.ServingRuntimePodSpec, isvc.Spec.Predictor.WorkerSpec)
+		mergedWorkerPodSpec, err := isvcutils.MergePodSpec(&sRuntime.WorkerSpec.ServingRuntimePodSpec, &isvc.Spec.Predictor.WorkerSpec.PodSpec)
 		if err != nil {
 			isvc.Status.UpdateModelTransitionStatus(v1beta1.InvalidSpec, &v1beta1.FailureInfo{
 				Reason:  v1beta1.InvalidPredictorSpec,
 				Message: "Failed to consolidate serving runtime WorkerSpec PodSpecs",
 			})
 			return ctrl.Result{}, errors.Wrapf(err, "failed to consolidate serving runtime WorkerSpec PodSpecs")
+		}
+
+		// Set infereneservice worker.size to servingruntime
+		if isvc.Spec.Predictor.WorkerSpec.Size !=0 {
+			sRuntime.WorkerSpec.Size = isvc.Spec.Predictor.WorkerSpec.Size
 		}
 
 		// Replace placeholders in runtime container by values from inferenceservice metadata
@@ -327,6 +333,32 @@ func (p *Predictor) Reconcile(isvc *v1beta1.InferenceService) (ctrl.Result, erro
 		sRuntimeWorkerAnnotations = utils.Filter(sRuntime.WorkerSpec.ServingRuntimePodSpec.Annotations, func(key string) bool {
 			return !utils.Includes(constants.ServiceAnnotationDisallowedList, key)
 		})
+
+		workerSize := constants.DefaultWorkerMinSize
+		if sRuntime.WorkerSpec.Size > constants.DefaultWorkerMinSize {
+			workerSize = sRuntime.WorkerSpec.Size
+		}
+		// Check if the PIPELINE_PARALLEL_SIZE environment variable specified
+		for _, container := range podSpec.Containers {
+			if container.Name == constants.InferenceServiceContainerName {
+				if envPipelineParallelSize, exists := utils.GetEnvVarValue(container.Env, constants.PipelineParallelSizeEnvName); exists {
+					// if pipelineParallelSize is bigger than 1  (head + worker)
+					if intPipelineParallelSize, err := strconv.Atoi(envPipelineParallelSize); err == nil && intPipelineParallelSize > 1 {
+						// pipelineParallelSize is higher priority than workerSpec.Size
+						if intPipelineParallelSize - 1 != workerSize{
+							workerSize = intPipelineParallelSize - 1
+						}
+					} else {
+						p.Log.Info("Using the WorkerSpec.Size because the provided value for pipelineParallelSize is less than 1")
+					}
+				} else {
+					p.Log.Error(err, "Failed to convert pipelineParallelSize to int, using the WorkerSpec.Size")
+				}
+				break
+			}
+		}
+
+		sRuntimeAnnotations[constants.WorkerNodeSize] = strconv.Itoa(workerSize)
 	}
 
 	// Knative does not support INIT containers or mounting, so we add annotations that trigger the

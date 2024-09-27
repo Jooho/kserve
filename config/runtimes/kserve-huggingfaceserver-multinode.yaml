@@ -47,8 +47,6 @@ spec:
               fieldPath: metadata.namespace
         - name: TENSOR_PARALLEL_SIZE
           value: "1"
-        - name: PIPELINE_PARALLEL_SIZE
-          value: "2"       
         - name: HF_HUB_CACHE
           value: /tmp
       resources:
@@ -105,6 +103,7 @@ spec:
         medium: Memory
         sizeLimit: 12Gi
   workerSpec:
+    size: 1
     containers:
       - name: worker-container
         image: huggingfaceserver:replace

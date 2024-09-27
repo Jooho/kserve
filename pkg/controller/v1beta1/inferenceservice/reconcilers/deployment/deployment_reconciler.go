@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
+	"github.com/kserve/kserve/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
@@ -67,11 +68,21 @@ func createRawDeployment(componentMeta metav1.ObjectMeta, workerComponentMeta me
 	componentExt *v1beta1.ComponentExtensionSpec, //nolint:unparam
 	podSpec *corev1.PodSpec, workerPodSpec *corev1.PodSpec) []*appsv1.Deployment {
 	var deploymentList []*appsv1.Deployment
+	var workerNodeSize string
+	var pipelineParallelSize string
 
 	isvcName := componentMeta.GetLabels()[constants.InferenceServiceLabel]
 	multiNodeEnabled := false
+
 	if workerComponentMeta.Name != "" {
 		multiNodeEnabled = true
+		workerNodeSize = componentMeta.GetAnnotations()[constants.WorkerNodeSize]
+		if parsedValue, err := strconv.Atoi(workerNodeSize); err == nil {
+			// Set pipelineParallelSize to workerNodeSize + 1 (head)
+			pipelineParallelSize = strconv.Itoa(parsedValue + 1)
+		} else {
+			log.Error(err, "Failed to convert pipelineParallelSize to int, using the WorkerSpec.Size)")
+		}
 	}
 
 	// Defaut value(1) if  tensor-parallel-size is not set (gpu count)
@@ -79,7 +90,7 @@ func createRawDeployment(componentMeta metav1.ObjectMeta, workerComponentMeta me
 
 	for _, container := range podSpec.Containers {
 		if container.Name == constants.InferenceServiceContainerName {
-			if value, exists := getEnvVarValue(container.Env, constants.TensorParallelSizeEnvName); exists {
+			if value, exists := utils.GetEnvVarValue(container.Env, constants.TensorParallelSizeEnvName); exists {
 				if intValue, err := strconv.Atoi(value); err == nil {
 					if intValue > 0 {
 						// Use the environment variable value if it's greater than 0
@@ -111,34 +122,14 @@ func createRawDeployment(componentMeta metav1.ObjectMeta, workerComponentMeta me
 			// Set the environment variables for "/mnt/models" to the model dir when multiNodeEnabled is enabled.
 			addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, "MODEL_DIR", constants.DefaultModelLocalMountPath)
 		}
+		// Set the environment variables PIPELINE_PARALLEL_SIZE when multiNodeEnabled is enabled.
+		addEnvVarToDeploymentSpec(&defaultDeployment.Spec, constants.InferenceServiceContainerName, constants.PipelineParallelSizeEnvName, pipelineParallelSize)
 	}
 	deploymentList = append(deploymentList, defaultDeployment)
 
 	// If Multi-node is enabled, it adds workerNode deployment.
 	if multiNodeEnabled {
-		// Defaut value(2) if pipeline-parallel-size is not set (1 head + 1 worker)
-		stringPipelineParallelSize := constants.DefaultPipelineParallelSize
-
-		// Check if the PIPELINE_PARALLEL_SIZE environment variable specified
-		for _, container := range podSpec.Containers {
-			if container.Name == constants.InferenceServiceContainerName {
-				if value, exists := getEnvVarValue(container.Env, constants.PipelineParallelSizeEnvName); exists {
-					// if pipelineParallelSize is bigger than 2 (head + worker)
-					if intPipelineParallelSize, err := strconv.Atoi(value); err == nil {
-						if intPipelineParallelSize > 2 {
-							stringPipelineParallelSize = strconv.Itoa(intPipelineParallelSize)
-						} else {
-							log.Info("Using the default value for pipeline-parallel-size because the provided value is less than 2")
-						}
-					} else {
-						log.Error(err, "Using the default value for pipeline-parallel-size because it failed to convert pipelineParallelSize to int")
-					}
-					break
-				}
-			}
-		}
-
-		workerDeployment := createRawWorkerDeployment(workerComponentMeta, componentExt, workerPodSpec, componentMeta.Name, stringPipelineParallelSize, isvcName)
+		workerDeployment := createRawWorkerDeployment(workerComponentMeta, componentExt, workerPodSpec, componentMeta.Name, pipelineParallelSize, isvcName)
 
 		// Update GPU resource of workerPodSpec based on tensor-parallelSize
 		addGPUResourceToDeployment(workerDeployment, constants.WorkerContainerName, tensorParallelSize)
@@ -201,11 +192,11 @@ func createRawWorkerDeployment(componentMeta metav1.ObjectMeta,
 	setDefaultDeploymentSpec(&deployment.Spec)
 
 	// default workerNode deployment replicas
-	replicas := int32(1)
+	replicas := int32(constants.DefaultWorkerMinSize)
 	if parsedValue, err := strconv.Atoi(pipelineParallelSize); err == nil {
 		replicas = int32(parsedValue - 1) // minus 1 (excluding head node)
 	} else {
-		log.Error(err, "Using the default value for replicas because it failed to convert pipelineParallelSize string to int")
+		log.Error(err, "Failed to convert pipelineParallelSize string to int, using the default value(1) for replicas.")
 	}
 
 	deployment.Spec.Replicas = &replicas
@@ -337,7 +328,7 @@ func addEnvVarToDeploymentSpec(deploymentSpec *appsv1.DeploymentSpec, containerN
 	for i, container := range deploymentSpec.Template.Spec.Containers {
 		if container.Name == containerName {
 
-			if _, exists := getEnvVarValue(container.Env, envName); exists {
+			if _, exists := utils.GetEnvVarValue(container.Env, envName); exists {
 				// Overwrite the environment variable
 				for j, envVar := range container.Env {
 					if envVar.Name == envName {
@@ -361,15 +352,6 @@ func addEnvVarToDeploymentSpec(deploymentSpec *appsv1.DeploymentSpec, containerN
 	}
 
 	log.Info("Container not found in DeploymentSpec", "containerName", containerName)
-}
-
-func getEnvVarValue(envVars []corev1.EnvVar, key string) (string, bool) {
-	for _, envVar := range envVars {
-		if envVar.Name == key {
-			return envVar.Value, true // if key exist, return value, true
-		}
-	}
-	return "", false // if key does not exist, return "", false
 }
 
 func addGPUResourceToDeployment(deployment *appsv1.Deployment, targetContainerName string, tensorParallelSize string) {
