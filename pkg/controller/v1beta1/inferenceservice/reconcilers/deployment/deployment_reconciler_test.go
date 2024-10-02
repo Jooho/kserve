@@ -21,9 +21,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
-	// "github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
+	"github.com/kserve/kserve/pkg/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,7 +40,6 @@ func TestCreateDefaultDeployment(t *testing.T) {
 		podSpec          *corev1.PodSpec
 		workerPodSpec    *corev1.PodSpec
 	}
-
 	testInput := map[string]args{
 		"defaultDeployment": {
 			objectMeta: metav1.ObjectMeta{
@@ -126,7 +125,7 @@ func TestCreateDefaultDeployment(t *testing.T) {
 						Name:  "kserve-container",
 						Image: "default-predictor-example-image",
 						Env: []corev1.EnvVar{
-							{Name: "default-predictor-example-env", Value: "example-env"},
+							{Name: "TENSOR_PARALLEL_SIZE", Value: "1"},
 						},
 					},
 				},
@@ -144,15 +143,15 @@ func TestCreateDefaultDeployment(t *testing.T) {
 						"annotation": "annotation-value",
 					},
 					Labels: map[string]string{
-						"app":                               "isvc.default-predictor",
-						"serving.kserve.io/autoscalerClass": "hpa",
-						"serving.kserve.io/deploymentMode":  "RawDeployment",
+						constants.RawDeploymentAppLabel: "isvc.default-predictor",
+						constants.AutoscalerClass:       string(constants.AutoscalerClassHPA),
+						constants.DeploymentMode:        string(constants.RawDeployment),
 					},
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
-							"app": "isvc.default-predictor",
+							constants.RawDeploymentAppLabel: "isvc.default-predictor",
 						},
 					},
 					Template: corev1.PodTemplateSpec{
@@ -163,9 +162,9 @@ func TestCreateDefaultDeployment(t *testing.T) {
 								"annotation": "annotation-value",
 							},
 							Labels: map[string]string{
-								"app":                               "isvc.default-predictor",
-								"serving.kserve.io/autoscalerClass": "hpa",
-								"serving.kserve.io/deploymentMode":  "RawDeployment",
+								constants.RawDeploymentAppLabel: "isvc.default-predictor",
+								constants.AutoscalerClass:       string(constants.AutoscalerClassHPA),
+								constants.DeploymentMode:        string(constants.RawDeployment),
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -242,16 +241,16 @@ func TestCreateDefaultDeployment(t *testing.T) {
 									Name:  "kserve-container",
 									Image: "default-predictor-example-image",
 									Env: []corev1.EnvVar{
-										{Name: "default-predictor-example-env", Value: "example-env"},
+										{Name: "TENSOR_PARALLEL_SIZE", Value: "1"},
 										{Name: "MODEL_NAME"},
 										{Name: "PIPELINE_PARALLEL_SIZE"},
 									},
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{
-											"nvidia.com/gpu": resource.MustParse("1"),
+											constants.NvidiaGPUResourceType: resource.MustParse("1"),
 										},
 										Requests: corev1.ResourceList{
-											"nvidia.com/gpu": resource.MustParse("1"),
+											constants.NvidiaGPUResourceType: resource.MustParse("1"),
 										},
 									},
 									ImagePullPolicy:          "IfNotPresent",
@@ -283,16 +282,16 @@ func TestCreateDefaultDeployment(t *testing.T) {
 						"annotation": "annotation-value",
 					},
 					Labels: map[string]string{
-						"app":                               "isvc.default-predictor-worker",
-						"serving.kserve.io/autoscalerClass": "external",
-						"serving.kserve.io/deploymentMode":  "RawDeployment",
+						constants.RawDeploymentAppLabel: "isvc.default-predictor-worker",
+						constants.AutoscalerClass:       string(constants.AutoscalerClassExternal),
+						constants.DeploymentMode:        string(constants.RawDeployment),
 					},
 				},
 				Spec: appsv1.DeploymentSpec{
 					Replicas: int32Ptr(1),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
-							"app": "isvc.default-predictor-worker",
+							constants.RawDeploymentAppLabel: "isvc.default-predictor-worker",
 						},
 					},
 					Template: corev1.PodTemplateSpec{
@@ -303,9 +302,9 @@ func TestCreateDefaultDeployment(t *testing.T) {
 								"annotation": "annotation-value",
 							},
 							Labels: map[string]string{
-								"app":                               "isvc.default-predictor-worker",
-								"serving.kserve.io/autoscalerClass": "external",
-								"serving.kserve.io/deploymentMode":  "RawDeployment",
+								constants.RawDeploymentAppLabel: "isvc.default-predictor-worker",
+								constants.AutoscalerClass:       string(constants.AutoscalerClassExternal),
+								constants.DeploymentMode:        string(constants.RawDeployment),
 							},
 						},
 						Spec: corev1.PodSpec{
@@ -322,10 +321,10 @@ func TestCreateDefaultDeployment(t *testing.T) {
 									},
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{
-											"nvidia.com/gpu": resource.MustParse("1"),
+											constants.NvidiaGPUResourceType: resource.MustParse("1"),
 										},
 										Requests: corev1.ResourceList{
-											"nvidia.com/gpu": resource.MustParse("1"),
+											constants.NvidiaGPUResourceType: resource.MustParse("1"),
 										},
 									},
 									ImagePullPolicy:          "IfNotPresent",
@@ -385,6 +384,171 @@ func TestCreateDefaultDeployment(t *testing.T) {
 					t.Errorf("Test %q unexpected deployment (-want +got): %v", tt.name, diff)
 				}
 
+			}
+		})
+	}
+
+	getDefaultArgs := func() args {
+		return args{
+			objectMeta:       testInput["multiNode-deployment"].objectMeta,
+			workerObjectMeta: testInput["multiNode-deployment"].workerObjectMeta,
+			componentExt:     testInput["multiNode-deployment"].componentExt,
+			podSpec:          testInput["multiNode-deployment"].podSpec,
+			workerPodSpec:    testInput["multiNode-deployment"].workerPodSpec,
+		}
+	}
+
+	getDefaultExpectedDeployment := func() []*appsv1.Deployment {
+		return expectedDeploymentPodSpecs["multiNode-deployment"]
+	}
+
+	objectMeta_tests := []struct {
+		name           string
+		modifyArgs     func(args) args
+		modifyExpected func([]*appsv1.Deployment) []*appsv1.Deployment
+	}{
+		{
+			name: "Change workerNodeSize annotation to 3, then PIPELINE_PARALLEL_SIZE should be set 4 and worker node replicas set to 3",
+			modifyArgs: func(updatedArgs args) args {
+				updatedArgs.objectMeta.GetAnnotations()[constants.WorkerNodeSize] = "3"
+				return updatedArgs
+			},
+			modifyExpected: func(updatedExpected []*appsv1.Deployment) []*appsv1.Deployment {
+				//e[0] is default deployment, e[1] is worker node deployment
+				addEnvVarToDeploymentSpec(&updatedExpected[0].Spec, constants.InferenceServiceContainerName, "PIPELINE_PARALLEL_SIZE", "4")
+				addEnvVarToDeploymentSpec(&updatedExpected[1].Spec, constants.WorkerContainerName, "PIPELINE_PARALLEL_SIZE", "4")
+				updatedExpected[0].GetAnnotations()[constants.WorkerNodeSize] = "3"
+				updatedExpected[0].Spec.Template.GetAnnotations()[constants.WorkerNodeSize] = "3"
+				updatedExpected[1].Spec.Replicas = int32Ptr(3)
+				return updatedExpected
+			},
+		},
+	}
+
+	for _, tt := range objectMeta_tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// retrieve args, expected
+			ttArgs := getDefaultArgs()
+			ttExpected := getDefaultExpectedDeployment()
+
+			// update objectMeta using modify func
+			got := createRawDeployment(tt.modifyArgs(ttArgs).objectMeta, ttArgs.workerObjectMeta, ttArgs.componentExt, ttArgs.podSpec, ttArgs.workerPodSpec)
+
+			// update expected value using modifyExpected func
+			expected := tt.modifyExpected(ttExpected)
+
+			for i, deploy := range got {
+				if diff := cmp.Diff(expected[i], deploy, cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.SecurityContext"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.RestartPolicy"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.TerminationGracePeriodSeconds"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.DNSPolicy"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.AutomountServiceAccountToken"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.SchedulerName"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Strategy.Type"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Strategy.RollingUpdate"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.RevisionHistoryLimit"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.ProgressDeadlineSeconds")); diff != "" {
+					t.Errorf("Test %q unexpected deployment (-want +got): %v", tt.name, diff)
+				}
+			}
+		})
+	}
+
+	podSpec_tests := []struct {
+		name           string
+		modifyArgs     func(args) args
+		modifyExpected func([]*appsv1.Deployment) []*appsv1.Deployment
+	}{
+		{
+			name: "Use default value for gpu resouce, when tensor-parallel-size used wrong value",
+			modifyArgs: func(updatedArgs args) args {
+
+				if _, exists := utils.GetEnvVarValue(updatedArgs.podSpec.Containers[0].Env, constants.TensorParallelSizeEnvName); exists {
+					// Overwrite the environment variable
+					for j, envVar := range updatedArgs.podSpec.Containers[0].Env {
+						if envVar.Name == constants.TensorParallelSizeEnvName {
+							updatedArgs.podSpec.Containers[0].Env[j].Value = "-1"
+							break
+						}
+					}
+				}
+				return updatedArgs
+			},
+			modifyExpected: func(updatedExpected []*appsv1.Deployment) []*appsv1.Deployment {
+				// Overwrite the environment variable
+				for j, envVar := range updatedExpected[0].Spec.Template.Spec.Containers[0].Env {
+					if envVar.Name == constants.TensorParallelSizeEnvName {
+						updatedExpected[0].Spec.Template.Spec.Containers[0].Env[j].Value = "-1"
+						break
+					}
+				}
+				return updatedExpected
+			},
+		},
+		{
+			name: "Use tensor-parallel-size  value for gpu resouce",
+			modifyArgs: func(updatedArgs args) args {
+
+				if _, exists := utils.GetEnvVarValue(updatedArgs.podSpec.Containers[0].Env, constants.TensorParallelSizeEnvName); exists {
+					// Overwrite the environment variable
+					for j, envVar := range updatedArgs.podSpec.Containers[0].Env {
+						if envVar.Name == constants.TensorParallelSizeEnvName {
+							updatedArgs.podSpec.Containers[0].Env[j].Value = "2"
+							break
+						}
+					}
+				}
+				return updatedArgs
+			},
+			modifyExpected: func(updatedExpected []*appsv1.Deployment) []*appsv1.Deployment {
+				// Overwrite the environment variable
+				for j, envVar := range updatedExpected[0].Spec.Template.Spec.Containers[0].Env {
+					if envVar.Name == constants.TensorParallelSizeEnvName {
+						updatedExpected[0].Spec.Template.Spec.Containers[0].Env[j].Value = "2"
+						break
+					}
+				}
+				for _, deploy := range updatedExpected {
+					deploy.Spec.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							constants.NvidiaGPUResourceType: resource.MustParse("2"),
+						},
+						Requests: corev1.ResourceList{
+							constants.NvidiaGPUResourceType: resource.MustParse("2"),
+						},
+					}
+				}
+
+				return updatedExpected
+			},
+		},
+	}
+
+	for _, tt := range podSpec_tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// retrieve args, expected
+			ttArgs := getDefaultArgs()
+			ttExpected := getDefaultExpectedDeployment()
+
+			// update objectMeta using modify func
+			got := createRawDeployment(ttArgs.objectMeta, ttArgs.workerObjectMeta, ttArgs.componentExt, tt.modifyArgs(ttArgs).podSpec, ttArgs.workerPodSpec)
+
+			// update expected value using modifyExpected func
+			expected := tt.modifyExpected(ttExpected)
+
+			for i, deploy := range got {
+				if diff := cmp.Diff(expected[i], deploy, cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.SecurityContext"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.RestartPolicy"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.TerminationGracePeriodSeconds"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.DNSPolicy"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.AutomountServiceAccountToken"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Template.Spec.SchedulerName"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Strategy.Type"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.Strategy.RollingUpdate"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.RevisionHistoryLimit"),
+					cmpopts.IgnoreFields(appsv1.Deployment{}, "Spec.ProgressDeadlineSeconds")); diff != "" {
+					t.Errorf("Test %q unexpected deployment (-want +got): %v", tt.name, diff)
+				}
 			}
 		})
 	}

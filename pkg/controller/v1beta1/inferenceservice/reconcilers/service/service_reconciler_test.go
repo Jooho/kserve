@@ -76,8 +76,9 @@ func TestCreateDefaultDeployment(t *testing.T) {
 					"annotation": "annotation-value",
 				},
 				Labels: map[string]string{
-					constants.DeploymentMode:  string(constants.RawDeployment),
-					constants.AutoscalerClass: string(constants.AutoscalerClassExternal),
+					constants.RawDeploymentAppLabel:       "isvc.default-predictor",
+					constants.InferenceServicePodLabelKey: "default-predictor",
+					constants.KServiceComponentLabel:      string(v1beta1.PredictorComponent),
 				},
 			},
 
@@ -109,8 +110,8 @@ func TestCreateDefaultDeployment(t *testing.T) {
 					Name:      "default-predictor",
 					Namespace: "default-predictor-namespace",
 					Labels: map[string]string{
-						"serving.kserve.io/autoscalerClass": "hpa",
-						"serving.kserve.io/deploymentMode":  "RawDeployment",
+						constants.AutoscalerClass: string(constants.DefaultAutoscalerClass),
+						constants.DeploymentMode:  string(constants.RawDeployment),
 					},
 					Annotations: map[string]string{
 						"annotation": "annotation-value",
@@ -126,7 +127,7 @@ func TestCreateDefaultDeployment(t *testing.T) {
 						},
 					},
 					Selector: map[string]string{
-						"app": "isvc.default-predictor",
+						constants.RawDeploymentAppLabel: "isvc.default-predictor",
 					},
 				},
 			},
@@ -138,8 +139,9 @@ func TestCreateDefaultDeployment(t *testing.T) {
 					Name:      "default-predictor",
 					Namespace: "default-predictor-namespace",
 					Labels: map[string]string{
-						"serving.kserve.io/autoscalerClass": "external",
-						"serving.kserve.io/deploymentMode":  "RawDeployment",
+						constants.RawDeploymentAppLabel:       "isvc.default-predictor",
+						constants.KServiceComponentLabel:      "predictor",
+						constants.InferenceServicePodLabelKey: "default-predictor",
 					},
 					Annotations: map[string]string{
 						"annotation": "annotation-value",
@@ -164,17 +166,17 @@ func TestCreateDefaultDeployment(t *testing.T) {
 					Name:      "default-head",
 					Namespace: "default-predictor-namespace",
 					Labels: map[string]string{
-						"serving.kserve.io/autoscalerClass": "external",
-						"serving.kserve.io/deploymentMode":  "RawDeployment",
+						constants.RawDeploymentAppLabel:       "isvc.default-predictor",
+						constants.KServiceComponentLabel:      "predictor",
+						constants.InferenceServicePodLabelKey: "default-predictor",
 					},
 					Annotations: map[string]string{
 						"annotation": "annotation-value",
 					},
 				},
 				Spec: corev1.ServiceSpec{
-
 					Selector: map[string]string{
-						"app": "isvc.default-predictor",
+						constants.RawDeploymentAppLabel: "isvc.default-predictor",
 					},
 					ClusterIP:                "None",
 					PublishNotReadyAddresses: true,
