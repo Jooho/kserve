@@ -402,6 +402,7 @@ func TestCreateDefaultDeployment(t *testing.T) {
 		return expectedDeploymentPodSpecs["multiNode-deployment"]
 	}
 
+	// pipeline-parelle-size test
 	objectMeta_tests := []struct {
 		name           string
 		modifyArgs     func(args) args
@@ -454,6 +455,7 @@ func TestCreateDefaultDeployment(t *testing.T) {
 		})
 	}
 
+	// tensor-parallel-size test
 	podSpec_tests := []struct {
 		name           string
 		modifyArgs     func(args) args

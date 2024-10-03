@@ -85,7 +85,7 @@ func createRawDeployment(componentMeta metav1.ObjectMeta, workerComponentMeta me
 		}
 	}
 
-	// Defaut value(1) if  tensor-parallel-size is not set (gpu count)
+	// Defaut value(1) if tensor-parallel-size is not set (gpu count)
 	tensorParallelSize := constants.DefaultTensorParallelSize
 
 	for _, container := range podSpec.Containers {
