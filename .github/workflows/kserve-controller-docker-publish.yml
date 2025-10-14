@@ -48,7 +48,10 @@ jobs:
 
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
-
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64/v8, linux/ppc64le, linux/s390x]
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -91,14 +94,13 @@ jobs:
 
           echo CONTAINER_TAGS=$TAGS >> $GITHUB_ENV
 
-      - name: Build and push
+      - name: Build and push (${{ matrix.platform }})
         uses: docker/build-push-action@v6
         with:
-          platforms: linux/amd64,linux/arm64/v8,linux/ppc64le,linux/s390x
           context: .
           file: Dockerfile
           push: true
+          platforms: ${{ matrix.platform }}
           tags: ${{ env.CONTAINER_TAGS }}
-          # https://github.com/docker/buildx/issues/1533
           provenance: false
-          sbom: true
+          sbom: false
