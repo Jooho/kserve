@@ -1,0 +1,28 @@
+# KServe Knative Mode E2E Test Install Definition
+#
+# This definition file specifies components for E2E testing of KServe in Knative mode.
+# Uses Kustomize-based KServe installation for E2E testing.
+#
+# Note: This uses kserve-kustomize which deploys KServe from the kustomize configurations
+#       in the current repository (config/crd, config/default). This means it deploys
+#       from the source code in your PR, not from a released version.
+#
+# Components are installed in the order listed.
+# Uninstallation happens in reverse order.
+
+DESCRIPTION: Install KServe Knative Mode dependencies and components for E2E testing
+METHOD: helm
+
+TOOLS:
+  - helm
+  - kustomize
+  - yq
+  
+COMPONENTS:
+  - name: cert-manager
+  - name: istio
+  - name: istio-ingress-class
+  - name: keda
+  - name: keda-otel-addon
+  - name: opentelemetry
+  - name: kserve-kustomize

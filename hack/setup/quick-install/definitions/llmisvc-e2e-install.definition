@@ -1,0 +1,32 @@
+# LLM InferenceService E2E Test Install Definition
+#
+# This definition file specifies components for E2E testing of LLM InferenceService.
+# Uses Kustomize-based KServe installation for E2E testing.
+#
+# Note: This uses kserve-kustomize which deploys KServe from the kustomize configurations
+#       in the current repository (config/crd/llmisvc, config/overlays/llmisvc). This means
+#       it deploys from the source code in your PR, not from a released version.
+#
+# Components are installed in the order listed.
+# Uninstallation happens in reverse order.
+
+FILE_NAME: llmisvc-e2e-test-install
+DESCRIPTION: Install LLM InferenceService dependencies and components for E2E
+METHOD: helm
+
+TOOLS:
+  - helm
+  - kustomize
+  - yq
+
+COMPONENTS:
+  - name: external-lb
+  - name: cert-manager
+  - name: gateway-api-crd
+  - name: envoy-gateway
+  - name: envoy-ai-gateway
+  - name: lws-operator
+  - name: kserve-gateway
+  - name: kserve-kustomize
+    env:
+      LLMISVC: "true"

@@ -1,6 +1,9 @@
 # The Go and Python based tools are defined in Makefile.tools.mk.
 include Makefile.tools.mk
 
+# Load dependency versions
+include kserve-deps.env
+
 # Base Image URL
 BASE_IMG ?= python:3.11-slim-bookworm
 PMML_BASE_IMG ?= openjdk:21-slim-bookworm
@@ -30,8 +33,6 @@ LLMISVC_IMG ?= kserve-llmisvc-controller:latest
 
 CRD_OPTIONS ?= "crd:maxDescLen=0"
 KSERVE_ENABLE_SELF_SIGNED_CA ?= false
-
-GIE_VERSION ?= v0.5.1
 
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -75,6 +76,10 @@ vet:
 tidy:
 	go mod tidy
 	cd qpext && go mod tidy
+
+.PHONY: sync-deps
+sync-deps:
+	@hack/setup/scripts/generate-versions-from-gomod.sh
 
 go-lint: golangci-lint
 	@$(GOLANGCI_LINT) run --fix
@@ -193,9 +198,17 @@ uv-lock: $(UV)
 		esac; \
 	done
 
+# Generate installation scripts from definition files
+generate-install-scripts:
+	@hack/setup/scripts/generate-install-script.py
+
+# Validate installation scripts follow conventions
+validate-install-scripts:
+	@hack/setup/scripts/validate-install-scripts.py --strict
+
 
 # This runs all necessary steps to prepare for a commit.
-precommit: vet tidy go-lint py-fmt py-lint generate manifests uv-lock
+precommit: sync-deps generate-install-scripts validate-install-scripts vet tidy go-lint py-fmt py-lint generate manifests uv-lock 
 
 # This is used by CI to ensure that the precommit checks are met.
 check: precommit
@@ -297,22 +310,13 @@ deploy-dev-storageInitializer: docker-push-storageInitializer
 	kubectl apply --server-side=true -k config/overlays/dev-image-config
 
 deploy-ci: manifests
-	# Given that llmisvc CRs and CRDs are packaged together, when using kustomize build a race condition will occur.
-	# This is because before the CRD is registered to the api server, kustomize will attempt to create the CR.
-	# The below kubectl apply and kubectl wait commands are necessary to avoid this race condition.
-	kubectl apply --server-side=true --force-conflicts -k config/crd
-	kubectl wait --for=condition=established --timeout=60s crd/llminferenceserviceconfigs.serving.kserve.io
-	kubectl apply --server-side=true -k config/overlays/test
-	# TODO: Add runtimes as part of default deployment
-	kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=300s
-	kubectl apply --server-side=true -k config/overlays/test/clusterresources
+	./hack/setup/infra/manage.kserve-kustomize.sh
 
 deploy-helm: manifests
-	helm install kserve-crd charts/kserve-crd/ --wait --timeout 180s
-	helm install kserve charts/kserve-resources/ --wait --timeout 180s -n kserve --create-namespace
-
+	./hack/setup/infra/manage.kserve-helm.sh
+	
 undeploy:
-	kubectl delete -k config/default
+	./hack/setup/infra/manage.kserve-kustomize.sh --uninstall
 
 undeploy-dev:
 	kubectl delete -k config/overlays/development

@@ -1,0 +1,13 @@
+DESCRIPTION: Install KServe Standard Mode dependencies
+METHOD: helm
+
+TOOLS:
+  - helm
+  - kustomize
+  - yq
+  
+COMPONENTS:
+  - name: cert-manager
+  - name: keda
+  - name: keda-otel-addon
+  

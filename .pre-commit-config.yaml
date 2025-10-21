@@ -16,3 +16,12 @@ repos:
     hooks:
       - id: flake8
         args: [--config, .flake8, .]
+  - repo: local
+    hooks:
+      - id: validate-install-scripts
+        name: Validate Installation Scripts
+        entry: hack/setup/scripts/validate-install-scripts.py
+        language: script
+        files: ^hack/setup/infra/.*\.sh$
+        pass_filenames: true
+        args: [--strict]

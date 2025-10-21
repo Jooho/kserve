@@ -21,6 +21,10 @@
 set -o errexit
 set -o nounset
 set -o pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd 2>/dev/null)"
+REPO_ROOT="$(find_repo_root "${SCRIPT_DIR}")"
+
 DEPLOYMENT_MODE="${1:-'serverless'}"
 NETWORK_LAYER="${2:-'istio'}"
 
@@ -29,23 +33,12 @@ make deploy-ci
 shopt -s nocasematch
 if [[ $DEPLOYMENT_MODE == "raw" ]];then
   echo "Patching default deployment mode to raw deployment"
-  kubectl patch cm -n kserve inferenceservice-config --patch='{"data": {"deploy": "{\"defaultDeploymentMode\": \"RawDeployment\"}"}}'
+  kubectl patch cm -n kserve inferenceservice-config --patch='{"data": {"deploy": "{\"defaultDeploymentMode\": \"Standard\"}"}}'
 
   if [[ $NETWORK_LAYER == "envoy-gatewayapi" ]]; then
-    echo "Creating Envoy Gateway ..."
-    kubectl apply -f config/overlays/test/gateway/ingress_gateway.yaml
-    sleep 10
-    echo "Waiting for envoy gateway to be ready ..."
-    kubectl wait --timeout=5m -n envoy-gateway-system pod -l serving.kserve.io/gateway=kserve-ingress-gateway --for=condition=Ready
+    ${REPO_ROOT}/hack/setup/infra/manage.kserve-gateway.sh
   elif [[ $NETWORK_LAYER == "istio-gatewayapi" ]]; then
-    echo "Creating Istio Gateway ..."
-    # Replace gatewayclass name
-    kubectl apply -f - <<EOF
-$(sed 's/envoy/istio/g' config/overlays/test/gateway/ingress_gateway.yaml)
-EOF
-    sleep 10
-    echo "Waiting for istio gateway to be ready ..."
-    kubectl wait --timeout=5m -n kserve pod -l serving.kserve.io/gateway=kserve-ingress-gateway --for=condition=Ready
+    GATEWAYCLASS_NAME=istio ${REPO_ROOT}/hack/setup/infra/manage.kserve-gateway.sh
   fi
 fi
 shopt -u nocasematch
