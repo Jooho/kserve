@@ -14,15 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install LLM InferenceService dependencies and components
+# Install KServe Standard Mode dependencies and components
 #
-# AUTO-GENERATED from: llmisvc-install.definition
+# AUTO-GENERATED from: kserve-standard-mode-full-install.definition
 # DO NOT EDIT MANUALLY
 #
 # To regenerate:
-#   ./scripts/generate-install-script.py llmisvc-install.definition
+#   ./scripts/generate-install-script.py kserve-standard-mode-full-install.definition
 #
-# Usage: llmisvc-quick-install.sh [--reinstall|--uninstall]
+# Usage: kserve-standard-mode-full-install.sh [--reinstall|--uninstall]
 
 set -o errexit
 set -o nounset
@@ -273,6 +273,35 @@ command_exists() {
 
 # ============================================================================
 
+# Set environment variable based on priority order:
+# Priority: 1. Runtime env > 2. Component env > 3. Global env > 4. Component default
+# Usage: set_env_with_priority VAR_NAME COMPONENT_ENV_VALUE GLOBAL_ENV_VALUE DEFAULT_VALUE
+set_env_with_priority() {
+    local var_name="$1"
+    local component_value="$2"
+    local global_value="$3"
+    local default_value="$4"
+
+    # Get current value
+    local current_value
+    eval "current_value=\${${var_name}}"
+
+    # If current value differs from default/component/global, it must be runtime - keep it
+    if [ -n "$current_value" ] && [ "$current_value" != "$default_value" ] &&
+       [ "$current_value" != "$component_value" ] && [ "$current_value" != "$global_value" ]; then
+        # This is a runtime value, keep it
+        return
+    fi
+
+    # Apply priority: component env > global env > default
+    if [ -n "$component_value" ]; then
+        export "$var_name=$component_value"
+    elif [ -n "$global_value" ]; then
+        export "$var_name=$global_value"
+    fi
+    # If both are empty, variable keeps its default value
+}
+
 #================================================
 # Determine repository root using find_repo_root
 #================================================
@@ -317,12 +346,12 @@ UV_VERSION=0.7.8
 CERT_MANAGER_VERSION=v1.17.0
 ENVOY_GATEWAY_VERSION=v1.2.2
 ENVOY_AI_GATEWAY_VERSION=v0.3.0
-KSERVE_VERSION=v0.16.0-rc1
-ISTIO_VERSION=1.24.2
 KNATIVE_OPERATOR_VERSION=v1.16.0
-KNATIVE_SERVING_VERSION=v0.44.0
+KNATIVE_SERVING_VERSION=1.15.2
+KEDA_OTEL_ADDON_VERSION=v0.0.6
+KSERVE_VERSION=v0.16.0-rc1
+ISTIO_VERSION=1.27.1
 KEDA_VERSION=2.16.1
-KEDA_OTEL_ADDON_VERSION=v0.0.12
 OPENTELEMETRY_OPERATOR_VERSION=0.113.0
 LWS_VERSION=v0.6.2
 GATEWAY_API_VERSION=v1.2.1
@@ -346,6 +375,7 @@ GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-kserve}"
 # Component-Specific Variables
 #================================================
 
+ADDON_RELEASE_NAME="keda-otel-scaler"
 PLATFORM="${PLATFORM:-$(detect_platform)}"
 TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 GATEWAY_NAME="kserve-ingress-gateway"
@@ -355,7 +385,11 @@ KSERVE_CRD_RELEASE_NAME="kserve-crd"
 KSERVE_RELEASE_NAME="kserve"
 CRD_DIR_NAME="kserve-crd"
 CORE_DIR_NAME="kserve-resources"
-TARGET_POD_LABEL="control-plane=kserve-controller-manager"
+TARGET_POD_LABELS=(
+"control-plane=kserve-controller-manager"
+"app.kubernetes.io/name=kserve-localmodel-controller-manager"
+"app.kubernetes.io/name=llmisvc-controller-manager"
+)
 DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 USE_LOCAL_CHARTS="${USE_LOCAL_CHARTS:-false}"
 LLMISVC="${LLMISVC:-false}"
@@ -365,6 +399,133 @@ RELEASE="${RELEASE:-false}"
 #================================================
 # Component Functions
 #================================================
+
+# ----------------------------------------
+# Component: cert-manager
+# ----------------------------------------
+
+uninstall_cert_manager() {
+    log_info "Uninstalling cert-manager..."
+    helm uninstall cert-manager -n cert-manager 2>/dev/null || true
+    kubectl delete all --all -n cert-manager --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace cert-manager --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "cert-manager uninstalled"
+}
+
+install_cert_manager() {
+    if helm list -n cert-manager 2>/dev/null | grep -q "cert-manager"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "cert-manager is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling cert-manager..."
+            uninstall
+        fi
+    fi
+
+    log_info "Adding cert-manager Helm repository..."
+    helm repo add jetstack https://charts.jetstack.io --force-update
+
+    log_info "Installing cert-manager ${CERT_MANAGER_VERSION}..."
+    helm install \
+        cert-manager jetstack/cert-manager \
+        --namespace cert-manager \
+        --create-namespace \
+        --version "${CERT_MANAGER_VERSION}" \
+        --set crds.enabled=true \
+        --wait
+
+    log_success "Successfully installed cert-manager ${CERT_MANAGER_VERSION} via Helm"
+
+    wait_for_pods "cert-manager" "app in (cert-manager,webhook)" "180s"
+
+    log_success "cert-manager is ready!"
+}
+
+# ----------------------------------------
+# Component: keda
+# ----------------------------------------
+
+uninstall_keda() {
+    log_info "Uninstalling KEDA..."
+
+    helm uninstall keda-otel-scaler -n "${KEDA_NAMESPACE}" 2>/dev/null || true
+    helm uninstall keda -n "${KEDA_NAMESPACE}" 2>/dev/null || true
+    kubectl delete all --all -n "${KEDA_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${KEDA_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+
+    log_success "KEDA uninstalled"
+}
+
+install_keda() {
+    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "keda"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "KEDA is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling KEDA..."
+            uninstall
+        fi
+    fi
+
+    log_info "Adding KEDA Helm repository..."
+    helm repo add kedacore https://kedacore.github.io/charts --force-update
+
+    log_info "Installing KEDA ${KEDA_VERSION}..."
+    helm install keda kedacore/keda \
+        --namespace "${KEDA_NAMESPACE}" \
+        --create-namespace \
+        --version "${KEDA_VERSION}" \
+        --wait \
+        ${KEDA_EXTRA_ARGS:-}
+
+    log_success "Successfully installed KEDA ${KEDA_VERSION} via Helm"
+
+    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/name=keda-operator" "300s"
+
+    log_success "KEDA is ready!"
+}
+
+# ----------------------------------------
+# Component: keda-otel-addon
+# ----------------------------------------
+
+uninstall_keda_otel_addon() {
+    log_info "Uninstalling KEDA OTel add-on..."
+    helm uninstall "${ADDON_RELEASE_NAME}" -n "${KEDA_NAMESPACE}" 2>/dev/null || true
+    log_success "KEDA OTel add-on uninstalled"
+}
+
+install_keda_otel_addon() {
+    if ! kubectl get namespace "${KEDA_NAMESPACE}" &>/dev/null; then
+        log_error "KEDA namespace '${KEDA_NAMESPACE}' does not exist. Please install KEDA first."
+        exit 1
+    fi
+
+    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "${ADDON_RELEASE_NAME}"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "KEDA OTel add-on is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling KEDA OTel add-on..."
+            uninstall
+        fi
+    fi
+
+    log_info "Installing KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} from kedify/otel-add-on..."
+    helm upgrade -i "${ADDON_RELEASE_NAME}" \
+        oci://ghcr.io/kedify/charts/otel-add-on \
+        --namespace "${KEDA_NAMESPACE}" \
+        --version="${KEDA_OTEL_ADDON_VERSION}" \
+        --wait \
+        ${KEDA_OTEL_ADDON_EXTRA_ARGS:-}
+
+    log_success "Successfully installed KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} via Helm"
+
+    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/instance=${ADDON_RELEASE_NAME}" "300s"
+
+    log_success "KEDA OTel add-on is ready!"
+}
 
 # ----------------------------------------
 # Component: external-lb
@@ -474,48 +635,6 @@ install_external_lb() {
     esac
 
     log_success "External LoadBalancer setup completed for ${PLATFORM}!"
-}
-
-# ----------------------------------------
-# Component: cert-manager
-# ----------------------------------------
-
-uninstall_cert_manager() {
-    log_info "Uninstalling cert-manager..."
-    helm uninstall cert-manager -n cert-manager 2>/dev/null || true
-    kubectl delete all --all -n cert-manager --force --grace-period=0 2>/dev/null || true
-    kubectl delete namespace cert-manager --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
-    log_success "cert-manager uninstalled"
-}
-
-install_cert_manager() {
-    if helm list -n cert-manager 2>/dev/null | grep -q "cert-manager"; then
-        if [ "$REINSTALL" = false ]; then
-            log_info "cert-manager is already installed. Use --reinstall to reinstall."
-            return 0
-        else
-            log_info "Reinstalling cert-manager..."
-            uninstall
-        fi
-    fi
-
-    log_info "Adding cert-manager Helm repository..."
-    helm repo add jetstack https://charts.jetstack.io --force-update
-
-    log_info "Installing cert-manager ${CERT_MANAGER_VERSION}..."
-    helm install \
-        cert-manager jetstack/cert-manager \
-        --namespace cert-manager \
-        --create-namespace \
-        --version "${CERT_MANAGER_VERSION}" \
-        --set crds.enabled=true \
-        --wait
-
-    log_success "Successfully installed cert-manager ${CERT_MANAGER_VERSION} via Helm"
-
-    wait_for_pods "cert-manager" "app in (cert-manager,webhook)" "180s"
-
-    log_success "cert-manager is ready!"
 }
 
 # ----------------------------------------
@@ -737,18 +856,10 @@ EOF
 }
 
 # ----------------------------------------
-# Component: kserve-helm
+# Component: kserve
 # ----------------------------------------
 
-if [ "${LLMISVC}" = "true" ]; then
-    CRD_DIR_NAME="llmisvc-crd"
-    CORE_DIR_NAME="llmisvc-resources"
-    KSERVE_CRD_RELEASE_NAME="llmisvc-crd"
-    KSERVE_RELEASE_NAME="llmisvc"
-    TARGET_POD_LABEL="control-plane=kserve-llmisvc-controller-manager"
-fi
-
-uninstall_kserve_helm() {
+uninstall_kserve() {
     log_info "Uninstalling KServe..."
 
     # RELEASE mode: use embedded manifests
@@ -771,7 +882,7 @@ uninstall_kserve_helm() {
     log_success "KServe uninstalled"
 }
 
-install_kserve_helm() {
+install_kserve() {
     if helm list -n "${KSERVE_NAMESPACE}" 2>/dev/null | grep -q "${KSERVE_RELEASE_NAME}"; then
         if [ "$REINSTALL" = false ]; then
             log_info "KServe is already installed. Use --reinstall to reinstall."
@@ -851,7 +962,9 @@ install_kserve_helm() {
             -p "{\"data\":{\"deploy\":\"{\\\"defaultDeploymentMode\\\":\\\"${DEPLOYMENT_MODE}\\\"}\" }}"
     fi
 
-    wait_for_pods "${KSERVE_NAMESPACE}" "${TARGET_POD_LABEL}" "300s"
+    for label in "${TARGET_POD_LABELS[@]}"; do
+        wait_for_pods "${KSERVE_NAMESPACE}" "${label}" "300s"
+    done
     log_success "KServe is ready!"
 }
 
@@ -866,14 +979,16 @@ main() {
         echo "=========================================="
         echo "Uninstalling components..."
         echo "=========================================="
-        uninstall_kserve_helm
+        uninstall_kserve
         uninstall_kserve_gateway
         uninstall_lws_operator
         uninstall_envoy_ai_gateway
         uninstall_envoy_gateway
         uninstall_gateway_api_crd
-        uninstall_cert_manager
         uninstall_external_lb
+        uninstall_keda_otel_addon
+        uninstall_keda
+        uninstall_cert_manager
         echo "=========================================="
         echo "✅ Uninstallation completed!"
         echo "=========================================="
@@ -881,26 +996,39 @@ main() {
     fi
 
     echo "=========================================="
-    echo "Install LLM InferenceService dependencies and components"
+    echo "Install KServe Standard Mode dependencies and components"
     echo "=========================================="
 
 
 
     echo "Installing helm..."
     bash "${REPO_ROOT}/hack/setup/cli/install-helm.sh"
+    echo "Installing kustomize..."
+    bash "${REPO_ROOT}/hack/setup/cli/install-kustomize.sh"
     echo "Installing yq..."
     bash "${REPO_ROOT}/hack/setup/cli/install-yq.sh"
 
-    install_external_lb
     install_cert_manager
+    install_keda
+    install_keda_otel_addon
+    install_external_lb
     install_gateway_api_crd
     install_envoy_gateway
     install_envoy_ai_gateway
     install_lws_operator
     install_kserve_gateway
     (
-        export LLMISVC="true"
-        install_kserve_helm
+        set_env_with_priority "DEPLOYMENT_MODE" "Standard" "" "Knative"
+        # Set Helm release names and target pod labels based on LLMISVC
+        if [ "${LLMISVC}" = "true" ]; then
+            CRD_DIR_NAME="llmisvc-crd"
+            CORE_DIR_NAME="llmisvc-resources"
+            KSERVE_CRD_RELEASE_NAME="llmisvc-crd"
+            KSERVE_RELEASE_NAME="llmisvc"
+            TARGET_POD_LABELS=("control-plane=llmisvc-controller-manager")
+        fi
+
+        install_kserve
     )
 
     echo "=========================================="
@@ -909,7 +1037,7 @@ main() {
 }
 
 # ============================================================================
-# KServe Manifest Functions (RELEASE MODE)
+# KServe Manifest Functions (EMBED_MANIFESTS MODE)
 # ============================================================================
 
 install_kserve_manifest() {
@@ -73717,7 +73845,7 @@ spec:
               fieldPath: metadata.namespace
         - name: SECRET_NAME
           value: kserve-webhook-server-cert
-        image: kserve-controller:latest
+        image: kserve/kserve-controller:latest
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 5
@@ -74043,18 +74171,1390 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: llmisvc-selfsigned-issuer
-  namespace: kserve
-spec:
-  selfSigned: {}
----
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
   name: selfsigned-issuer
   namespace: kserve
 spec:
   selfSigned: {}
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-decode-template
+  namespace: kserve
+spec:
+  template:
+    containers:
+    - args:
+      - --served-model-name
+      - '{{ .Spec.Model.Name }}'
+      - --port
+      - "8001"
+      - --disable-log-requests
+      command:
+      - vllm
+      - serve
+      - /mnt/models
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8001
+          scheme: HTTP
+        initialDelaySeconds: 120
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: main
+      ports:
+      - containerPort: 8001
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 60
+        httpGet:
+          path: /health
+          port: 8001
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    initContainers:
+    - args:
+      - --port=8000
+      - --vllm-port=8001
+      - --connector=nixlv2
+      env:
+      - name: INFERENCE_POOL_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+      image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.2.0
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: llm-d-routing-sidecar
+      ports:
+      - containerPort: 8000
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 10
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+      resources: {}
+      restartPolicy: Always
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-decode-worker-data-parallel
+  namespace: kserve
+spec:
+  template:
+    containers:
+    - args:
+      - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+        RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/* 2>/dev/null\n
+        \ grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/* 2>/dev/null\n\n
+        \ KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+        v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+        \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+        do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+        ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+        # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+        \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+        exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ] &&
+        grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+        ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found active
+        HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+        \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+        \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+        do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+        HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+        with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+        \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+        \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n
+        \     echo \"[Infer RoCE] NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer
+        RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n  else\n      echo \"[Infer
+        RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA will not be set.\"\n
+        \ fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo \"[Infer RoCE]
+        Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n      #
+        For SR-IOV environments, find the most common IPv4 RoCE v2 GID index across
+        all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n\n
+        \     for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer RoCE]
+        Processing HCA: ${hca_name}\"\n\n          # Find all RoCE v2 IPv4 GIDs for
+        this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+        do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+        2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+        \                 # Check for IPv4 GID (contains ffff:)\n                  if
+        [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+        \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+        RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+        \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+        + 1))\n                      break  # Use first found IPv4 GID per HCA\n                  fi\n
+        \             fi\n          done\n      done\n\n      # Find the most common
+        GID index (most likely to be consistent across nodes)\n      best_gid_index=\"\"\n
+        \     max_count=0\n      for idx in \"${!gid_index_count[@]}\"; do\n          count=${gid_index_count[\"${idx}\"]}\n
+        \         echo \"[Infer RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n
+        \         if [ $count -gt $max_count ]; then\n              max_count=$count\n
+        \             best_gid_index=\"$idx\"\n          fi\n      done\n\n      #
+        Use deterministic fallback if counts are equal - prefer lower index number
+        \ \n      if [ ${#gid_index_count[@]} -gt 1 ]; then\n          echo \"[Infer
+        RoCE] Multiple GID indices found, selecting most common: ${best_gid_index}\"\n
+        \         # If there's a tie, prefer index 3 as it's most common in SR-IOV
+        setups\n          if [ -n \"${gid_index_count['3']}\" ] && [ \"${gid_index_count['3']}\"
+        -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n              echo
+        \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3 (SR-IOV standard)\"\n
+        \         fi\n      fi\n\n      # Check if GID_INDEX is already set via environment
+        variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\" ]; then\n          echo
+        \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+        from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+        for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+        \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+        on ${max_count} HCAs)\"\n\n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+        \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n\n
+        \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+        NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No valid
+        IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n      fi\n
+        \ else\n      echo \"[Infer RoCE] No active HCAs found, skipping GID_INDEX
+        inference.\"\n  fi\nfi\n\nSTART_RANK=0\neval \"vllm serve \\\n  /mnt/models
+        \\\n  --served-model-name \"{{ .Spec.Model.Name }}\" \\\n  --port 8001 \\\n
+        \ --api-server-count ${VLLM_API_SERVER_COUNT:-8} \\\n  --disable-log-requests
+        \\\n  {{- if .Spec.Parallelism.Expert -}}--enable-expert-parallel{{- end }}
+        \\\n  {{- if .Spec.Parallelism.Tensor -}}--tensor-parallel-size {{ .Spec.Parallelism.Tensor
+        }}{{- end }} \\\n  --data-parallel-size {{ or .Spec.Parallelism.Data 1 }}
+        \\\n  --data-parallel-size-local {{ or .Spec.Parallelism.DataLocal 1 }} \\\n
+        \ --data-parallel-address $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port
+        {{ if .Spec.Parallelism.DataRPCPort }}{{ .Spec.Parallelism.DataRPCPort }}{{
+        else }}5555{{- end }} \\\n  --data-parallel-start-rank $START_RANK \\\n  ${VLLM_ADDITIONAL_ARGS}
+        \\\n  --trust-remote-code\"\n  # BackendTLSPolicy is not implemented yet so
+        disable SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile \\\n
+        \ # /etc/ssl/certs/tls.crt \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key\""
+      command:
+      - /bin/bash
+      - -c
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8001
+          scheme: HTTP
+        initialDelaySeconds: 300
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: main
+      ports:
+      - containerPort: 8001
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 60
+        httpGet:
+          path: /health
+          port: 8001
+          scheme: HTTP
+        initialDelaySeconds: 200
+        periodSeconds: 30
+        timeoutSeconds: 5
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          add:
+          - IPC_LOCK
+          - SYS_RAWIO
+          - NET_RAW
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    initContainers:
+    - args:
+      - --port=8000
+      - --vllm-port=8001
+      - --connector=nixlv2
+      - --secure-proxy=true
+      env:
+      - name: INFERENCE_POOL_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+      image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.2.0
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: llm-d-routing-sidecar
+      ports:
+      - containerPort: 8000
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 10
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+      restartPolicy: Always
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+  worker:
+    containers:
+    - args:
+      - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+        RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/* 2>/dev/null\n
+        \ grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/* 2>/dev/null\n\n
+        \ KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+        v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+        \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+        do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+        ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+        # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+        \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+        exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ] &&
+        grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+        ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found active
+        HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+        \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+        \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+        do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+        HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+        with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+        \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+        \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n
+        \     echo \"[Infer RoCE] NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer
+        RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n  else\n      echo \"[Infer
+        RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA will not be set.\"\n
+        \ fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo \"[Infer RoCE]
+        Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n      #
+        For SR-IOV environments, find the most common IPv4 RoCE v2 GID index across
+        all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n\n
+        \     for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer RoCE]
+        Processing HCA: ${hca_name}\"\n\n          # Find all RoCE v2 IPv4 GIDs for
+        this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+        do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+        2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+        \                 # Check for IPv4 GID (contains ffff:)\n                  if
+        [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+        \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+        RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+        \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+        + 1))\n                      break  # Use first found IPv4 GID per HCA\n                  fi\n
+        \             fi\n          done\n      done\n\n      # Find the most common
+        GID index (most likely to be consistent across nodes)\n      best_gid_index=\"\"\n
+        \     max_count=0\n      for idx in \"${!gid_index_count[@]}\"; do\n          count=${gid_index_count[\"${idx}\"]}\n
+        \         echo \"[Infer RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n
+        \         if [ $count -gt $max_count ]; then\n              max_count=$count\n
+        \             best_gid_index=\"$idx\"\n          fi\n      done\n\n      #
+        Use deterministic fallback if counts are equal - prefer lower index number
+        \ \n      if [ ${#gid_index_count[@]} -gt 1 ]; then\n          echo \"[Infer
+        RoCE] Multiple GID indices found, selecting most common: ${best_gid_index}\"\n
+        \         # If there's a tie, prefer index 3 as it's most common in SR-IOV
+        setups\n          if [ -n \"${gid_index_count['3']}\" ] && [ \"${gid_index_count['3']}\"
+        -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n              echo
+        \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3 (SR-IOV standard)\"\n
+        \         fi\n      fi\n\n      # Check if GID_INDEX is already set via environment
+        variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\" ]; then\n          echo
+        \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+        from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+        for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+        \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+        on ${max_count} HCAs)\"\n\n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+        \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n\n
+        \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+        NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No valid
+        IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n      fi\n
+        \ else\n      echo \"[Infer RoCE] No active HCAs found, skipping GID_INDEX
+        inference.\"\n  fi\nfi\n\nSTART_RANK=$(( ${LWS_WORKER_INDEX:-0} * {{ or .Spec.Parallelism.DataLocal
+        1 }} ))\neval \"vllm serve \\\n  /mnt/models \\\n  --served-model-name \"{{
+        .Spec.Model.Name }}\" \\\n  --port 8001 \\\n  --disable-log-requests \\\n
+        \ {{- if .Spec.Parallelism.Expert }}--enable-expert-parallel{{- end }} \\\n
+        \ {{- if .Spec.Parallelism.Tensor }}--tensor-parallel-size {{ .Spec.Parallelism.Tensor
+        }}{{- end }} \\\n  --data-parallel-size {{ or .Spec.Parallelism.Data 1 }}
+        \\\n  --data-parallel-size-local {{ or .Spec.Parallelism.DataLocal 1 }} \\\n
+        \ --data-parallel-address $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port
+        {{ if .Spec.Parallelism.DataRPCPort }}{{ .Spec.Parallelism.DataRPCPort }}{{
+        else }}5555{{- end }} \\\n  --data-parallel-start-rank $START_RANK \\\n  ${VLLM_ADDITIONAL_ARGS}
+        \\\n  --trust-remote-code \\\n  --headless\"\n  # BackendTLSPolicy is not
+        implemented yet so disable SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile
+        \\\n  # /etc/ssl/certs/tls.crt \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key\""
+      command:
+      - /bin/bash
+      - -c
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      - name: VLLM_RANDOMIZE_DP_DUMMY_INPUTS
+        value: "1"
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      name: main
+      ports:
+      - containerPort: 8001
+        protocol: TCP
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          add:
+          - IPC_LOCK
+          - SYS_RAWIO
+          - NET_RAW
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-prefill-template
+  namespace: kserve
+spec:
+  prefill:
+    template:
+      containers:
+      - args:
+        - --served-model-name
+        - '{{ .Spec.Model.Name }}'
+        - --port
+        - "8000"
+        - --disable-log-requests
+        command:
+        - vllm
+        - serve
+        - /mnt/models
+        env:
+        - name: HOME
+          value: /home
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HUB_CACHE
+          value: /models
+        image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 10
+        name: main
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+          seccompProfile:
+            type: RuntimeDefault
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /home
+          name: home
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /models
+          name: model-cache
+        - mountPath: /etc/ssl/certs
+          name: tls-certs
+          readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: home
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+        name: dshm
+      - emptyDir: {}
+        name: model-cache
+      - name: tls-certs
+        secret:
+          secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-prefill-worker-data-parallel
+  namespace: kserve
+spec:
+  prefill:
+    template:
+      containers:
+      - args:
+        - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+          RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/*
+          2>/dev/null\n  grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/*
+          2>/dev/null\n\n  KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+          v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+          \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+          do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+          ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+          # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+          \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+          exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ]
+          && grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+          ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found
+          active HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+          \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+          \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+          do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+          HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+          with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+          \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+          \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export
+          UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n      echo \"[Infer RoCE]
+          NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n
+          \ else\n      echo \"[Infer RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA
+          will not be set.\"\n  fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo
+          \"[Infer RoCE] Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n
+          \     # For SR-IOV environments, find the most common IPv4 RoCE v2 GID index
+          across all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n\n
+          \     for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer
+          RoCE] Processing HCA: ${hca_name}\"\n\n          # Find all RoCE v2 IPv4
+          GIDs for this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+          do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+          2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+          \                 # Check for IPv4 GID (contains ffff:)\n                  if
+          [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+          \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+          RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+          \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+          + 1))\n                      break  # Use first found IPv4 GID per HCA\n
+          \                 fi\n              fi\n          done\n      done\n\n      #
+          Find the most common GID index (most likely to be consistent across nodes)\n
+          \     best_gid_index=\"\"\n      max_count=0\n      for idx in \"${!gid_index_count[@]}\";
+          do\n          count=${gid_index_count[\"${idx}\"]}\n          echo \"[Infer
+          RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n          if [ $count -gt
+          $max_count ]; then\n              max_count=$count\n              best_gid_index=\"$idx\"\n
+          \         fi\n      done\n\n      # Use deterministic fallback if counts
+          are equal - prefer lower index number  \n      if [ ${#gid_index_count[@]}
+          -gt 1 ]; then\n          echo \"[Infer RoCE] Multiple GID indices found,
+          selecting most common: ${best_gid_index}\"\n          # If there's a tie,
+          prefer index 3 as it's most common in SR-IOV setups\n          if [ -n \"${gid_index_count['3']}\"
+          ] && [ \"${gid_index_count['3']}\" -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n
+          \             echo \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3
+          (SR-IOV standard)\"\n          fi\n      fi\n\n      # Check if GID_INDEX
+          is already set via environment variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\"
+          ]; then\n          echo \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+          from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+          \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+          \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+          for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+          \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+          on ${max_count} HCAs)\"\n\n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+          \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+          \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n\n
+          \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+          NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No
+          valid IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n
+          \     fi\n  else\n      echo \"[Infer RoCE] No active HCAs found, skipping
+          GID_INDEX inference.\"\n  fi\nfi\n\nSTART_RANK=0\neval \"vllm serve \\\n
+          \ /mnt/models \\\n  --served-model-name \"{{ .Spec.Model.Name }}\" \\\n
+          \ --port 8000 \\\n  --api-server-count ${VLLM_API_SERVER_COUNT:-8} \\\n
+          \ --disable-log-requests \\\n  {{- if .Spec.Prefill.Parallelism.Expert -}}--enable-expert-parallel{{-
+          end }} \\\n  {{- if .Spec.Prefill.Parallelism.Tensor -}}--tensor-parallel-size
+          {{ .Spec.Prefill.Parallelism.Tensor }}{{- end }} \\\n  --data-parallel-size
+          {{ or .Spec.Prefill.Parallelism.Data 1 }} \\\n  --data-parallel-size-local
+          {{ or .Spec.Prefill.Parallelism.DataLocal 1 }} \\\n  --data-parallel-address
+          $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port {{ if .Spec.Prefill.Parallelism.DataRPCPort
+          }}{{ .Spec.Prefill.Parallelism.DataRPCPort }}{{ else }}5555{{- end }} \\\n
+          \ --data-parallel-start-rank $START_RANK \\\n  ${VLLM_ADDITIONAL_ARGS} \\\n
+          \ --trust-remote-code\"\n  # BackendTLSPolicy is not implemented yet so
+          disable SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile \\\n
+          \ # /etc/ssl/certs/tls.crt \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key\""
+        command:
+        - /bin/bash
+        - -c
+        env:
+        - name: HOME
+          value: /home
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HUB_CACHE
+          value: /models
+        image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 300
+          periodSeconds: 10
+          timeoutSeconds: 10
+        name: main
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 60
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 200
+          periodSeconds: 30
+          timeoutSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - IPC_LOCK
+            - SYS_RAWIO
+            - NET_RAW
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+          seccompProfile:
+            type: RuntimeDefault
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - mountPath: /home
+          name: home
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /models
+          name: model-cache
+        - mountPath: /etc/ssl/certs
+          name: tls-certs
+          readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: home
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+        name: dshm
+      - emptyDir: {}
+        name: model-cache
+      - name: tls-certs
+        secret:
+          secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+    worker:
+      containers:
+      - args:
+        - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+          RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/*
+          2>/dev/null\n  grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/*
+          2>/dev/null\n\n  KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+          v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+          \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+          do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+          ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+          # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+          \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+          exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ]
+          && grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+          ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found
+          active HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+          \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+          \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+          do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+          HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+          with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+          \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+          \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export
+          UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n      echo \"[Infer RoCE]
+          NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n
+          \ else\n      echo \"[Infer RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA
+          will not be set.\"\n  fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo
+          \"[Infer RoCE] Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n
+          \     # For SR-IOV environments, find the most common IPv4 RoCE v2 GID index
+          across all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n\n
+          \     for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer
+          RoCE] Processing HCA: ${hca_name}\"\n\n          # Find all RoCE v2 IPv4
+          GIDs for this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+          do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+          2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+          \                 # Check for IPv4 GID (contains ffff:)\n                  if
+          [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+          \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+          RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+          \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+          + 1))\n                      break  # Use first found IPv4 GID per HCA\n
+          \                 fi\n              fi\n          done\n      done\n\n      #
+          Find the most common GID index (most likely to be consistent across nodes)\n
+          \     best_gid_index=\"\"\n      max_count=0\n      for idx in \"${!gid_index_count[@]}\";
+          do\n          count=${gid_index_count[\"${idx}\"]}\n          echo \"[Infer
+          RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n          if [ $count -gt
+          $max_count ]; then\n              max_count=$count\n              best_gid_index=\"$idx\"\n
+          \         fi\n      done\n\n      # Use deterministic fallback if counts
+          are equal - prefer lower index number  \n      if [ ${#gid_index_count[@]}
+          -gt 1 ]; then\n          echo \"[Infer RoCE] Multiple GID indices found,
+          selecting most common: ${best_gid_index}\"\n          # If there's a tie,
+          prefer index 3 as it's most common in SR-IOV setups\n          if [ -n \"${gid_index_count['3']}\"
+          ] && [ \"${gid_index_count['3']}\" -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n
+          \             echo \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3
+          (SR-IOV standard)\"\n          fi\n      fi\n\n      # Check if GID_INDEX
+          is already set via environment variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\"
+          ]; then\n          echo \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+          from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+          \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+          \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+          for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+          \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+          on ${max_count} HCAs)\"\n\n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+          \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+          \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n\n
+          \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+          NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No
+          valid IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n
+          \     fi\n  else\n      echo \"[Infer RoCE] No active HCAs found, skipping
+          GID_INDEX inference.\"\n  fi\nfi\n\nSTART_RANK=$(( ${LWS_WORKER_INDEX:-0}
+          * {{ or .Spec.Prefill.Parallelism.DataLocal 1 }} ))\neval \"vllm serve \\\n
+          \ /mnt/models \\\n  --served-model-name \"{{ .Spec.Model.Name }}\" \\\n
+          \ --port 8000 \\\n  --disable-log-requests \\\n  {{- if .Spec.Prefill.Parallelism.Expert
+          }}--enable-expert-parallel{{- end }} \\\n  {{- if .Spec.Prefill.Parallelism.Tensor
+          }}--tensor-parallel-size {{ .Spec.Prefill.Parallelism.Tensor }}{{- end }}
+          \\\n  --data-parallel-size {{ or .Spec.Prefill.Parallelism.Data 1 }} \\\n
+          \ --data-parallel-size-local {{ or .Spec.Prefill.Parallelism.DataLocal 1
+          }} \\\n  --data-parallel-address $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port
+          {{ if .Spec.Prefill.Parallelism.DataRPCPort }}{{ .Spec.Prefill.Parallelism.DataRPCPort
+          }}{{ else }}5555{{- end }} \\\n  --data-parallel-start-rank $START_RANK
+          \\\n  ${VLLM_ADDITIONAL_ARGS} \\\n  --trust-remote-code \\\n  --headless\"
+          \               \n  # BackendTLSPolicy is not implemented yet so disable
+          SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile \\\n  # /etc/ssl/certs/tls.crt
+          \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key\""
+        command:
+        - /bin/bash
+        - -c
+        env:
+        - name: HOME
+          value: /home
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HUB_CACHE
+          value: /models
+        image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+        imagePullPolicy: IfNotPresent
+        name: main
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - IPC_LOCK
+            - SYS_RAWIO
+            - NET_RAW
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+          seccompProfile:
+            type: RuntimeDefault
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - mountPath: /home
+          name: home
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /models
+          name: model-cache
+        - mountPath: /etc/ssl/certs
+          name: tls-certs
+          readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: home
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+        name: dshm
+      - emptyDir: {}
+        name: model-cache
+      - name: tls-certs
+        secret:
+          secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-router-route
+  namespace: kserve
+spec:
+  router:
+    route:
+      http:
+        spec:
+          parentRefs:
+          - group: gateway.networking.k8s.io
+            kind: Gateway
+            name: '{{ .GlobalConfig.IngressGatewayName }}'
+            namespace: '{{ .GlobalConfig.IngressGatewayNamespace }}'
+          rules:
+          - backendRefs:
+            - group: inference.networking.x-k8s.io
+              kind: InferencePool
+              name: '{{ ChildName .ObjectMeta.Name `-inference-pool` }}'
+              port: 8000
+              weight: 1
+            filters:
+            - type: URLRewrite
+              urlRewrite:
+                path:
+                  replacePrefixMatch: /
+                  type: ReplacePrefixMatch
+            matches:
+            - path:
+                type: PathPrefix
+                value: /{{ .ObjectMeta.Namespace }}/{{ .ObjectMeta.Name }}
+            timeouts:
+              backendRequest: 0s
+              request: 0s
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-scheduler
+  namespace: kserve
+spec:
+  router:
+    scheduler:
+      pool:
+        spec:
+          extensionRef:
+            failureMode: FailOpen
+            kind: Service
+            name: '{{ ChildName .ObjectMeta.Name `-epp-service` }}'
+          selector: {}
+          targetPortNumber: 8000
+      template:
+        containers:
+        - args:
+          - --poolName
+          - '{{ ChildName .ObjectMeta.Name `-inference-pool` }}'
+          - --poolNamespace
+          - '{{ .ObjectMeta.Namespace }}'
+          - --zap-encoder
+          - json
+          - --grpcPort
+          - "9002"
+          - --grpcHealthPort
+          - "9003"
+          image: ghcr.io/llm-d/llm-d-inference-scheduler:v0.2.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            grpc:
+              port: 9003
+              service: envoy.service.ext_proc.v3.ExternalProcessor
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: main
+          ports:
+          - containerPort: 9002
+            name: grpc
+            protocol: TCP
+          - containerPort: 9003
+            name: grpc-health
+            protocol: TCP
+          - containerPort: 9090
+            name: metrics
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            grpc:
+              port: 9003
+              service: envoy.service.ext_proc.v3.ExternalProcessor
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 256m
+              memory: 500Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          volumeMounts:
+          - mountPath: /etc/ssl/certs
+            name: tls-certs
+            readOnly: true
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: tls-certs
+          secret:
+            secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs`
+              }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-template
+  namespace: kserve
+spec:
+  template:
+    containers:
+    - args:
+      - --served-model-name
+      - '{{ .Spec.Model.Name }}'
+      - --port
+      - "8000"
+      - --disable-log-requests
+      command:
+      - vllm
+      - serve
+      - /mnt/models
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 120
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: main
+      ports:
+      - containerPort: 8000
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 60
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceServiceConfig
+metadata:
+  name: kserve-config-llm-worker-data-parallel
+  namespace: kserve
+spec:
+  template:
+    containers:
+    - args:
+      - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+        RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/* 2>/dev/null\n
+        \ grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/* 2>/dev/null\n\n
+        \ KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+        v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+        \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+        do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+        ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+        # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+        \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+        exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ] &&
+        grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+        ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found active
+        HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+        \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+        \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+        do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+        HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+        with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+        \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+        \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n
+        \     echo \"[Infer RoCE] NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer
+        RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n  else\n      echo \"[Infer
+        RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA will not be set.\"\n
+        \ fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo \"[Infer RoCE]
+        Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n      #
+        For SR-IOV environments, find the most common IPv4 RoCE v2 GID index across
+        all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n\n
+        \     for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer RoCE]
+        Processing HCA: ${hca_name}\"\n\n          # Find all RoCE v2 IPv4 GIDs for
+        this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+        do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+        2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+        \                 # Check for IPv4 GID (contains ffff:)\n                  if
+        [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+        \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+        RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+        \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+        + 1))\n                      break  # Use first found IPv4 GID per HCA\n                  fi\n
+        \             fi\n          done\n      done\n\n      # Find the most common
+        GID index (most likely to be consistent across nodes)\n      best_gid_index=\"\"\n
+        \     max_count=0\n      for idx in \"${!gid_index_count[@]}\"; do\n          count=${gid_index_count[\"${idx}\"]}\n
+        \         echo \"[Infer RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n
+        \         if [ $count -gt $max_count ]; then\n              max_count=$count\n
+        \             best_gid_index=\"$idx\"\n          fi\n      done\n\n      #
+        Use deterministic fallback if counts are equal - prefer lower index number
+        \ \n      if [ ${#gid_index_count[@]} -gt 1 ]; then\n          echo \"[Infer
+        RoCE] Multiple GID indices found, selecting most common: ${best_gid_index}\"\n
+        \         # If there's a tie, prefer index 3 as it's most common in SR-IOV
+        setups\n          if [ -n \"${gid_index_count['3']}\" ] && [ \"${gid_index_count['3']}\"
+        -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n              echo
+        \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3 (SR-IOV standard)\"\n
+        \         fi\n      fi\n\n      # Check if GID_INDEX is already set via environment
+        variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\" ]; then\n          echo
+        \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+        from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+        for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+        \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+        on ${max_count} HCAs)\"\n\n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+        \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n\n
+        \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+        NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No valid
+        IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n      fi\n
+        \ else\n      echo \"[Infer RoCE] No active HCAs found, skipping GID_INDEX
+        inference.\"\n  fi\nfi\n\nSTART_RANK=0\neval \"vllm serve \\\n  /mnt/models
+        \\\n  --served-model-name \"{{ .Spec.Model.Name }}\" \\\n  --port 8000 \\\n
+        \ --api-server-count ${VLLM_API_SERVER_COUNT:-8} \\\n  --disable-log-requests
+        \\\n  {{- if .Spec.Parallelism.Expert -}}--enable-expert-parallel{{- end }}
+        \\\n  {{- if .Spec.Parallelism.Tensor -}}--tensor-parallel-size {{ .Spec.Parallelism.Tensor
+        }}{{- end }} \\\n  --data-parallel-size {{ or .Spec.Parallelism.Data 1 }}
+        \\\n  --data-parallel-size-local {{ or .Spec.Parallelism.DataLocal 1 }} \\\n
+        \ --data-parallel-address $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port
+        {{ if .Spec.Parallelism.DataRPCPort }}{{ .Spec.Parallelism.DataRPCPort }}{{
+        else }}5555{{- end }} \\\n  --data-parallel-start-rank $START_RANK \\\n  ${VLLM_ADDITIONAL_ARGS}
+        \\\n  --trust-remote-code\"\n  # BackendTLSPolicy is not implemented yet so
+        disable SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile \\\n
+        \ # /etc/ssl/certs/tls.crt \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key\""
+      command:
+      - /bin/bash
+      - -c
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      livenessProbe:
+        failureThreshold: 3
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 300
+        periodSeconds: 10
+        timeoutSeconds: 10
+      name: main
+      ports:
+      - containerPort: 8000
+        protocol: TCP
+      readinessProbe:
+        failureThreshold: 60
+        httpGet:
+          path: /health
+          port: 8000
+          scheme: HTTP
+        initialDelaySeconds: 200
+        periodSeconds: 30
+        timeoutSeconds: 5
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          add:
+          - IPC_LOCK
+          - SYS_RAWIO
+          - NET_RAW
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
+  worker:
+    containers:
+    - args:
+      - "\nif [ \"$KSERVE_INFER_ROCE\" = \"true\" ]; then\n  echo \"Trying to infer
+        RoCE configs ... \"\n  grep -H . /sys/class/infiniband/*/ports/*/gids/* 2>/dev/null\n
+        \ grep -H . /sys/class/infiniband/*/ports/*/gid_attrs/types/* 2>/dev/null\n\n
+        \ KSERVE_INFER_IB_GID_INDEX_GREP=${KSERVE_INFER_IB_GID_INDEX_GREP:-\"RoCE
+        v2\"}\n\n  echo \"[Infer RoCE] Discovering active HCAs ...\"\n  active_hcas=()\n
+        \ # Loop through all mlx5 devices found in sysfs\n  for hca_dir in /sys/class/infiniband/mlx5_*;
+        do\n      # Ensure it's a directory before proceeding\n      if [ -d \"$hca_dir\"
+        ]; then\n          hca_name=$(basename \"$hca_dir\")\n          port_state_file=\"$hca_dir/ports/1/state\"
+        # Assume port 1\n          type_file=\"$hca_dir/ports/1/gid_attrs/types/*\"\n\n
+        \         echo \"[Infer RoCE] Check if the port state file ${port_state_file}
+        exists and contains 'ACTIVE'\"\n          if [ -f \"$port_state_file\" ] &&
+        grep -q \"ACTIVE\" \"$port_state_file\" && grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\"
+        ${type_file} 2>/dev/null; then\n              echo \"[Infer RoCE] Found active
+        HCA: $hca_name\"\n              active_hcas+=(\"$hca_name\")\n          else\n
+        \             echo \"[Infer RoCE] Skipping inactive or down HCA: $hca_name\"\n
+        \         fi\n      fi\n  done\n\n  ucx_hcas=()\n  for hca in \"${active_hcas[@]}\";
+        do\n    ucx_hcas+=(\"${hca}:1\")\n  done\n\n  # Check if we found any active
+        HCAs\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      # Join the array elements
+        with a comma\n      hcas=$(IFS=,; echo \"${active_hcas[*]}\")\n      echo
+        \"[Infer RoCE] Setting active HCAs: ${hcas}\"\n      export NCCL_IB_HCA=${NCCL_IB_HCA:-${hcas}}\n
+        \     export NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST:-${hcas}}\n      export UCX_NET_DEVICES=${UCX_NET_DEVICES:-${ucx_hcas}}\n\n
+        \     echo \"[Infer RoCE] NCCL_IB_HCA=${NCCL_IB_HCA}\"\n      echo \"[Infer
+        RoCE] NVSHMEM_HCA_LIST=${NVSHMEM_HCA_LIST}\"\n  else\n      echo \"[Infer
+        RoCE] WARNING: No active RoCE HCAs found. NCCL_IB_HCA will not be set.\"\n
+        \ fi\n\n  if [ ${#active_hcas[@]} -gt 0 ]; then\n      echo \"[Infer RoCE]
+        Finding GID_INDEX for each active HCA (SR-IOV compatible)...\"\n\n      #
+        For SR-IOV environments, find the most common IPv4 RoCE v2 GID index across
+        all HCAs\n      declare -A gid_index_count\n      declare -A hca_gid_index\n
+        \     \n      for hca_name in \"${active_hcas[@]}\"; do\n          echo \"[Infer
+        RoCE] Processing HCA: ${hca_name}\"\n          \n          # Find all RoCE
+        v2 IPv4 GIDs for this HCA and count by index\n          for tpath in /sys/class/infiniband/${hca_name}/ports/1/gid_attrs/types/*;
+        do\n              if grep -q \"${KSERVE_INFER_IB_GID_INDEX_GREP}\" \"$tpath\"
+        2>/dev/null; then\n                  idx=$(basename \"$tpath\")\n                  gid_file=\"/sys/class/infiniband/${hca_name}/ports/1/gids/${idx}\"\n
+        \                 # Check for IPv4 GID (contains ffff:)\n                  if
+        [ -f \"$gid_file\" ] && grep -q \"ffff:\" \"$gid_file\"; then\n                      gid_value=$(cat
+        \"$gid_file\" 2>/dev/null || echo \"\")\n                      echo \"[Infer
+        RoCE] Found IPv4 RoCE v2 GID for ${hca_name}: index=${idx}, gid=${gid_value}\"\n
+        \                     hca_gid_index[\"${hca_name}\"]=\"${idx}\"\n                      gid_index_count[\"${idx}\"]=$((${gid_index_count[\"${idx}\"]}
+        + 1))\n                      break  # Use first found IPv4 GID per HCA\n                  fi\n
+        \             fi\n          done\n      done\n\n      # Find the most common
+        GID index (most likely to be consistent across nodes)\n      best_gid_index=\"\"\n
+        \     max_count=0\n      for idx in \"${!gid_index_count[@]}\"; do\n          count=${gid_index_count[\"${idx}\"]}\n
+        \         echo \"[Infer RoCE] GID_INDEX ${idx} found on ${count} HCAs\"\n
+        \         if [ $count -gt $max_count ]; then\n              max_count=$count\n
+        \             best_gid_index=\"$idx\"\n          fi\n      done\n\n      #
+        Use deterministic fallback if counts are equal - prefer lower index number
+        \ \n      if [ ${#gid_index_count[@]} -gt 1 ]; then\n          echo \"[Infer
+        RoCE] Multiple GID indices found, selecting most common: ${best_gid_index}\"\n
+        \         # If there's a tie, prefer index 3 as it's most common in SR-IOV
+        setups\n          if [ -n \"${gid_index_count['3']}\" ] && [ \"${gid_index_count['3']}\"
+        -eq \"$max_count\" ]; then\n              best_gid_index=\"3\"\n              echo
+        \"[Infer RoCE] Using deterministic fallback: GID_INDEX=3 (SR-IOV standard)\"\n
+        \         fi\n      fi\n\n      # Check if GID_INDEX is already set via environment
+        variables\n      if [ -n \"${NCCL_IB_GID_INDEX}\" ]; then\n          echo
+        \"[Infer RoCE] Using pre-configured NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}
+        from environment\"\n          export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$NCCL_IB_GID_INDEX}\n
+        \         echo \"[Infer RoCE] Using hardcoded GID_INDEX=${NCCL_IB_GID_INDEX}
+        for NCCL, NVSHMEM, and UCX\"\n      elif [ -n \"$best_gid_index\" ]; then\n
+        \         echo \"[Infer RoCE] Selected GID_INDEX: ${best_gid_index} (found
+        on ${max_count} HCAs)\"\n          \n          export NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-$best_gid_index}\n
+        \         export NVSHMEM_IB_GID_INDEX=${NVSHMEM_IB_GID_INDEX:-$best_gid_index}\n
+        \         export UCX_IB_GID_INDEX=${UCX_IB_GID_INDEX:-$best_gid_index}\n          \n
+        \         echo \"[Infer RoCE] Exported GID_INDEX=${best_gid_index} for NCCL,
+        NVSHMEM, and UCX\"\n      else\n          echo \"[Infer RoCE] ERROR: No valid
+        IPv4 ${KSERVE_INFER_IB_GID_INDEX_GREP} GID_INDEX found on any HCA.\"\n      fi\n
+        \ else\n      echo \"[Infer RoCE] No active HCAs found, skipping GID_INDEX
+        inference.\"\n  fi\nfi\n\nSTART_RANK=$(( ${LWS_WORKER_INDEX:-0} * {{ or .Spec.Parallelism.DataLocal
+        1 }} ))\neval \"vllm serve \\\n  /mnt/models \\\n  --served-model-name \"{{
+        .Spec.Model.Name }}\" \\\n  --port 8000 \\\n  --disable-log-requests \\\n
+        \ {{- if .Spec.Parallelism.Expert }}--enable-expert-parallel{{- end }} \\\n
+        \ {{- if .Spec.Parallelism.Tensor }}--tensor-parallel-size {{ .Spec.Parallelism.Tensor
+        }}{{- end }} \\\n  --data-parallel-size {{ or .Spec.Parallelism.Data 1 }}
+        \\\n  --data-parallel-size-local {{ or .Spec.Parallelism.DataLocal 1 }} \\\n
+        \ --data-parallel-address $(LWS_LEADER_ADDRESS) \\\n  --data-parallel-rpc-port
+        {{ if .Spec.Parallelism.DataRPCPort }}{{ .Spec.Parallelism.DataRPCPort }}{{
+        else }}5555{{- end }} \\\n  --data-parallel-start-rank $START_RANK \\\n  ${VLLM_ADDITIONAL_ARGS}
+        \\\n  --trust-remote-code \\\n  --headless\"\n  # BackendTLSPolicy is not
+        implemented yet so disable SSL for now\n  # --enable-ssl-refresh \\\n  # --ssl-certfile
+        \\\n  # /etc/ssl/certs/tls.crt \\\n  # --ssl-keyfile \\\n  # /etc/ssl/certs/tls.key"
+      command:
+      - /bin/bash
+      - -c
+      env:
+      - name: HOME
+        value: /home
+      - name: VLLM_LOGGING_LEVEL
+        value: INFO
+      - name: HF_HUB_CACHE
+        value: /models
+      image: ghcr.io/llm-d/llm-d-dev:v0.2.2
+      imagePullPolicy: IfNotPresent
+      name: main
+      ports:
+      - containerPort: 8000
+        protocol: TCP
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          add:
+          - IPC_LOCK
+          - SYS_RAWIO
+          - NET_RAW
+          drop:
+          - ALL
+        readOnlyRootFilesystem: false
+        runAsNonRoot: false
+        seccompProfile:
+          type: RuntimeDefault
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+      - mountPath: /home
+        name: home
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /models
+        name: model-cache
+      - mountPath: /etc/ssl/certs
+        name: tls-certs
+        readOnly: true
+    terminationGracePeriodSeconds: 30
+    volumes:
+    - emptyDir: {}
+      name: home
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
+      name: dshm
+    - emptyDir: {}
+      name: model-cache
+    - name: tls-certs
+      secret:
+        secretName: '{{ ChildName .ObjectMeta.Name `-kserve-self-signed-certs` }}'
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration

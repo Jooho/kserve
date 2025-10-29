@@ -1,0 +1,16 @@
+DESCRIPTION: Install KServe Standard Mode/LLMIsvc dependencies using helm and kserve using kustomize.
+METHOD: helm
+
+TOOLS:
+  - helm
+  - kustomize
+  - yq
+  
+COMPONENTS:
+  - name: cert-manager
+  - name: keda
+  - name: keda-otel-addon
+  - name: kserve-kustomize
+    env:
+      DEPLOYMENT_MODE: Standard
+  

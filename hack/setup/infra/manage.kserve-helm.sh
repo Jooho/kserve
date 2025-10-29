@@ -65,7 +65,11 @@ KSERVE_CRD_RELEASE_NAME="kserve-crd"
 KSERVE_RELEASE_NAME="kserve"
 CRD_DIR_NAME="kserve-crd"
 CORE_DIR_NAME="kserve-resources"
-TARGET_POD_LABEL="control-plane=kserve-controller-manager"
+TARGET_POD_LABELS=(
+    "control-plane=kserve-controller-manager"
+    "app.kubernetes.io/name=kserve-localmodel-controller-manager"
+    "app.kubernetes.io/name=llmisvc-controller-manager"
+)
 DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 USE_LOCAL_CHARTS="${USE_LOCAL_CHARTS:-false}"
 LLMISVC="${LLMISVC:-false}"
@@ -74,12 +78,13 @@ RELEASE="${RELEASE:-false}"
 # VARIABLES END
 
 # INCLUDE_IN_GENERATED_SCRIPT_START
+# Set Helm release names and target pod labels based on LLMISVC
 if [ "${LLMISVC}" = "true" ]; then
     CRD_DIR_NAME="llmisvc-crd"
     CORE_DIR_NAME="llmisvc-resources"
     KSERVE_CRD_RELEASE_NAME="llmisvc-crd"
     KSERVE_RELEASE_NAME="llmisvc"
-    TARGET_POD_LABEL="control-plane=kserve-llmisvc-controller-manager"
+    TARGET_POD_LABELS=("control-plane=llmisvc-controller-manager")
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
 
@@ -184,9 +189,11 @@ install() {
         kubectl patch configmap inferenceservice-config -n "${KSERVE_NAMESPACE}" \
             --type='merge' \
             -p "{\"data\":{\"deploy\":\"{\\\"defaultDeploymentMode\\\":\\\"${DEPLOYMENT_MODE}\\\"}\" }}"
-    fi    
+    fi
 
-    wait_for_pods "${KSERVE_NAMESPACE}" "${TARGET_POD_LABEL}" "300s"
+    for label in "${TARGET_POD_LABELS[@]}"; do
+        wait_for_pods "${KSERVE_NAMESPACE}" "${label}" "300s"
+    done
     log_success "KServe is ready!"
 }
 

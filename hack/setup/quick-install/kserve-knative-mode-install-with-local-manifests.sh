@@ -14,15 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install KServe Standard Mode dependencies
+# Install KServe Knative Mode dependencies and components for E2E testing
 #
-# AUTO-GENERATED from: kserve-standard-mode-dependency-install copy.definition
+# AUTO-GENERATED from: kserve-knative-mode-install-with-local-manifests.definition
 # DO NOT EDIT MANUALLY
 #
 # To regenerate:
-#   ./scripts/generate-install-script.py kserve-standard-mode-dependency-install copy.definition
+#   ./scripts/generate-install-script.py kserve-knative-mode-install-with-local-manifests.definition
 #
-# Usage: kserve-standard-mode-dependency-install copy.sh [--reinstall|--uninstall]
+# Usage: kserve-knative-mode-install-with-local-manifests.sh [--reinstall|--uninstall]
 
 set -o errexit
 set -o nounset
@@ -273,6 +273,35 @@ command_exists() {
 
 # ============================================================================
 
+# Set environment variable based on priority order:
+# Priority: 1. Runtime env > 2. Component env > 3. Global env > 4. Component default
+# Usage: set_env_with_priority VAR_NAME COMPONENT_ENV_VALUE GLOBAL_ENV_VALUE DEFAULT_VALUE
+set_env_with_priority() {
+    local var_name="$1"
+    local component_value="$2"
+    local global_value="$3"
+    local default_value="$4"
+
+    # Get current value
+    local current_value
+    eval "current_value=\${${var_name}}"
+
+    # If current value differs from default/component/global, it must be runtime - keep it
+    if [ -n "$current_value" ] && [ "$current_value" != "$default_value" ] &&
+       [ "$current_value" != "$component_value" ] && [ "$current_value" != "$global_value" ]; then
+        # This is a runtime value, keep it
+        return
+    fi
+
+    # Apply priority: component env > global env > default
+    if [ -n "$component_value" ]; then
+        export "$var_name=$component_value"
+    elif [ -n "$global_value" ]; then
+        export "$var_name=$global_value"
+    fi
+    # If both are empty, variable keeps its default value
+}
+
 #================================================
 # Determine repository root using find_repo_root
 #================================================
@@ -317,9 +346,11 @@ UV_VERSION=0.7.8
 CERT_MANAGER_VERSION=v1.17.0
 ENVOY_GATEWAY_VERSION=v1.2.2
 ENVOY_AI_GATEWAY_VERSION=v0.3.0
+KNATIVE_OPERATOR_VERSION=v1.16.0
+KNATIVE_SERVING_VERSION=1.15.2
+KEDA_OTEL_ADDON_VERSION=v0.0.6
 KSERVE_VERSION=v0.16.0-rc1
-ISTIO_VERSION=1.24.2
-KNATIVE_SERVING_VERSION=v0.44.0
+ISTIO_VERSION=1.27.1
 KEDA_VERSION=2.16.1
 OPENTELEMETRY_OPERATOR_VERSION=0.113.0
 LWS_VERSION=v0.6.2
@@ -345,6 +376,17 @@ GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-kserve}"
 #================================================
 
 ADDON_RELEASE_NAME="keda-otel-scaler"
+OTEL_RELEASE_NAME="my-opentelemetry-operator"
+KSERVE_CRD_DIR="${REPO_ROOT}/config/crd"
+KSERVE_CONFIG_DIR="${REPO_ROOT}/config/default"
+TARGET_POD_LABELS=(
+"control-plane=kserve-controller-manager"
+"app.kubernetes.io/name=kserve-localmodel-controller-manager"
+"app.kubernetes.io/name=llmisvc-controller-manager"
+)
+DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
+LLMISVC="${LLMISVC:-false}"
+RELEASE="${RELEASE:-false}"
 
 #================================================
 # Component Functions
@@ -390,6 +432,101 @@ install_cert_manager() {
     wait_for_pods "cert-manager" "app in (cert-manager,webhook)" "180s"
 
     log_success "cert-manager is ready!"
+}
+
+# ----------------------------------------
+# Component: istio
+# ----------------------------------------
+
+uninstall_istio() {
+    log_info "Uninstalling Istio..."
+    helm uninstall istio-ingressgateway -n "${ISTIO_NAMESPACE}" 2>/dev/null || true
+    helm uninstall istiod -n "${ISTIO_NAMESPACE}" 2>/dev/null || true
+    helm uninstall istio-base -n "${ISTIO_NAMESPACE}" 2>/dev/null || true
+    kubectl delete all --all -n "${ISTIO_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${ISTIO_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "Istio uninstalled"
+}
+
+install_istio() {
+    if helm list -n "${ISTIO_NAMESPACE}" 2>/dev/null | grep -q "istio-base"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "Istio is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling Istio..."
+            uninstall
+        fi
+    fi
+
+    log_info "Adding Istio Helm repository..."
+    helm repo add istio https://istio-release.storage.googleapis.com/charts --force-update
+
+    log_info "Installing istio-base ${ISTIO_VERSION}..."
+    helm install istio-base istio/base \
+        --namespace "${ISTIO_NAMESPACE}" \
+        --create-namespace \
+        --version "${ISTIO_VERSION}" \
+        --set defaultRevision=default \
+        --wait \
+        ${ISTIO_BASE_EXTRA_ARGS:-}
+
+    log_info "Installing istiod ${ISTIO_VERSION}..."
+    helm install istiod istio/istiod \
+        --namespace "${ISTIO_NAMESPACE}" \
+        --version "${ISTIO_VERSION}" \
+        --set proxy.autoInject=disabled \
+        --set-string pilot.podAnnotations."cluster-autoscaler\.kubernetes\.io/safe-to-evict"=true \
+        --wait \
+        ${ISTIOD_EXTRA_ARGS:-}
+
+    log_info "Installing istio-ingressgateway ${ISTIO_VERSION}..."
+    helm install istio-ingressgateway istio/gateway \
+        --namespace "${ISTIO_NAMESPACE}" \
+        --version "${ISTIO_VERSION}" \
+        --set-string podAnnotations."cluster-autoscaler\.kubernetes\.io/safe-to-evict"=true \
+        ${ISTIO_GATEWAY_EXTRA_ARGS:-}
+
+    log_success "Successfully installed Istio ${ISTIO_VERSION} via Helm"
+
+    wait_for_pods "${ISTIO_NAMESPACE}" "app=istiod" "600s"
+    wait_for_pods "${ISTIO_NAMESPACE}" "app=istio-ingressgateway" "600s"
+
+    log_success "Istio is ready!"
+}
+
+# ----------------------------------------
+# Component: istio-ingress-class
+# ----------------------------------------
+
+uninstall_istio_ingress_class() {
+    log_info "Deleting Istio IngressClass 'istio'..."
+    kubectl delete ingressclass "istio" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    log_success "Istio IngressClass 'istio' deleted"
+}
+
+install_istio_ingress_class() {
+    if kubectl get ingressclass "istio" &>/dev/null; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "Istio IngressClass 'istio' already exists. Use --reinstall to recreate."
+            exit 0
+        else
+            log_info "Recreating Istio IngressClass 'istio'..."
+            uninstall
+        fi
+    fi
+
+    log_info "Creating Istio IngressClass 'istio'..."
+    cat <<EOF | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: istio
+spec:
+  controller: istio.io/ingress-controller
+EOF
+
+    log_success "Istio IngressClass 'istio' created successfully!"
 }
 
 # ----------------------------------------
@@ -477,6 +614,140 @@ install_keda_otel_addon() {
     log_success "KEDA OTel add-on is ready!"
 }
 
+# ----------------------------------------
+# Component: opentelemetry
+# ----------------------------------------
+
+uninstall_opentelemetry() {
+    log_info "Uninstalling OpenTelemetry Operator..."
+    helm uninstall "${OTEL_RELEASE_NAME}" -n "${OTEL_NAMESPACE}" 2>/dev/null || true
+    kubectl delete all --all -n "${OTEL_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${OTEL_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "OpenTelemetry Operator uninstalled"
+}
+
+install_opentelemetry() {
+    if helm list -n "${OTEL_NAMESPACE}" 2>/dev/null | grep -q "${OTEL_RELEASE_NAME}"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "OpenTelemetry Operator is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling OpenTelemetry Operator..."
+            uninstall
+        fi
+    fi
+
+    log_info "Adding OpenTelemetry Helm repository..."
+    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+
+    log_info "Installing OpenTelemetry Operator..."
+    helm install "${OTEL_RELEASE_NAME}" open-telemetry/opentelemetry-operator \
+        --namespace "${OTEL_NAMESPACE}" \
+        --create-namespace \
+        --wait \
+        ${OTEL_OPERATOR_EXTRA_ARGS:-}
+
+    log_success "Successfully installed OpenTelemetry Operator via Helm"
+
+    wait_for_pods "${OTEL_NAMESPACE}" "app.kubernetes.io/instance=${OTEL_RELEASE_NAME}" "300s"
+
+    log_success "OpenTelemetry Operator is ready!"
+}
+
+# ----------------------------------------
+# Component: kserve-kustomize
+# ----------------------------------------
+
+uninstall_kserve_kustomize() {
+    log_info "Uninstalling KServe..."
+
+    # RELEASE mode: use embedded manifests
+    if [ "$RELEASE" = "true" ]; then
+        if type uninstall_kserve_manifest &>/dev/null; then
+            uninstall_kserve_manifest
+        else
+            log_error "RELEASE mode enabled but uninstall_kserve_manifest function not found"
+            log_error "This script should be called from a generated installation script"
+            exit 1
+        fi
+    else
+        # Development mode: use kustomize
+        # Uninstall resources first
+        kubectl kustomize "${KSERVE_CONFIG_DIR}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
+
+        # Then uninstall CRDs
+        kubectl kustomize "${KSERVE_CRD_DIR}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
+    fi
+
+    kubectl delete all --all -n "${KSERVE_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${KSERVE_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "KServe uninstalled"
+}
+
+install_kserve_kustomize() {
+    if kubectl get deployment kserve-controller-manager -n "${KSERVE_NAMESPACE}" &>/dev/null; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "KServe is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling KServe..."
+            uninstall
+        fi
+    fi
+
+    # RELEASE mode: use embedded manifests from generated script
+    if [ "$RELEASE" = "true" ]; then
+        log_info "Installing KServe using embedded manifests (RELEASE mode)..."
+
+        # Call manifest functions (these should be available in generated script)
+        if type install_kserve_manifest &>/dev/null; then
+            install_kserve_manifest
+        else
+            log_error "RELEASE mode enabled but install_kserve_manifest function not found"
+            log_error "This script should be called from a generated installation script"
+            exit 1
+        fi
+    else
+        # Development mode: use local kustomize build
+        log_info "Installing KServe via Kustomize..."
+        log_info "📍 Using local config from ${KSERVE_CRD_DIR} and ${KSERVE_CONFIG_DIR}"
+
+        # Install CRDs first
+        log_info "Installing KServe CRDs..."
+        kustomize build "${KSERVE_CRD_DIR}" | kubectl apply --server-side -f -
+
+        # Wait for CRDs to be established
+        wait_for_crds "60s" \
+            "inferenceservices.serving.kserve.io" \
+            "servingruntimes.serving.kserve.io" \
+            "clusterservingruntimes.serving.kserve.io" \
+            "llminferenceservices.serving.kserve.io" \
+            "llminferenceserviceconfigs.serving.kserve.io"
+
+        # Install resources
+        log_info "Installing KServe resources..."
+        kustomize build "${KSERVE_CONFIG_DIR}" | kubectl apply --server-side -f -
+    fi
+
+    # Update deployment mode in ConfigMap if not default
+    if [ "${DEPLOYMENT_MODE}" != "Knative" ]; then
+        log_info "Configuring deployment mode: ${DEPLOYMENT_MODE}"
+        kubectl patch configmap inferenceservice-config -n "${KSERVE_NAMESPACE}" \
+            --type='merge' \
+            -p "{\"data\":{\"deploy\":\"{\\\"defaultDeploymentMode\\\":\\\"${DEPLOYMENT_MODE}\\\"}\" }}"
+    fi
+
+    log_success "Successfully installed KServe"
+
+    # Wait for all controller managers to be ready
+    log_info "Waiting for KServe controllers to be ready..."
+    for label in "${TARGET_POD_LABELS[@]}"; do
+        wait_for_pods "${KSERVE_NAMESPACE}" "${label}" "300s"
+    done
+
+    log_success "KServe is ready!"
+}
+
 
 
 #================================================
@@ -488,8 +759,12 @@ main() {
         echo "=========================================="
         echo "Uninstalling components..."
         echo "=========================================="
+        uninstall_kserve_kustomize
+        uninstall_opentelemetry
         uninstall_keda_otel_addon
         uninstall_keda
+        uninstall_istio_ingress_class
+        uninstall_istio
         uninstall_cert_manager
         echo "=========================================="
         echo "✅ Uninstallation completed!"
@@ -498,7 +773,7 @@ main() {
     fi
 
     echo "=========================================="
-    echo "Install KServe Standard Mode dependencies"
+    echo "Install KServe Knative Mode dependencies and components for E2E testing"
     echo "=========================================="
 
 
@@ -511,8 +786,20 @@ main() {
     bash "${REPO_ROOT}/hack/setup/cli/install-yq.sh"
 
     install_cert_manager
+    install_istio
+    install_istio_ingress_class
     install_keda
     install_keda_otel_addon
+    install_opentelemetry
+    (
+        # Set CRD/Config directories and target pod labels based on LLMISVC
+        if [ "${LLMISVC}" = "true" ]; then
+            KSERVE_CRD_DIR="${REPO_ROOT}/config/crd/llmisvc"
+            KSERVE_CONFIG_DIR="${REPO_ROOT}/config/overlays/llmisvc"
+            TARGET_POD_LABELS=("app.kubernetes.io/name=llmisvc-controller-manager")
+        fi
+        install_kserve_kustomize
+    )
 
     echo "=========================================="
     echo "✅ Installation completed successfully!"

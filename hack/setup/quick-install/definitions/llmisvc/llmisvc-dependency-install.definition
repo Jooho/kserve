@@ -1,0 +1,15 @@
+DESCRIPTION: Install LLM InferenceService dependencies
+METHOD: helm
+
+TOOLS:
+  - helm
+  - yq
+
+COMPONENTS:
+  - name: external-lb
+  - name: cert-manager
+  - name: gateway-api-crd
+  - name: envoy-gateway
+  - name: envoy-ai-gateway
+  - name: lws-operator
+  - name: kserve-gateway

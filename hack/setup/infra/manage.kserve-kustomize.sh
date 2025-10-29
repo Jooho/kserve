@@ -64,16 +64,22 @@ check_cli_exist kubectl
 # KSERVE_NAMESPACE is defined in global-vars.env
 KSERVE_CRD_DIR="${REPO_ROOT}/config/crd"
 KSERVE_CONFIG_DIR="${REPO_ROOT}/config/default"
+TARGET_POD_LABELS=(
+    "control-plane=kserve-controller-manager"
+    "app.kubernetes.io/name=kserve-localmodel-controller-manager"
+    "app.kubernetes.io/name=llmisvc-controller-manager"
+)
 DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 LLMISVC="${LLMISVC:-false}"
 RELEASE="${RELEASE:-false}"
 # VARIABLES END
 
 # INCLUDE_IN_GENERATED_SCRIPT_START
-# Set CRD/Config directories based on LLMISVC
+# Set CRD/Config directories and target pod labels based on LLMISVC
 if [ "${LLMISVC}" = "true" ]; then
     KSERVE_CRD_DIR="${REPO_ROOT}/config/crd/llmisvc"
     KSERVE_CONFIG_DIR="${REPO_ROOT}/config/overlays/llmisvc"
+    TARGET_POD_LABELS=("app.kubernetes.io/name=llmisvc-controller-manager")
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
 
@@ -160,9 +166,9 @@ install() {
 
     # Wait for all controller managers to be ready
     log_info "Waiting for KServe controllers to be ready..."
-    wait_for_pods "${KSERVE_NAMESPACE}" "control-plane=kserve-controller-manager" "300s"
-    wait_for_pods "${KSERVE_NAMESPACE}" "app.kubernetes.io/name=kserve-localmodel-controller-manager" "300s"
-    wait_for_pods "${KSERVE_NAMESPACE}" "app.kubernetes.io/name=llmisvc-controller-manager" "300s"
+    for label in "${TARGET_POD_LABELS[@]}"; do
+        wait_for_pods "${KSERVE_NAMESPACE}" "${label}" "300s"
+    done
 
     log_success "KServe is ready!"
 }

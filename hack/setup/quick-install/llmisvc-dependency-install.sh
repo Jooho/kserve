@@ -14,15 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install LLM InferenceService dependencies and components for E2E
+# Install LLM InferenceService dependencies and components
 #
-# AUTO-GENERATED from: llmisvc-full-install-with-local-manifests.definition
+# AUTO-GENERATED from: llmisvc-dependency-install.definition
 # DO NOT EDIT MANUALLY
 #
 # To regenerate:
-#   ./scripts/generate-install-script.py llmisvc-full-install-with-local-manifests.definition
+#   ./scripts/generate-install-script.py llmisvc-dependency-install.definition
 #
-# Usage: llmisvc-e2e-test-install.sh [--reinstall|--uninstall]
+# Usage: llmisvc-dependency-install.sh [--reinstall|--uninstall]
 
 set -o errexit
 set -o nounset
@@ -380,16 +380,6 @@ TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 GATEWAY_NAME="kserve-ingress-gateway"
 GATEWAY_NAMESPACE="${KSERVE_NAMESPACE}"
 GATEWAYCLASS_NAME="envoy"
-KSERVE_CRD_DIR="${REPO_ROOT}/config/crd"
-KSERVE_CONFIG_DIR="${REPO_ROOT}/config/default"
-TARGET_POD_LABELS=(
-"control-plane=kserve-controller-manager"
-"app.kubernetes.io/name=kserve-localmodel-controller-manager"
-"app.kubernetes.io/name=llmisvc-controller-manager"
-)
-DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
-LLMISVC="${LLMISVC:-false}"
-RELEASE="${RELEASE:-false}"
 
 #================================================
 # Component Functions
@@ -765,100 +755,6 @@ EOF
     log_success "KServe Gateway '${GATEWAY_NAME}' created successfully!"
 }
 
-# ----------------------------------------
-# Component: kserve-kustomize
-# ----------------------------------------
-
-uninstall_kserve_kustomize() {
-    log_info "Uninstalling KServe..."
-
-    # RELEASE mode: use embedded manifests
-    if [ "$RELEASE" = "true" ]; then
-        if type uninstall_kserve_manifest &>/dev/null; then
-            uninstall_kserve_manifest
-        else
-            log_error "RELEASE mode enabled but uninstall_kserve_manifest function not found"
-            log_error "This script should be called from a generated installation script"
-            exit 1
-        fi
-    else
-        # Development mode: use kustomize
-        # Uninstall resources first
-        kubectl kustomize "${KSERVE_CONFIG_DIR}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
-
-        # Then uninstall CRDs
-        kubectl kustomize "${KSERVE_CRD_DIR}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
-    fi
-
-    kubectl delete all --all -n "${KSERVE_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
-    kubectl delete namespace "${KSERVE_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
-    log_success "KServe uninstalled"
-}
-
-install_kserve_kustomize() {
-    if kubectl get deployment kserve-controller-manager -n "${KSERVE_NAMESPACE}" &>/dev/null; then
-        if [ "$REINSTALL" = false ]; then
-            log_info "KServe is already installed. Use --reinstall to reinstall."
-            return 0
-        else
-            log_info "Reinstalling KServe..."
-            uninstall
-        fi
-    fi
-
-    # RELEASE mode: use embedded manifests from generated script
-    if [ "$RELEASE" = "true" ]; then
-        log_info "Installing KServe using embedded manifests (RELEASE mode)..."
-
-        # Call manifest functions (these should be available in generated script)
-        if type install_kserve_manifest &>/dev/null; then
-            install_kserve_manifest
-        else
-            log_error "RELEASE mode enabled but install_kserve_manifest function not found"
-            log_error "This script should be called from a generated installation script"
-            exit 1
-        fi
-    else
-        # Development mode: use local kustomize build
-        log_info "Installing KServe via Kustomize..."
-        log_info "📍 Using local config from ${KSERVE_CRD_DIR} and ${KSERVE_CONFIG_DIR}"
-
-        # Install CRDs first
-        log_info "Installing KServe CRDs..."
-        kustomize build "${KSERVE_CRD_DIR}" | kubectl apply --server-side -f -
-
-        # Wait for CRDs to be established
-        wait_for_crds "60s" \
-            "inferenceservices.serving.kserve.io" \
-            "servingruntimes.serving.kserve.io" \
-            "clusterservingruntimes.serving.kserve.io" \
-            "llminferenceservices.serving.kserve.io" \
-            "llminferenceserviceconfigs.serving.kserve.io"
-
-        # Install resources
-        log_info "Installing KServe resources..."
-        kustomize build "${KSERVE_CONFIG_DIR}" | kubectl apply --server-side -f -
-    fi
-
-    # Update deployment mode in ConfigMap if not default
-    if [ "${DEPLOYMENT_MODE}" != "Knative" ]; then
-        log_info "Configuring deployment mode: ${DEPLOYMENT_MODE}"
-        kubectl patch configmap inferenceservice-config -n "${KSERVE_NAMESPACE}" \
-            --type='merge' \
-            -p "{\"data\":{\"deploy\":\"{\\\"defaultDeploymentMode\\\":\\\"${DEPLOYMENT_MODE}\\\"}\" }}"
-    fi
-
-    log_success "Successfully installed KServe"
-
-    # Wait for all controller managers to be ready
-    log_info "Waiting for KServe controllers to be ready..."
-    for label in "${TARGET_POD_LABELS[@]}"; do
-        wait_for_pods "${KSERVE_NAMESPACE}" "${label}" "300s"
-    done
-
-    log_success "KServe is ready!"
-}
-
 
 
 #================================================
@@ -870,7 +766,6 @@ main() {
         echo "=========================================="
         echo "Uninstalling components..."
         echo "=========================================="
-        uninstall_kserve_kustomize
         uninstall_kserve_gateway
         uninstall_lws_operator
         uninstall_envoy_ai_gateway
@@ -885,15 +780,13 @@ main() {
     fi
 
     echo "=========================================="
-    echo "Install LLM InferenceService dependencies and components for E2E"
+    echo "Install LLM InferenceService dependencies and components"
     echo "=========================================="
 
 
 
     echo "Installing helm..."
     bash "${REPO_ROOT}/hack/setup/cli/install-helm.sh"
-    echo "Installing kustomize..."
-    bash "${REPO_ROOT}/hack/setup/cli/install-kustomize.sh"
     echo "Installing yq..."
     bash "${REPO_ROOT}/hack/setup/cli/install-yq.sh"
 
@@ -904,17 +797,6 @@ main() {
     install_envoy_ai_gateway
     install_lws_operator
     install_kserve_gateway
-    (
-        set_env_with_priority "LLMISVC" "true" "" "false"
-        # Set CRD/Config directories and target pod labels based on LLMISVC
-        if [ "${LLMISVC}" = "true" ]; then
-            KSERVE_CRD_DIR="${REPO_ROOT}/config/crd/llmisvc"
-            KSERVE_CONFIG_DIR="${REPO_ROOT}/config/overlays/llmisvc"
-            TARGET_POD_LABELS=("app.kubernetes.io/name=llmisvc-controller-manager")
-        fi
-
-        install_kserve_kustomize
-    )
 
     echo "=========================================="
     echo "✅ Installation completed successfully!"

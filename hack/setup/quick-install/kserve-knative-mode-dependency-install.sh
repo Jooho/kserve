@@ -273,6 +273,35 @@ command_exists() {
 
 # ============================================================================
 
+# Set environment variable based on priority order:
+# Priority: 1. Runtime env > 2. Component env > 3. Global env > 4. Component default
+# Usage: set_env_with_priority VAR_NAME COMPONENT_ENV_VALUE GLOBAL_ENV_VALUE DEFAULT_VALUE
+set_env_with_priority() {
+    local var_name="$1"
+    local component_value="$2"
+    local global_value="$3"
+    local default_value="$4"
+
+    # Get current value
+    local current_value
+    eval "current_value=\${${var_name}}"
+
+    # If current value differs from default/component/global, it must be runtime - keep it
+    if [ -n "$current_value" ] && [ "$current_value" != "$default_value" ] &&
+       [ "$current_value" != "$component_value" ] && [ "$current_value" != "$global_value" ]; then
+        # This is a runtime value, keep it
+        return
+    fi
+
+    # Apply priority: component env > global env > default
+    if [ -n "$component_value" ]; then
+        export "$var_name=$component_value"
+    elif [ -n "$global_value" ]; then
+        export "$var_name=$global_value"
+    fi
+    # If both are empty, variable keeps its default value
+}
+
 #================================================
 # Determine repository root using find_repo_root
 #================================================
@@ -317,9 +346,11 @@ UV_VERSION=0.7.8
 CERT_MANAGER_VERSION=v1.17.0
 ENVOY_GATEWAY_VERSION=v1.2.2
 ENVOY_AI_GATEWAY_VERSION=v0.3.0
+KNATIVE_OPERATOR_VERSION=v1.16.0
+KNATIVE_SERVING_VERSION=1.15.2
+KEDA_OTEL_ADDON_VERSION=v0.0.6
 KSERVE_VERSION=v0.16.0-rc1
-ISTIO_VERSION=1.24.2
-KNATIVE_SERVING_VERSION=v0.44.0
+ISTIO_VERSION=1.27.1
 KEDA_VERSION=2.16.1
 OPENTELEMETRY_OPERATOR_VERSION=0.113.0
 LWS_VERSION=v0.6.2
