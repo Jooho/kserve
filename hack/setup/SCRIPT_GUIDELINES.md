@@ -1,6 +1,10 @@
 # Script Guidelines
 
-Guidelines for writing infrastructure installation scripts.
+Guidelines for writing infrastructure installation scripts that integrate with the KServe installation script generator.
+
+**Generator location**: `hack/setup/scripts/install-script-generator/`
+
+**See also**: [Generator README](scripts/install-script-generator/README.md) for architecture and testing details.
 
 ## Quick Reference
 
@@ -261,13 +265,36 @@ COMPONENT_EXTRA_ARGS="--set foo=bar" ./manage.component.sh
 
 Scripts following these guidelines auto-generate into quick-install scripts.
 
+### Definition File Options
+
 **Definition file** (`.definition`):
 ```yaml
 FILE_NAME: llmisvc-quick-install
 DESCRIPTION: Install LLM InferenceService dependencies and components
-METHOD: helm
+METHOD: helm  # Installation method: helm or kustomize
+
+# RELEASE: Controls output filename
+# - true: Adds method suffix (e.g., llmisvc-quick-install-helm.sh)
+# - false: Simple filename (e.g., llmisvc-quick-install.sh)
+# Default: false
 RELEASE: true
 
+# EMBED_MANIFESTS: Controls whether to embed KServe manifests
+# - true: Embeds KServe CRDs and core manifests in script
+# - false: Script uses kustomize/helm at runtime
+# Default: false
+EMBED_MANIFESTS: true
+
+# TOOLS: CLI tools to install (optional)
+TOOLS:
+  - kubectl
+  - helm
+
+# GLOBAL_ENV: Variables applied to all components (optional)
+GLOBAL_ENV:
+  KSERVE_NAMESPACE: kserve
+
+# COMPONENTS: List of components to install
 COMPONENTS:
   - name: cert-manager
   - name: kserve-helm
@@ -277,16 +304,40 @@ COMPONENTS:
 
 **Generate**:
 ```bash
-./scripts/generate-install-script.py quick-install/definitions/llmisvc-install.definition
+cd hack/setup/scripts/install-script-generator
+./generator.py quick-install/definitions/llmisvc-install.definition
+
+# Or generate all definitions in a directory
+./generator.py
+
+# Or generate from specific directory
+./generator.py quick-install/definitions/
 ```
 
 **What happens**:
-1. Extracts VARIABLES from each component script
-2. Extracts INCLUDE sections (placed before component functions)
-3. Renames `install()` → `install_<component>()`
-4. If `RELEASE: true`, embeds Kubernetes manifests from kustomize
-5. Creates single-file installer with all dependencies
+1. Finds component scripts based on METHOD (e.g., manage.kserve-helm.sh for METHOD: helm)
+2. Extracts VARIABLES from each component script
+3. Extracts INCLUDE sections (placed before component functions)
+4. Renames `install()` → `install_<component>()`
+5. If `EMBED_MANIFESTS: true`, embeds Kubernetes manifests from kustomize
+6. If `RELEASE: true`, adds method suffix to output filename
+7. Creates single-file installer with all dependencies
 
 **Result**: Standalone installer that works without the repository.
+
+### RELEASE vs EMBED_MANIFESTS
+
+These are **independent** flags:
+
+| RELEASE | EMBED_MANIFESTS | Output Filename | Manifests |
+|---------|-----------------|-----------------|-----------|
+| `false` | `false` | `install.sh` | Runtime |
+| `false` | `true` | `install.sh` | Embedded |
+| `true` | `false` | `install-helm.sh` | Runtime |
+| `true` | `true` | `install-helm.sh` | Embedded |
+
+**Use cases**:
+- Development: `RELEASE: false`, `EMBED_MANIFESTS: false` (fast iteration)
+- Production release: `RELEASE: true`, `EMBED_MANIFESTS: true` (standalone script)
 
 ---

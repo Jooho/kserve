@@ -44,15 +44,15 @@ install() {
     local archive_name="uv-${uv_arch}-${uv_os}.tar.gz"
     local download_url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${archive_name}"
 
-    echo "Installing uv ${UV_VERSION} for ${os}/${arch}..."
+    log_info "Installing uv ${UV_VERSION} for ${os}/${arch}..."
 
     if command -v uv &>/dev/null; then
         local current_version=$(uv version 2>/dev/null | awk '{print $2}' || echo "unknown")
         if [[ "$current_version" == "${UV_VERSION}" ]]; then
-            echo "uv ${UV_VERSION} is already installed"
+            log_info "uv ${UV_VERSION} is already installed"
             return 0
         fi
-        echo "Upgrading uv from ${current_version} to ${UV_VERSION}..."
+        log_info "Upgrading uv from ${current_version} to ${UV_VERSION}..."
     fi
 
     local temp_dir=$(mktemp -d)
@@ -63,7 +63,7 @@ install() {
     elif command -v curl &>/dev/null; then
         curl -sL "${download_url}" -o "${temp_file}"
     else
-        echo "Error: Neither wget nor curl is available" >&2
+        log_error "Neither wget nor curl is available"
         rm -rf "${temp_dir}"
         exit 1
     fi
@@ -73,7 +73,7 @@ install() {
     local binary_path="${temp_dir}/uv-${uv_arch}-${uv_os}/uv"
 
     if [[ ! -f "${binary_path}" ]]; then
-        echo "Error: uv binary not found in archive" >&2
+        log_error "uv binary not found in archive"
         rm -rf "${temp_dir}"
         exit 1
     fi
@@ -88,7 +88,7 @@ install() {
 
     rm -rf "${temp_dir}"
 
-    echo "Successfully installed uv ${UV_VERSION} to ${BIN_DIR}/uv"
+    log_success "Successfully installed uv ${UV_VERSION} to ${BIN_DIR}/uv"
     uv version
 }
 

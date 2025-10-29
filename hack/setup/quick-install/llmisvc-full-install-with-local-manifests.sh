@@ -14,15 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install KServe Standard Mode/LLMIsvc dependencies using helm and kserve using kustomize.
+# Install LLM InferenceService dependencies using helm and kserve using kustomize
 #
-# AUTO-GENERATED from: kserve-standard-mode-with-local-manifests.definition
+# AUTO-GENERATED from: llmisvc-full-install-with-local-manifests.definition
 # DO NOT EDIT MANUALLY
 #
 # To regenerate:
-#   ./scripts/generate-install-script.py kserve-standard-mode-with-local-manifests.definition
+#   ./scripts/generate-install-script.py llmisvc-full-install-with-local-manifests.definition
 #
-# Usage: kserve-standard-mode-with-local-manifests.sh [--reinstall|--uninstall]
+# Usage: llmisvc-full-install-with-local-manifests.sh [--reinstall|--uninstall]
 
 set -o errexit
 set -o nounset
@@ -394,7 +394,11 @@ GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-kserve}"
 # Component-Specific Variables
 #================================================
 
-ADDON_RELEASE_NAME="keda-otel-scaler"
+PLATFORM="${PLATFORM:-$(detect_platform)}"
+TEMPLATE_DIR="${SCRIPT_DIR}/templates"
+GATEWAY_NAME="kserve-ingress-gateway"
+GATEWAY_NAMESPACE="${KSERVE_NAMESPACE}"
+GATEWAYCLASS_NAME="envoy"
 KSERVE_CRD_DIR="${REPO_ROOT}/config/crd"
 KSERVE_CONFIG_DIR="${REPO_ROOT}/config/default"
 TARGET_POD_LABELS=(
@@ -409,6 +413,116 @@ EMBED_MANIFESTS="${EMBED_MANIFESTS:-false}"
 #================================================
 # Component Functions
 #================================================
+
+# ----------------------------------------
+# Component: external-lb
+# ----------------------------------------
+
+uninstall_external_lb() {
+    log_info "Uninstalling External LoadBalancer for platform: ${PLATFORM}"
+
+    case "${PLATFORM}" in
+        kind)
+            if pgrep -f cloud-provider-kind > /dev/null; then
+                log_info "Stopping cloud-provider-kind..."
+                pkill -f cloud-provider-kind || true
+                log_success "cloud-provider-kind stopped"
+            else
+                log_info "cloud-provider-kind is not running"
+            fi
+            ;;
+
+        minikube)
+            log_info "Disabling MetalLB addon..."
+            minikube addons disable metallb 2>/dev/null || true
+            log_success "MetalLB disabled"
+            ;;
+
+        openshift|kubernetes)
+            log_info "Platform ${PLATFORM} does not require external LB teardown. Skipping."
+            ;;
+    esac
+
+    log_success "External LoadBalancer uninstalled for ${PLATFORM}!"
+}
+
+install_external_lb() {
+    if [ "$REINSTALL" = true ]; then
+        log_info "Reinstalling External LoadBalancer..."
+        uninstall
+    fi
+
+    log_info "Setting up External LoadBalancer for platform: ${PLATFORM}"
+
+    case "${PLATFORM}" in
+        kind)
+            log_info "Installing cloud-provider-kind for KIND cluster..."
+
+            if ! command_exists cloud-provider-kind; then
+                log_info "Installing cloud-provider-kind..."
+                go install sigs.k8s.io/cloud-provider-kind@latest
+
+                if ! command_exists cloud-provider-kind; then
+                    log_error "Failed to install cloud-provider-kind. Make sure GOPATH/bin is in your PATH."
+                    exit 1
+                fi
+            fi
+
+            if pgrep -f cloud-provider-kind > /dev/null; then
+                log_info "cloud-provider-kind is already running"
+            else
+                log_info "Starting cloud-provider-kind..."
+                cloud-provider-kind > /dev/null 2>&1 &
+                sleep 2
+
+                if pgrep -f cloud-provider-kind > /dev/null; then
+                    log_success "cloud-provider-kind started successfully"
+                else
+                    log_error "Failed to start cloud-provider-kind"
+                    exit 1
+                fi
+            fi
+            ;;
+
+        minikube)
+            log_info "Setting up MetalLB for Minikube cluster..."
+
+            log_info "Enabling MetalLB addon..."
+            minikube addons enable metallb
+
+            MINIKUBE_IP=$(minikube ip)
+            if [[ -z "${MINIKUBE_IP}" ]]; then
+                log_error "Failed to get minikube IP"
+                exit 1
+            fi
+
+            log_info "Minikube IP: ${MINIKUBE_IP}"
+
+            PREFIX=${MINIKUBE_IP%.*}
+            START=${METALLB_IP_RANGE_START:-${PREFIX}.200}
+            END=${METALLB_IP_RANGE_END:-${PREFIX}.235}
+
+            log_info "Configuring MetalLB IP range: ${START}-${END}"
+
+            sed -e "s/{{START}}/${START}/g" -e "s/{{END}}/${END}/g" \
+                "${TEMPLATE_DIR}/metallb-config.yaml.tmpl" | kubectl apply -f -
+
+            log_success "MetalLB configured successfully with IP range: ${START}-${END}"
+            ;;
+
+        openshift|kubernetes)
+            log_info "Platform ${PLATFORM} does not require external LB setup. Skipping."
+            exit 0
+            ;;
+
+        *)
+            log_error "Unknown platform: ${PLATFORM}"
+            exit 1
+            ;;
+    esac
+
+    log_success "External LoadBalancer setup completed for ${PLATFORM}!"
+}
 
 # ----------------------------------------
 # Component: cert-manager
@@ -453,88 +567,221 @@ install_cert_manager() {
 }
 
 # ----------------------------------------
-# Component: keda
+# Component: gateway-api-crd
 # ----------------------------------------
 
-uninstall_keda() {
-    log_info "Uninstalling KEDA..."
-
-    helm uninstall keda-otel-scaler -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    helm uninstall keda -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    kubectl delete all --all -n "${KEDA_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
-    kubectl delete namespace "${KEDA_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
-
-    log_success "KEDA uninstalled"
+uninstall_gateway_api_crd() {
+    log_info "Uninstalling Gateway API CRDs..."
+    kubectl delete -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml" --ignore-not-found=true 2>/dev/null || true
+    log_success "Gateway API CRDs uninstalled"
 }
 
-install_keda() {
-    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "keda"; then
+install_gateway_api_crd() {
+    if kubectl get crd gateways.gateway.networking.k8s.io &>/dev/null; then
         if [ "$REINSTALL" = false ]; then
-            log_info "KEDA is already installed. Use --reinstall to reinstall."
+            log_info "Gateway API CRDs are already installed. Use --reinstall to reinstall."
             return 0
         else
-            log_info "Reinstalling KEDA..."
+            log_info "Reinstalling Gateway API CRDs..."
             uninstall
         fi
     fi
 
-    log_info "Adding KEDA Helm repository..."
-    helm repo add kedacore https://kedacore.github.io/charts --force-update
+    log_info "Installing Gateway API CRDs ${GATEWAY_API_VERSION}..."
+    kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
 
-    log_info "Installing KEDA ${KEDA_VERSION}..."
-    helm install keda kedacore/keda \
-        --namespace "${KEDA_NAMESPACE}" \
+    log_success "Successfully installed Gateway API CRDs ${GATEWAY_API_VERSION}"
+
+    wait_for_crds "60s" \
+        "gateways.gateway.networking.k8s.io" \
+        "gatewayclasses.gateway.networking.k8s.io"
+
+    log_success "Gateway API CRDs are ready!"
+}
+
+# ----------------------------------------
+# Component: envoy-gateway
+# ----------------------------------------
+
+uninstall_envoy_gateway() {
+    log_info "Uninstalling Envoy Gateway..."
+    kubectl delete gatewayclass envoy --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    helm uninstall eg -n envoy-gateway-system 2>/dev/null || true
+    kubectl delete all --all -n envoy-gateway-system --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace envoy-gateway-system --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "Envoy Gateway uninstalled"
+}
+
+install_envoy_gateway() {
+    if helm list -n envoy-gateway-system 2>/dev/null | grep -q "eg"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "Envoy Gateway is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling Envoy Gateway..."
+            uninstall
+        fi
+    fi
+
+    log_info "Installing Envoy Gateway ${ENVOY_GATEWAY_VERSION}..."
+    helm install eg oci://docker.io/envoyproxy/gateway-helm \
+        --version "${ENVOY_GATEWAY_VERSION}" \
+        -n envoy-gateway-system \
         --create-namespace \
-        --version "${KEDA_VERSION}" \
-        --wait \
-        ${KEDA_EXTRA_ARGS:-}
+        --wait
 
-    log_success "Successfully installed KEDA ${KEDA_VERSION} via Helm"
+    log_success "Successfully installed Envoy Gateway ${ENVOY_GATEWAY_VERSION} via Helm"
 
-    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/name=keda-operator" "300s"
+    wait_for_pods "envoy-gateway-system" "control-plane=envoy-gateway" "300s"
 
-    log_success "KEDA is ready!"
+    log_info "Creating Envoy GatewayClass..."
+    cat <<EOF | kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+EOF
+
+    log_success "Envoy Gateway is ready!"
 }
 
 # ----------------------------------------
-# Component: keda-otel-addon
+# Component: envoy-ai-gateway
 # ----------------------------------------
 
-uninstall_keda_otel_addon() {
-    log_info "Uninstalling KEDA OTel add-on..."
-    helm uninstall "${ADDON_RELEASE_NAME}" -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    log_success "KEDA OTel add-on uninstalled"
+uninstall_envoy_ai_gateway() {
+    log_info "Uninstalling Envoy AI Gateway..."
+    VERSION_NUMBER="${ENVOY_AI_GATEWAY_VERSION#v}"
+    kubectl delete -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/examples/inference-pool/config.yaml" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    kubectl delete -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/rbac.yaml" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    kubectl delete -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/config.yaml" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    kubectl delete -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/redis.yaml" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    helm uninstall aieg -n envoy-ai-gateway-system 2>/dev/null || true
+    helm uninstall aieg-crd -n envoy-ai-gateway-system 2>/dev/null || true
+    kubectl delete all --all -n envoy-ai-gateway-system --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace envoy-ai-gateway-system --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    kubectl delete all --all -n redis-system --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace redis-system --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+    log_success "Envoy AI Gateway uninstalled"
 }
 
-install_keda_otel_addon() {
-    if ! kubectl get namespace "${KEDA_NAMESPACE}" &>/dev/null; then
-        log_error "KEDA namespace '${KEDA_NAMESPACE}' does not exist. Please install KEDA first."
-        exit 1
-    fi
-
-    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "${ADDON_RELEASE_NAME}"; then
+install_envoy_ai_gateway() {
+    if helm list -n envoy-ai-gateway-system 2>/dev/null | grep -q "aieg"; then
         if [ "$REINSTALL" = false ]; then
-            log_info "KEDA OTel add-on is already installed. Use --reinstall to reinstall."
+            log_info "Envoy AI Gateway is already installed. Use --reinstall to reinstall."
             return 0
         else
-            log_info "Reinstalling KEDA OTel add-on..."
+            log_info "Reinstalling Envoy AI Gateway..."
             uninstall
         fi
     fi
 
-    log_info "Installing KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} from kedify/otel-add-on..."
-    helm upgrade -i "${ADDON_RELEASE_NAME}" \
-        oci://ghcr.io/kedify/charts/otel-add-on \
-        --namespace "${KEDA_NAMESPACE}" \
-        --version="${KEDA_OTEL_ADDON_VERSION}" \
-        --wait \
-        ${KEDA_OTEL_ADDON_EXTRA_ARGS:-}
+    log_info "Installing Envoy AI Gateway CRDs ${ENVOY_AI_GATEWAY_VERSION}..."
+    helm install aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+        --version "${ENVOY_AI_GATEWAY_VERSION}" \
+        --namespace envoy-ai-gateway-system \
+        --create-namespace
 
-    log_success "Successfully installed KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} via Helm"
+    log_info "Installing Envoy AI Gateway ${ENVOY_AI_GATEWAY_VERSION}..."
+    helm install aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+        --version "${ENVOY_AI_GATEWAY_VERSION}" \
+        --namespace envoy-ai-gateway-system \
+        --create-namespace
 
-    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/instance=${ADDON_RELEASE_NAME}" "300s"
+    wait_for_deployment "envoy-ai-gateway-system" "ai-gateway-controller" "180s"
+    log_success "Successfully installed Envoy AI Gateway ${ENVOY_AI_GATEWAY_VERSION} via Helm"
 
-    log_success "KEDA OTel add-on is ready!"
+    log_info "Configuring Envoy Gateway for AI Gateway integration..."
+    VERSION_NUMBER="${ENVOY_AI_GATEWAY_VERSION#v}"
+    kubectl apply -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/redis.yaml"
+    kubectl apply -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/config.yaml"
+    kubectl apply -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/manifests/envoy-gateway-config/rbac.yaml"
+
+    log_info "Enabling Gateway API Inference Extension support for Envoy Gateway..."
+    kubectl apply -f "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${VERSION_NUMBER}/examples/inference-pool/config.yaml"
+    kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
+    wait_for_deployment "envoy-gateway-system" "envoy-gateway" "180s"
+    log_success "Envoy AI Gateway is ready!"
+}
+
+# ----------------------------------------
+# Component: lws-operator
+# ----------------------------------------
+
+uninstall_lws_operator() {
+    log_info "Uninstalling LeaderWorkerSet (LWS)..."
+    kubectl delete -f "https://github.com/kubernetes-sigs/lws/releases/download/${LWS_VERSION}/manifests.yaml" --ignore-not-found=true 2>/dev/null || true
+    log_success "LWS uninstalled"
+}
+
+install_lws_operator() {
+    if kubectl get deployment lws-controller-manager -n lws-system &>/dev/null; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "LWS is already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling LWS..."
+            uninstall
+        fi
+    fi
+
+    log_info "Installing LWS ${LWS_VERSION}..."
+    kubectl apply --server-side -f "https://github.com/kubernetes-sigs/lws/releases/download/${LWS_VERSION}/manifests.yaml"
+
+    log_success "Successfully installed LWS ${LWS_VERSION}"
+
+    wait_for_pods "lws-system" "control-plane=controller-manager" "300s"
+
+    log_success "LWS is ready!"
+}
+
+# ----------------------------------------
+# Component: kserve-gateway
+# ----------------------------------------
+
+uninstall_kserve_gateway() {
+    log_info "Deleting KServe Gateway '${GATEWAY_NAME}' in namespace '${GATEWAY_NAMESPACE}'..."
+    kubectl delete gateway "${GATEWAY_NAME}" -n "${GATEWAY_NAMESPACE}" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    log_success "KServe Gateway '${GATEWAY_NAME}' deleted"
+}
+
+install_kserve_gateway() {
+    create_or_skip_namespace "${GATEWAY_NAMESPACE}"
+
+    if kubectl get gateway "${GATEWAY_NAME}" -n "${GATEWAY_NAMESPACE}" &>/dev/null; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "KServe Gateway '${GATEWAY_NAME}' already exists in namespace '${GATEWAY_NAMESPACE}'. Use --reinstall to recreate."
+            exit 0
+        else
+            log_info "Recreating KServe Gateway '${GATEWAY_NAME}'..."
+            uninstall
+        fi
+    fi
+
+    log_info "Creating KServe Gateway '${GATEWAY_NAME}' in namespace '${GATEWAY_NAMESPACE}'..."
+    cat <<EOF | kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ${GATEWAY_NAME}
+  namespace: ${GATEWAY_NAMESPACE}
+spec:
+  gatewayClassName: ${GATEWAYCLASS_NAME}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+  infrastructure:
+    labels:
+      serving.kserve.io/gateway: ${GATEWAY_NAME}
+EOF
+
+    log_success "KServe Gateway '${GATEWAY_NAME}' created successfully!"
 }
 
 # ----------------------------------------
@@ -643,9 +890,13 @@ main() {
         echo "Uninstalling components..."
         echo "=========================================="
         uninstall_kserve_kustomize
-        uninstall_keda_otel_addon
-        uninstall_keda
+        uninstall_kserve_gateway
+        uninstall_lws_operator
+        uninstall_envoy_ai_gateway
+        uninstall_envoy_gateway
+        uninstall_gateway_api_crd
         uninstall_cert_manager
+        uninstall_external_lb
         echo "=========================================="
         echo "✅ Uninstallation completed!"
         echo "=========================================="
@@ -653,7 +904,7 @@ main() {
     fi
 
     echo "=========================================="
-    echo "Install KServe Standard Mode/LLMIsvc dependencies using helm and kserve using kustomize."
+    echo "Install LLM InferenceService dependencies using helm and kserve using kustomize"
     echo "=========================================="
 
 
@@ -662,11 +913,15 @@ main() {
     bash "${REPO_ROOT}/hack/setup/cli/install-kustomize.sh"
     bash "${REPO_ROOT}/hack/setup/cli/install-yq.sh"
 
+    install_external_lb
     install_cert_manager
-    install_keda
-    install_keda_otel_addon
+    install_gateway_api_crd
+    install_envoy_gateway
+    install_envoy_ai_gateway
+    install_lws_operator
+    install_kserve_gateway
     (
-        set_env_with_priority "DEPLOYMENT_MODE" "Standard" "" "Knative"
+        set_env_with_priority "LLMISVC" "true" "" "false"
         # Set CRD/Config directories and target pod labels based on LLMISVC
         if [ "${LLMISVC}" = "true" ]; then
             KSERVE_CRD_DIR="${REPO_ROOT}/config/crd/llmisvc"

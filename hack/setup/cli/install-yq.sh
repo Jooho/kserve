@@ -25,15 +25,15 @@ install() {
     local binary_name="yq_${os}_${arch}"
     local download_url="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/${binary_name}"
 
-    echo "Installing yq ${YQ_VERSION} for ${os}/${arch}..."
+    log_info "Installing yq ${YQ_VERSION} for ${os}/${arch}..."
 
     if command -v yq &>/dev/null; then
         local current_version=$(yq --version 2>&1 | grep -oP 'version \K[v0-9.]+' || echo "unknown")
         if [[ "v$current_version" == "$YQ_VERSION" ]]; then
-            echo "yq ${YQ_VERSION} is already installed"
+            log_info "yq ${YQ_VERSION} is already installed"
             return 0
         fi
-        echo "Upgrading yq from ${current_version} to ${YQ_VERSION}..."
+        log_info "Upgrading yq from ${current_version} to ${YQ_VERSION}..."
     fi
 
     local temp_file=$(mktemp)
@@ -43,7 +43,7 @@ install() {
     elif command -v curl &>/dev/null; then
         curl -sL "${download_url}" -o "${temp_file}"
     else
-        echo "Error: Neither wget nor curl is available" >&2
+        log_error "Neither wget nor curl is available"
         rm -f "${temp_file}"
         exit 1
     fi
@@ -56,7 +56,7 @@ install() {
         sudo mv "${temp_file}" "${BIN_DIR}/yq"
     fi
 
-    echo "Successfully installed yq ${YQ_VERSION} to ${BIN_DIR}/yq"
+    log_success "Successfully installed yq ${YQ_VERSION} to ${BIN_DIR}/yq"
     yq --version
 }
 

@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Install KServe Knative Mode dependencies and components for E2E testing
+# Install KServe Knative Mode dependencies using helm and kserve using kustomize.
 #
 # AUTO-GENERATED from: kserve-knative-mode-install-with-local-manifests.definition
 # DO NOT EDIT MANUALLY
@@ -80,16 +80,35 @@ detect_arch() {
     echo "$arch"
 }
 
+# Color codes (disable if NO_COLOR is set or not a terminal)
+if [[ -z "${NO_COLOR:-}" ]] && [[ -t 1 ]]; then
+    BLUE='\033[94m'
+    GREEN='\033[92m'
+    RED='\033[91m'
+    YELLOW='\033[93m'
+    RESET='\033[0m'
+else
+    BLUE=''
+    GREEN=''
+    RED=''
+    YELLOW=''
+    RESET=''
+fi
+
 log_info() {
-    echo "[INFO] $*"
+    echo -e "${BLUE}[INFO]${RESET} $*"
 }
 
 log_error() {
-    echo "[ERROR] $*" >&2
+    echo -e "${RED}[ERROR]${RESET} $*" >&2
 }
 
 log_success() {
-    echo "[SUCCESS] $*"
+    echo -e "${GREEN}[SUCCESS]${RESET} $*"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${RESET} $*"
 }
 
 
@@ -386,7 +405,7 @@ TARGET_POD_LABELS=(
 )
 DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 LLMISVC="${LLMISVC:-false}"
-RELEASE="${RELEASE:-false}"
+EMBED_MANIFESTS="${EMBED_MANIFESTS:-false}"
 
 #================================================
 # Component Functions
@@ -661,12 +680,12 @@ install_opentelemetry() {
 uninstall_kserve_kustomize() {
     log_info "Uninstalling KServe..."
 
-    # RELEASE mode: use embedded manifests
-    if [ "$RELEASE" = "true" ]; then
+    # EMBED_MANIFESTS: use embedded manifests
+    if [ "$EMBED_MANIFESTS" = "true" ]; then
         if type uninstall_kserve_manifest &>/dev/null; then
             uninstall_kserve_manifest
         else
-            log_error "RELEASE mode enabled but uninstall_kserve_manifest function not found"
+            log_error "EMBED_MANIFESTS enabled but uninstall_kserve_manifest function not found"
             log_error "This script should be called from a generated installation script"
             exit 1
         fi
@@ -695,15 +714,15 @@ install_kserve_kustomize() {
         fi
     fi
 
-    # RELEASE mode: use embedded manifests from generated script
-    if [ "$RELEASE" = "true" ]; then
-        log_info "Installing KServe using embedded manifests (RELEASE mode)..."
+    # EMBED_MANIFESTS: use embedded manifests from generated script
+    if [ "$EMBED_MANIFESTS" = "true" ]; then
+        log_info "Installing KServe using embedded manifests..."
 
         # Call manifest functions (these should be available in generated script)
         if type install_kserve_manifest &>/dev/null; then
             install_kserve_manifest
         else
-            log_error "RELEASE mode enabled but install_kserve_manifest function not found"
+            log_error "EMBED_MANIFESTS enabled but install_kserve_manifest function not found"
             log_error "This script should be called from a generated installation script"
             exit 1
         fi
@@ -773,16 +792,13 @@ main() {
     fi
 
     echo "=========================================="
-    echo "Install KServe Knative Mode dependencies and components for E2E testing"
+    echo "Install KServe Knative Mode dependencies using helm and kserve using kustomize."
     echo "=========================================="
 
 
 
-    echo "Installing helm..."
     bash "${REPO_ROOT}/hack/setup/cli/install-helm.sh"
-    echo "Installing kustomize..."
     bash "${REPO_ROOT}/hack/setup/cli/install-kustomize.sh"
-    echo "Installing yq..."
     bash "${REPO_ROOT}/hack/setup/cli/install-yq.sh"
 
     install_cert_manager

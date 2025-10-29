@@ -125,10 +125,9 @@ def build_tool_install_calls(tools: list[str], repo_root: Path) -> str:
     for tool in tools:
         tool_script = cli_dir / f"install-{tool}.sh"
         if tool_script.exists():
-            lines.append(f'    echo "Installing {tool}..."')
             lines.append(f'    bash "${{REPO_ROOT}}/hack/setup/cli/install-{tool}.sh"')
         else:
-            lines.append(f'    echo "Warning: Tool installation script not found: install-{tool}.sh" >&2')
+            lines.append(f'    log_warning "Tool installation script not found: install-{tool}.sh"')
     return "\n".join(lines)
 
 
@@ -245,7 +244,7 @@ def generate_script_content(definition_file: Path,
         "TEMPLATE_NAME": definition_file.name,
         "DESCRIPTION": config["description"],
         "FILE_NAME": config["file_name"],
-        "RELEASE": "true" if config["embed_manifests"] else "false",
+        "RELEASE": "true" if config.get("release", False) else "false",
         "KSERVE_DEPS_CONTENT": kserve_deps_content,
         "GLOBAL_VARS_CONTENT": global_vars_content,
         "COMMON_FUNCTIONS": common_functions,

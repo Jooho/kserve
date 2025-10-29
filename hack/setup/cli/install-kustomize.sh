@@ -25,15 +25,15 @@ install() {
     local archive_name="kustomize_${KUSTOMIZE_VERSION}_${os}_${arch}.tar.gz"
     local download_url="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${archive_name}"
 
-    echo "Installing Kustomize ${KUSTOMIZE_VERSION} for ${os}/${arch}..."
+    log_info "Installing Kustomize ${KUSTOMIZE_VERSION} for ${os}/${arch}..."
 
     if command -v kustomize &>/dev/null; then
         local current_version=$(kustomize version --short 2>/dev/null | grep -oP 'v[0-9.]+' || echo "unknown")
         if [[ "$current_version" == "$KUSTOMIZE_VERSION" ]]; then
-            echo "Kustomize ${KUSTOMIZE_VERSION} is already installed"
+            log_info "Kustomize ${KUSTOMIZE_VERSION} is already installed"
             return 0
         fi
-        echo "Upgrading Kustomize from ${current_version} to ${KUSTOMIZE_VERSION}..."
+        log_info "Upgrading Kustomize from ${current_version} to ${KUSTOMIZE_VERSION}..."
     fi
 
     local temp_dir=$(mktemp -d)
@@ -44,7 +44,7 @@ install() {
     elif command -v curl &>/dev/null; then
         curl -sL "${download_url}" -o "${temp_file}"
     else
-        echo "Error: Neither wget nor curl is available" >&2
+        log_error "Neither wget nor curl is available"
         rm -rf "${temp_dir}"
         exit 1
     fi
@@ -54,7 +54,7 @@ install() {
     local binary_path="${temp_dir}/kustomize"
 
     if [[ ! -f "${binary_path}" ]]; then
-        echo "Error: kustomize binary not found in archive" >&2
+        log_error "kustomize binary not found in archive"
         rm -rf "${temp_dir}"
         exit 1
     fi
@@ -69,7 +69,7 @@ install() {
 
     rm -rf "${temp_dir}"
 
-    echo "Successfully installed Kustomize ${KUSTOMIZE_VERSION} to ${BIN_DIR}/kustomize"
+    log_success "Successfully installed Kustomize ${KUSTOMIZE_VERSION} to ${BIN_DIR}/kustomize"
     kustomize version
 }
 
