@@ -129,7 +129,7 @@ var (
 	LoggerCredentialPathKey                     = KServeAPIGroupName + "/logger-secret-path"
 	LoggerCredentialFileKey                     = KServeAPIGroupName + "/logger-secret-file"
 	DisableAutoUpdateAnnotationKey              = KServeAPIGroupName + "/disable-auto-update"
-	ModelFrameworkAnnotationKey                 = KServeAPIGroupName + "/model-framework"
+	ModelFrameworkAnnotationKey                 = "modelFormat"
 )
 
 // InferenceService Internal Annotations

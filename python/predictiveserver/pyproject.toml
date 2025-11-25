@@ -1,6 +1,6 @@
 [project]
 authors = [
-    {name = "KServe Contributors", email = "kserve-technical-discuss@lists.lfaidata.foundation"},
+    {name = "Jooho Lee", email = "ljhiyh@gmail.com"},
 ]
 license = {text = "Apache-2.0"}
 requires-python = "<3.13,>=3.9"
@@ -29,11 +29,11 @@ dev = [
 ]
 
 [tool.uv.sources]
-kserve = { path = "../kserve", editable = true }
-kserve-storage = { path = "../storage", editable = true }
-sklearnserver = { path = "../sklearnserver", editable = true }
-xgbserver = { path = "../xgbserver", editable = true }
-lgbserver = { path = "../lgbserver", editable = true }
+kserve = { path = "../kserve", editable = false }
+kserve-storage = { path = "../storage", editable = false }
+sklearnserver = { path = "../sklearnserver", editable = false }
+xgbserver = { path = "../xgbserver", editable = false }
+lgbserver = { path = "../lgbserver", editable = false }
 
 [build-system]
 requires = ["hatchling"]

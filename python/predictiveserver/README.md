@@ -21,29 +21,84 @@ Instead of maintaining separate Docker images and deployments for each framework
 
 - **Multi-framework support**: Single runtime for sklearn, XGBoost, and LightGBM
 - **KServe integration**: Full compatibility with KServe inference protocol
-- **Multi-model serving**: Support for dynamic model loading via ModelRepository
 - **Thread control**: Configurable thread count for XGBoost and LightGBM
 - **Probability predictions**: Support for `predict_proba` in scikit-learn (via `PREDICT_PROBA` environment variable)
 
-## Dependencies
+## Quick Start Example
 
-Predictive Server depends on the following KServe components:
+1. **Deploy the ClusterServingRuntime:**
 
-- **kserve** (>=0.16.0): Core KServe inference protocol and model serving framework
-- **kserve-storage** (>=0.16.0): Storage abstraction for model loading
-- **sklearnserver** (>=0.16.0): Scikit-learn model server
-- **xgbserver** (>=0.16.0): XGBoost model server
-- **lgbserver** (>=0.16.0): LightGBM model server
+```bash
+kubectl apply -f ./config/runtimes/kserve-predictiveserver.yaml
+```
+
+2. **Create an InferenceService:**
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: sklearn-iris
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: gs://kfserving-examples/models/sklearn/1.0/model
+EOF
+```
+
+3. **Wait for the InferenceService to be ready:**
+
+```bash
+kubectl wait --for=condition=Ready inferenceservice/sklearn-iris --timeout=300s
+```
+
+4. **Test the deployment:**
+
+```bash
+# Get the predictor pod name
+POD_NAME=$(kubectl get pods -l serving.kserve.io/inferenceservice=sklearn-iris -o jsonpath='{.items[0].metadata.name}')
+
+# Port-forward to the predictor pod
+kubectl port-forward pod/${POD_NAME} 8082:8080 &
+
+# Send a prediction request (V1 protocol)
+curl -X POST http://localhost:8082/v1/models/sklearn-iris:predict \
+  -H "Content-Type: application/json" \
+  -d '{"instances": [[6.8, 2.8, 4.8, 1.4], [6.0, 3.4, 4.5, 1.6]]}'
+
+# Expected response:
+# {"predictions": [1, 1]}
+```
+
+Alternatively, using V2 protocol:
+
+```bash
+curl -X POST http://localhost:8082/v2/models/sklearn-iris/infer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      {
+        "name": "input-0",
+        "shape": [2, 4],
+        "datatype": "FP64",
+        "data": [[6.8, 2.8, 4.8, 1.4], [6.0, 3.4, 4.5, 1.6]]
+      }
+    ]
+  }'
+```
 
 ## Installation
 
 ```bash
-# Install dependencies using uv
+# Install using uv (recommended)
 cd python/predictiveserver
-uv sync
+uv pip install .
 
-# Or install in development mode
-pip install -e .
+# Or install with development dependencies
+uv pip install --group dev --group test
 ```
 
 ## Usage
@@ -74,22 +129,60 @@ python -m predictiveserver --model_name lgb-model --model_dir /path/to/lightgbm/
 
 - `PREDICT_PROBA`: Set to `"true"` to use `predict_proba()` for scikit-learn models (default: `"false"`)
 
-### Multi-model Serving
+### Worker Configuration
 
-Predictive Server supports multi-model serving through the ModelRepository:
+The Predictive Server automatically configures workers based on the framework:
 
-```bash
-# Start with an empty model repository
-python -m predictiveserver --model_name example --model_dir /mnt/models --framework sklearn
-```
+- **LightGBM**: Always uses `workers=1` (multi-process not supported)
+- **Scikit-learn/XGBoost**: Defaults to `workers=1`, configurable via `--workers` argument
 
-Models can then be loaded dynamically using KServe's TrainedModel API.
+This is handled automatically in `__main__.py` to prevent runtime errors with LightGBM's threading limitations.
 
 ## KServe Deployment
 
-### Using ClusterServingRuntime
+### ClusterServingRuntime Configuration
+
+The Predictive Server runtime is defined in `config/runtimes/kserve-predictiveserver.yaml`:
+
+```yaml
+apiVersion: serving.kserve.io/v1alpha1
+kind: ClusterServingRuntime
+metadata:
+  name: kserve-predictiveserver
+spec:
+  supportedModelFormats:
+    - name: sklearn
+      version: "1"
+      autoSelect: true
+      priority: 2
+    - name: xgboost
+      version: "3"
+      autoSelect: true
+      priority: 2
+    - name: lightgbm
+      version: "3"
+      autoSelect: true
+      priority: 2
+  protocolVersions:
+    - v1
+    - v2
+  containers:
+    - name: kserve-container
+      image: quay.io/jooholee/predictiveserver:latest
+      args:
+        - --model_name={{.Name}}
+        - --model_dir=/mnt/models
+        - --http_port=8080
+        - --framework={{.Annotations.modelFormat}}  # Framework is selected here
+        - --nthread=1
+```
+
+### InferenceService Examples
 
 Deploy a model using the Predictive Server runtime. The framework is automatically detected from `modelFormat.name`:
+
+<details>
+<summary>Scikit-learn Example</summary>
 
 ```yaml
 apiVersion: serving.kserve.io/v1beta1
@@ -103,6 +196,10 @@ spec:
         name: sklearn
       storageUri: gs://kfserving-examples/models/sklearn/1.0/model
 ```
+</details>
+
+<details>
+<summary>XGBoost Example</summary>
 
 ```yaml
 apiVersion: serving.kserve.io/v1beta1
@@ -116,6 +213,10 @@ spec:
         name: xgboost
       storageUri: gs://kfserving-examples/models/xgboost/1.0/model
 ```
+</details>
+
+<details>
+<summary>LightGBM Example</summary>
 
 ```yaml
 apiVersion: serving.kserve.io/v1beta1
@@ -129,36 +230,11 @@ spec:
         name: lightgbm
       storageUri: gs://kfserving-examples/models/lightgbm/1.0/model
 ```
+</details>
 
-**Note**: The KServe controller automatically adds a `serving.kserve.io/model-framework` annotation based on `modelFormat.name`. This annotation is then passed to the container via the `--framework` argument, telling Predictive Server which underlying framework server to use. You don't need to add any labels or annotations manually.
-
-## Model File Requirements
-
-### Scikit-learn
-- Single model file with extension: `.joblib`, `.pkl`, or `.pickle`
-- Saved using `joblib.dump()` or `pickle.dump()`
-
-### XGBoost
-- Single model file with extension: `.bst`, `.json`, or `.ubj`
-- Saved using `booster.save_model()`
-
-### LightGBM
-- Single model file with extension: `.bst`
-- Saved using `booster.save_model()`
-
-**Note**: Only one model file is allowed per model directory.
+> **Note**: The KServe controller automatically adds a `modelFormat` annotation based on `modelFormat.name`. This annotation is then passed to the container via the `--framework` argument, telling Predictive Server which underlying framework server to use. You don't need to add any labels or annotations manually.
 
 ## Architecture
-
-```
-predictiveserver/
-├── __init__.py              # Package initialization
-├── __main__.py              # Entry point with CLI argument parsing
-├── model.py                 # PredictiveServerModel - unified model wrapper
-└── model_repository.py      # PredictiveServerModelRepository - multi-model support
-```
-
-### Design Pattern
 
 The Predictive Server uses a **facade/wrapper pattern** where:
 
@@ -168,39 +244,9 @@ The Predictive Server uses a **facade/wrapper pattern** where:
 4. All framework models implement the same KServe `Model` interface
 5. Avoids code duplication by reusing existing, well-tested server implementations
 
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=predictiveserver --cov-report=term-missing
-```
-
-### Code Formatting
-
-```bash
-# Format code with black
-black predictiveserver/
-
-# Type checking with mypy
-mypy predictiveserver/
-```
-
 ## Docker
 
-Build the Docker image from the repository root:
-
-```bash
-# From kserve repository root
-cd python
-docker build -t predictiveserver:latest -f predictiveserver.Dockerfile .
-```
-
-Or use the Makefile:
+Build the Docker image using the Makefile:
 
 ```bash
 # From kserve repository root
@@ -219,25 +265,12 @@ docker run -p 8080:8080 \
   --framework sklearn
 ```
 
-## Comparison with Individual Runtimes
+## Dependencies
 
-| Feature | Individual Runtimes | Predictive Server |
-|---------|-------------------|-----------|
-| Docker Images | 3 separate images | 1 unified image |
-| Deployment Complexity | Higher (manage 3 runtimes) | Lower (single runtime) |
-| Image Size | Smaller per image | Slightly larger (all deps) |
-| Framework Switching | Requires redeployment | Simple arg change |
-| Maintenance | 3 codebases to maintain | 1 codebase |
+Predictive Server depends on the following KServe components:
 
-## License
-
-Apache License 2.0
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-1. All tests pass
-2. Code is formatted with `black`
-3. Type hints are provided
-4. Documentation is updated
+- **kserve** (>=0.16.0): Core KServe inference protocol and model serving framework
+- **kserve-storage** (>=0.16.0): Storage abstraction for model loading
+- **sklearnserver** (>=0.16.0): Scikit-learn model server
+- **xgbserver** (>=0.16.0): XGBoost model server
+- **lgbserver** (>=0.16.0): LightGBM model server

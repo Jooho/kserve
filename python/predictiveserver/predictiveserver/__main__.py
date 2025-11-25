@@ -59,7 +59,8 @@ if __name__ == "__main__":
         model.load()
         # Determine worker count based on framework
         # LightGBM doesn't support multi-process, so use workers=1
-        workers = 1 if args.framework == "lightgbm" else None
+        # For other frameworks, use args.workers if specified, otherwise default to 1
+        workers = 1 if args.framework == "lightgbm" else (args.workers if args.workers else 1)
         kserve.ModelServer(workers=workers).start([model])
     except ModelMissingError:
         logger.error(
@@ -74,7 +75,8 @@ if __name__ == "__main__":
             args.model_dir, args.framework, args.nthread
         )
         # LightGBM doesn't support multi-process, so use workers=1
-        workers = 1 if args.framework == "lightgbm" else None
+        # For other frameworks, use args.workers if specified, otherwise default to 1
+        workers = 1 if args.framework == "lightgbm" else (args.workers if args.workers else 1)
         kserve.ModelServer(workers=workers, registered_models=model_repository).start(
             []
         )

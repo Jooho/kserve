@@ -18,45 +18,17 @@ ENV VIRTUAL_ENV=${VENV_PATH}
 RUN uv venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# ========== Install kserve dependencies ==========
-COPY kserve/pyproject.toml kserve/uv.lock kserve/
-RUN cd kserve && uv sync --active --no-cache
-
+# ========== Copy all source code first ==========
 COPY kserve kserve
-RUN cd kserve && uv sync --active --no-cache
-
-# ========== Install kserve storage dependencies ==========
-COPY storage/pyproject.toml storage/uv.lock storage/
-RUN cd storage && uv sync --active --no-cache
-
 COPY storage storage
-RUN cd storage && uv pip install . --no-cache
-
-# ========== Install framework server dependencies ==========
-# Install sklearnserver dependencies
-COPY sklearnserver/pyproject.toml sklearnserver/uv.lock sklearnserver/
-RUN cd sklearnserver && uv sync --active --no-cache
-
 COPY sklearnserver sklearnserver
-RUN cd sklearnserver && uv sync --active --no-cache
-
-# Install xgbserver dependencies
-COPY xgbserver/pyproject.toml xgbserver/uv.lock xgbserver/
-RUN cd xgbserver && uv sync --active --no-cache
-
 COPY xgbserver xgbserver
-RUN cd xgbserver && uv sync --active --no-cache
-
-# Install lgbserver dependencies
-COPY lgbserver/pyproject.toml lgbserver/uv.lock lgbserver/
-RUN cd lgbserver && uv sync --active --no-cache
-
 COPY lgbserver lgbserver
-RUN cd lgbserver && uv sync --active --no-cache
-
-# ========== Install predictiveserver dependencies ==========
 COPY predictiveserver predictiveserver
-RUN cd predictiveserver && uv sync --active --no-cache
+
+# ========== Install everything through predictiveserver ==========
+# predictiveserver depends on all other packages, so installing it will install everything
+RUN cd predictiveserver && uv pip install --no-cache .
 
 # Generate third-party licenses
 COPY pyproject.toml pyproject.toml
@@ -69,6 +41,11 @@ RUN mkdir -p third_party/library && python3 pip-licenses.py
 # =================== Final stage ===================
 FROM ${BASE_IMAGE} AS prod
 
+# Install runtime dependencies (libgomp for lightgbm, xgboost, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 COPY third_party third_party
 
 # Activate virtual env
@@ -80,15 +57,15 @@ RUN useradd kserve -m -u 1000 -d /home/kserve
 
 COPY --from=builder --chown=kserve:kserve third_party third_party
 COPY --from=builder --chown=kserve:kserve $VIRTUAL_ENV $VIRTUAL_ENV
-COPY --from=builder kserve kserve
-COPY --from=builder storage storage
-COPY --from=builder sklearnserver sklearnserver
-COPY --from=builder xgbserver xgbserver
-COPY --from=builder lgbserver lgbserver
-COPY --from=builder predictiveserver predictiveserver
+COPY --from=builder --chown=kserve:kserve kserve kserve
+COPY --from=builder --chown=kserve:kserve storage storage
+COPY --from=builder --chown=kserve:kserve sklearnserver sklearnserver
+COPY --from=builder --chown=kserve:kserve xgbserver xgbserver
+COPY --from=builder --chown=kserve:kserve lgbserver lgbserver
+COPY --from=builder --chown=kserve:kserve predictiveserver predictiveserver
 
 USER 1000
-ENV PYTHONPATH=/predictiveserver
+ENV PYTHONPATH=/predictiveserver:/sklearnserver:/xgbserver:/lgbserver
 LABEL io.kserve.runtime="predictiveserver" \
       io.kserve.frameworks="sklearn,lightgbm,xgboost"
 ENTRYPOINT ["python", "-m", "predictiveserver"]

@@ -416,7 +416,7 @@ docker-build-predictive:
 	cd python && ${ENGINE} buildx build ${ARCH} --build-arg BASE_IMAGE=${BASE_IMG} -t ${KO_DOCKER_REPO}/${PREDICTIVE_IMG} -f predictiveserver.Dockerfile .
 
 docker-push-predictive: docker-build-predictive
-	${ENGINE} push ${KO_DOCKER_REPO}/${PREDICTIVE_IMG}
+	cd python && ${ENGINE} buildx build ${ARCH} --push --build-arg BASE_IMAGE=${BASE_IMG} -t ${KO_DOCKER_REPO}/${PREDICTIVE_IMG} -f predictiveserver.Dockerfile .
 
 docker-build-pmml:
 	cd python && ${ENGINE} buildx build ${ARCH} --build-arg BASE_IMAGE=${PMML_BASE_IMG} -t ${KO_DOCKER_REPO}/${PMML_IMG} -f pmml.Dockerfile .
