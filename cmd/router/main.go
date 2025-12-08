@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,37 +18,115 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/kserve/kserve/pkg/constants"
 	"github.com/pkg/errors"
-
+	flag "github.com/spf13/pflag"
 	"github.com/tidwall/gjson"
+	authnv1 "k8s.io/api/authentication/v1"
+	authzv1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"crypto/rand"
-	"math/big"
-
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
-	flag "github.com/spf13/pflag"
+	"github.com/kserve/kserve/pkg/constants"
 )
 
-var log = logf.Log.WithName("InferenceGraphRouter")
+// _isInMesh is an auxiliary global variable for isInIstioMesh function.
+var _isInMesh *bool
+
+// isInIstioMesh checks if the InferenceGraph pod belongs to the mesh by
+// checking the presence of the sidecar. It is known that when the sidecar
+// is present, Envoy will be using port 15000 with standard HTTP. Thus, the
+// presence of the sidecar is assumed if this port responds with an HTTP 200 status
+// when doing a "GET /" request.
+//
+// The result of the check is cached in the _isInMesh global variable. Since a
+// pod cannot be modified, a single check is enough for the whole life of the pod.
+// The check cannot be done at start-up, because there is the possibility of
+// false negatives, since there is no guarantee that the Istio sidecar has already
+// started. So, the isInIstioMesh func should be used after the first inference
+// request is received when it is guaranteed that the Istio sidecar is in ready state.
+//
+// Reference:
+// - https://istio.io/latest/docs/ops/deployment/application-requirements/#ports-used-by-istio)
+func isInIstioMesh() (bool, error) {
+	if _isInMesh != nil {
+		return *_isInMesh, nil
+	}
+
+	isInMesh := false
+	client := http.Client{
+		Timeout: time.Second * 3,
+	}
+	response, err := client.Get("http://localhost:15000")
+	if err == nil {
+		if response.StatusCode == http.StatusOK {
+			isInMesh = true
+		}
+	} else if errors.Is(err, syscall.ECONNREFUSED) {
+		// Assume no Istio sidecar. Thus, this pod is not
+		// part of the mesh.
+		err = nil
+	}
+
+	if response != nil && response.Body != nil {
+		err = response.Body.Close()
+	}
+
+	_isInMesh = &isInMesh
+	return *_isInMesh, err
+}
 
 func callService(serviceUrl string, input []byte, headers http.Header) ([]byte, int, error) {
 	defer timeTrack(time.Now(), "step", serviceUrl)
 	log.Info("Entering callService", "url", serviceUrl)
-	req, err := http.NewRequest("POST", serviceUrl, bytes.NewBuffer(input))
+
+	parsedServiceUrl, parseServiceUrlErr := url.Parse(serviceUrl)
+	if parseServiceUrlErr != nil {
+		return nil, 500, parseServiceUrlErr
+	}
+	if parsedServiceUrl.Scheme == "https" {
+		if isInMesh, isInMeshErr := isInIstioMesh(); isInMeshErr != nil {
+			return nil, 500, isInMeshErr
+		} else if isInMesh {
+			// In this branch, it has been resolved that the Inference Graph is
+			// part of the Istio mesh. In this case, even if the target service
+			// is using HTTPS, it is better to use plain-text HTTP:
+			// * If the target service is also part of the mesh, Istio will take
+			//   care of properly applying TLS policies (e.g. mutual TLS).
+			// * If the target service is _not_ part of the mesh, it still is better
+			//   to let Istio manage TLS by configuring the sidecar to do TLS
+			//   origination and prevent double TLS (see: https://istio.io/latest/docs/ops/common-problems/network-issues/#double-tls)
+			//
+			// If the Inference Graph is not part of the mesh, the indicated
+			// schema is used.
+			parsedServiceUrl.Scheme = "http"
+			serviceUrl = parsedServiceUrl.String()
+
+			log.Info("Using plain-text schema to let Istio manage TLS termination", "url", serviceUrl)
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, serviceUrl, bytes.NewBuffer(input))
 	if err != nil {
 		log.Error(err, "An error occurred while preparing request object with serviceUrl.", "serviceUrl", serviceUrl)
 		return nil, 500, err
@@ -72,8 +150,16 @@ func callService(serviceUrl string, input []byte, headers http.Header) ([]byte, 
 	if val := req.Header.Get("Content-Type"); val == "" {
 		req.Header.Add("Content-Type", "application/json")
 	}
-	resp, err := http.DefaultClient.Do(req)
 
+	var client *http.Client
+	if routerTimeouts == nil || routerTimeouts.ServiceClient == nil {
+		client = http.DefaultClient
+	} else {
+		client = &http.Client{
+			Timeout: time.Duration(*routerTimeouts.ServiceClient) * time.Second,
+		}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Error(err, "An error has occurred while calling service", "service", serviceUrl)
 		return nil, 500, err
@@ -244,11 +330,11 @@ func routeStep(nodeName string, graph v1alpha1.InferenceGraphSpec, input []byte,
 
 			if step.Condition != "" {
 				if !gjson.ValidBytes(responseBytes) {
-					return nil, 500, fmt.Errorf("invalid response")
+					return nil, 500, errors.New("invalid response")
 				}
 				// if the condition does not match for the step in the sequence we stop and return the response
 				if !gjson.GetBytes(responseBytes, step.Condition).Exists() {
-					return responseBytes, 500, nil
+					return responseBytes, 200, nil
 				}
 			}
 			if responseBytes, statusCode, err = executeStep(step, graph, request, headers); err != nil {
@@ -299,8 +385,6 @@ func prepareErrorResponse(err error, errorMessage string) []byte {
 	return errorResponseBytes
 }
 
-var inferenceGraph *v1alpha1.InferenceGraphSpec
-
 func graphHandler(w http.ResponseWriter, req *http.Request) {
 	inputBytes, _ := io.ReadAll(req.Body)
 	if response, statusCode, err := routeStep(v1alpha1.GraphRootNodeName, *inferenceGraph, inputBytes, req.Header); err != nil {
@@ -335,10 +419,207 @@ func compilePatterns(patterns []string) ([]*regexp.Regexp, error) {
 	return compiled, goerrors.Join(allErrors...)
 }
 
+func getTimeout(value, defaultValue *int64) *int64 {
+	if value != nil {
+		return value
+	}
+	return defaultValue
+}
+
+func initTimeouts(graph v1alpha1.InferenceGraphSpec) {
+	defaultServerRead := int64(constants.RouterTimeoutsServerRead)
+	defaultServerWrite := int64(constants.RouterTimeoutServerWrite)
+	defaultServerIdle := int64(constants.RouterTimeoutServerIdle)
+
+	timeouts := &v1alpha1.InfereceGraphRouterTimeouts{
+		ServerRead:    &defaultServerRead,
+		ServerWrite:   &defaultServerWrite,
+		ServerIdle:    &defaultServerIdle,
+		ServiceClient: nil,
+	}
+
+	if graph.RouterTimeouts != nil {
+		timeouts.ServerRead = getTimeout(graph.RouterTimeouts.ServerRead, &defaultServerRead)
+		timeouts.ServerWrite = getTimeout(graph.RouterTimeouts.ServerWrite, &defaultServerWrite)
+		timeouts.ServerIdle = getTimeout(graph.RouterTimeouts.ServerIdle, &defaultServerIdle)
+		timeouts.ServiceClient = getTimeout(graph.RouterTimeouts.ServiceClient, nil)
+	}
+
+	routerTimeouts = timeouts
+}
+
+// Mainly used for kubernetes readiness probe. It responds with "503 shutting down" if server is shutting down,
+// otherwise returns "200 OK".
+func readyHandler(w http.ResponseWriter, req *http.Request) {
+	if isShuttingDown {
+		http.Error(w, "shutting down", http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
 var (
-	jsonGraph              = flag.String("graph-json", "", "serialized json graph def")
+	enableTlsFlag                                       = flag.Bool("enable-tls", false, "enable TLS for the router")
+	enableAuthFlag                                      = flag.Bool("enable-auth", false, "protect the inference graph with authorization")
+	graphName                                           = flag.String("inferencegraph-name", "", "the name of the associated inference graph Kubernetes resource")
+	jsonGraph                                           = flag.String("graph-json", "", "serialized json graph def")
+	inferenceGraph         *v1alpha1.InferenceGraphSpec = nil
 	compiledHeaderPatterns []*regexp.Regexp
+	isShuttingDown                                               = false
+	drainSleepDuration                                           = 30 * time.Second
+	routerTimeouts         *v1alpha1.InfereceGraphRouterTimeouts = nil
+	log                                                          = logf.Log.WithName("InferenceGraphRouter")
+	signalChan                                                   = make(chan os.Signal, 1)
 )
+
+// findBearerToken parses the standard HTTP Authorization header to find and return
+// a Bearer token that a client may have provided in the request. If the token
+// is found, it is returned. Else, an empty string is returned and the HTTP response
+// is sent to the client with proper status code and the reason for the request being
+// rejected.
+func findBearerToken(w http.ResponseWriter, r *http.Request) string {
+	// Find for HTTP Authentication header. Reject request if not available.
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) == 0 {
+		w.Header().Set("X-Forbidden-Reason", "No credentials were provided")
+		w.WriteHeader(http.StatusUnauthorized)
+		return ""
+	}
+
+	// Parse Auth header
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == authHeader {
+		w.Header().Set("X-Forbidden-Reason", "Only Bearer tokens are supported")
+		w.WriteHeader(http.StatusUnauthorized)
+		return ""
+	}
+	return token
+}
+
+// validateTokenIsAuthenticated queries the Kubernetes cluster to find if the provided token is
+// valid and flagged as authenticated. If the token is usable, the result of the TokenReview
+// is returned. Otherwise, the HTTP response is sent rejecting the request and setting
+// a meaningful status code along with a reason (if available).
+func validateTokenIsAuthenticated(ctx context.Context, w http.ResponseWriter, token string, clientset *kubernetes.Clientset) *authnv1.TokenReview {
+	// Check the token is valid
+	tokenReview := authnv1.TokenReview{}
+	tokenReview.Spec.Token = token
+	tokenReviewResult, err := clientset.AuthenticationV1().TokenReviews().Create(ctx, &tokenReview, metav1.CreateOptions{})
+	if err != nil {
+		log.Error(err, "failed to create TokenReview when verifying credentials")
+		w.WriteHeader(http.StatusInternalServerError)
+		return nil
+	}
+	if len(tokenReviewResult.Status.Error) != 0 {
+		w.Header().Set("X-Forbidden-Reason", tokenReviewResult.Status.Error)
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil
+	}
+	if !tokenReviewResult.Status.Authenticated {
+		w.Header().Set("X-Forbidden-Reason", "The provided token is unauthenticated")
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil
+	}
+	return tokenReviewResult
+}
+
+// checkRequestIsAuthorized verifies that the user in the provided tokenReviewResult has privileges to query the
+// Kubernetes API and get the InferenceGraph resource that belongs to this pod. If so, the request is considered
+// as allowed and `true` is returned. Otherwise, the HTTP response is sent rejecting the request and setting
+// a meaningful status code along with a reason (if available).
+func checkRequestIsAuthorized(ctx context.Context, w http.ResponseWriter, _ *http.Request, tokenReviewResult *authnv1.TokenReview, clientset *kubernetes.Clientset) bool {
+	// Read pod namespace
+	const namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	namespaceBytes, err := os.ReadFile(namespaceFile)
+	if err != nil {
+		log.Error(err, "failed to read namespace file while verifying credentials")
+		w.WriteHeader(http.StatusInternalServerError)
+		return false
+	}
+	namespace := string(namespaceBytes)
+
+	// Check the subject is authorized to query the InferenceGraph
+	if len(*graphName) == 0 {
+		log.Error(errors.New("no graph name provided"), "the --inferencegraph-name flag wasn't provided")
+		w.WriteHeader(http.StatusInternalServerError)
+		return false
+	}
+	accessReview := authzv1.SubjectAccessReview{
+		Spec: authzv1.SubjectAccessReviewSpec{
+			ResourceAttributes: &authzv1.ResourceAttributes{
+				Namespace: namespace,
+				Verb:      "get",
+				Group:     "serving.kserve.io",
+				Resource:  "inferencegraphs",
+				Name:      *graphName,
+			},
+			User:   tokenReviewResult.Status.User.Username,
+			Groups: nil,
+		},
+	}
+
+	accessReviewResult, err := clientset.AuthorizationV1().SubjectAccessReviews().Create(
+		ctx,
+		&accessReview,
+		metav1.CreateOptions{})
+	if err != nil {
+		log.Error(err, "failed to create LocalSubjectAccessReview when verifying credentials")
+		w.WriteHeader(http.StatusInternalServerError)
+		return false
+	}
+	if accessReviewResult.Status.Allowed {
+		// Note: This is here so that the request is NOT allowed by default.
+		return true
+	}
+
+	w.Header().Add("X-Forbidden-Reason", "Access to the InferenceGraph is not allowed")
+	if len(accessReviewResult.Status.Reason) != 0 {
+		w.Header().Add("X-Forbidden-Reason", accessReviewResult.Status.Reason)
+	}
+	if len(accessReviewResult.Status.EvaluationError) != 0 {
+		w.Header().Add("X-Forbidden-Reason", accessReviewResult.Status.EvaluationError)
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	return false
+}
+
+// authMiddleware uses the Middleware pattern to protect the InferenceGraph behind authorization.
+// It expects that a Bearer token is provided in the request in the standard HTTP Authorization
+// header. The token is verified against Kubernetes using the TokenReview and SubjectAccessReview APIs.
+// If the token is valid and has enough privileges, the handler provided in the `next` argument is run.
+// Otherwise, `next` is not invoked and the reason for the rejection is sent in response headers.
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		k8sConfig, k8sConfigErr := rest.InClusterConfig()
+		if k8sConfigErr != nil {
+			log.Error(k8sConfigErr, "failed to create rest configuration to connect to Kubernetes API")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		clientset, clientsetErr := kubernetes.NewForConfig(k8sConfig)
+		if clientsetErr != nil {
+			log.Error(k8sConfigErr, "failed to create Kubernetes client to connect to API")
+			return
+		}
+
+		token := findBearerToken(w, r)
+		if len(token) == 0 {
+			return
+		}
+
+		tokenReviewResult := validateTokenIsAuthenticated(r.Context(), w, token, clientset)
+		if tokenReviewResult == nil {
+			return
+		}
+
+		isAuthorized := checkRequestIsAuthorized(r.Context(), w, r, tokenReviewResult, clientset)
+		if isAuthorized {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
 
 func main() {
 	flag.Parse()
@@ -352,26 +633,64 @@ func main() {
 			log.Error(err, "Failed to compile some header patterns")
 		}
 	}
+
 	inferenceGraph = &v1alpha1.InferenceGraphSpec{}
 	err := json.Unmarshal([]byte(*jsonGraph), inferenceGraph)
 	if err != nil {
 		log.Error(err, "failed to unmarshall inference graph json")
 		os.Exit(1)
 	}
+	initTimeouts(*inferenceGraph)
 
-	http.HandleFunc("/", graphHandler)
+	var entrypointHandler http.Handler
+	entrypointHandler = http.HandlerFunc(graphHandler)
+	if *enableAuthFlag {
+		entrypointHandler = authMiddleware(entrypointHandler)
+		log.Info("This Router has authorization enabled")
+	}
+
+	http.HandleFunc(constants.RouterReadinessEndpoint, readyHandler)
+	http.Handle("/", entrypointHandler)
 
 	server := &http.Server{
-		Addr:         ":8080",                        // specify the address and port
-		Handler:      http.HandlerFunc(graphHandler), // specify your HTTP handler
-		ReadTimeout:  time.Minute,                    // set the maximum duration for reading the entire request, including the body
-		WriteTimeout: time.Minute,                    // set the maximum duration before timing out writes of the response
-		IdleTimeout:  3 * time.Minute,                // set the maximum amount of time to wait for the next request when keep-alives are enabled
+		Addr:         ":" + strconv.Itoa(constants.RouterPort),
+		Handler:      nil,                                                      // default server mux
+		ReadTimeout:  time.Duration(*routerTimeouts.ServerRead) * time.Second,  // set the maximum duration for reading the entire request, including the body
+		WriteTimeout: time.Duration(*routerTimeouts.ServerWrite) * time.Second, // set the maximum duration before timing out writes of the response
+		IdleTimeout:  time.Duration(*routerTimeouts.ServerIdle) * time.Second,  // set the maximum amount of time to wait for the next request when keep-alives are enabled
 	}
-	err = server.ListenAndServe()
 
-	if err != nil {
-		log.Error(err, "failed to listen on 8080")
+	go func() {
+		if *enableTlsFlag {
+			err = server.ListenAndServeTLS("/etc/tls/private/tls.crt", "/etc/tls/private/tls.key")
+		} else {
+			err = server.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error(err, fmt.Sprintf("Failed to serve on address %v", server.Addr))
+			os.Exit(1)
+		}
+	}()
+
+	// Blocks until SIGTERM or SIGINT is received
+	handleSignals(server)
+}
+
+func handleSignals(server *http.Server) {
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+
+	sig := <-signalChan
+	log.Info("Received shutdown signal", "signal", sig)
+	// Fail the readiness probe
+	isShuttingDown = true
+	log.Info(fmt.Sprintf("Sleeping %v to allow K8s propagation of non-ready state", drainSleepDuration))
+	// Sleep to give networking a little bit more time to remove the pod
+	// from its configuration and propagate that to all loadbalancers and nodes.
+	time.Sleep(drainSleepDuration)
+	// Shut down the server gracefully
+	if err := server.Shutdown(context.Background()); err != nil {
+		log.Error(err, "Failed to shutdown the server gracefully")
 		os.Exit(1)
 	}
+	log.Info("Server gracefully shutdown")
 }

@@ -31,7 +31,10 @@ parser.add_argument(
     "--model_dir", required=True, help="A local path to the model directory"
 )
 parser.add_argument(
-    "--nthread", default=DEFAULT_NTHREAD, help="Number of threads to use by XGBoost."
+    "--nthread",
+    default=DEFAULT_NTHREAD,
+    type=int,
+    help="Number of threads to use by XGBoost.",
 )
 args, _ = parser.parse_known_args()
 
@@ -41,13 +44,16 @@ if __name__ == "__main__":
     model = XGBoostModel(args.model_name, args.model_dir, args.nthread)
     try:
         model.load()
-        kserve.ModelServer().start([model] if model.ready else [])
+        kserve.ModelServer().start([model])
     except ModelMissingError:
         logger.error(
-            f"fail to locate model file for model {args.model_name} under dir {args.model_dir},"
+            f"failed to locate model file for model {args.model_name} under dir {args.model_dir},"
             f"trying loading from model repository."
         )
-
+        # Case 1: Model will be loaded from model repository automatically, if present
+        # Case 2: In the event that the model repository is empty, it's possible that this is a scenario for
+        # multi-model serving. In such a case, models are loaded dynamically using the TrainedModel.
+        # Therefore, we start the server without any preloaded models
         kserve.ModelServer(
             registered_models=XGBoostModelRepository(args.model_dir, args.nthread)
-        ).start([model] if model.ready else [])
+        ).start([])
