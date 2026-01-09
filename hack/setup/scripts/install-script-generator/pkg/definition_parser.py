@@ -34,6 +34,8 @@ def parse_definition(definition_file: Path) -> dict[str, Any]:
         - description: Script description
         - method: Installation method (helm/kustomize)
         - embed_manifests: Whether to embed KServe manifests
+        - embed_templates: Whether to embed component template files (same as embed_manifests)
+        - release: Whether to add method suffix to filename
         - tools: List of required tools
         - global_env: Global environment variables
         - components: List of component configs
@@ -80,6 +82,7 @@ def parse_definition(definition_file: Path) -> dict[str, Any]:
         global_env = {}
 
     # Parse embed_manifests - controls whether to embed KServe manifests in script
+    # When enabled, also automatically embeds component template files
     embed_val = config.get("EMBED_MANIFESTS", False)
     embed_manifests = str(embed_val).lower() == "true" if isinstance(embed_val, str) else embed_val
 
@@ -92,6 +95,7 @@ def parse_definition(definition_file: Path) -> dict[str, Any]:
         "description": config.get("DESCRIPTION", "Install infrastructure components"),
         "method": config.get("METHOD", "helm"),
         "embed_manifests": embed_manifests,
+        "embed_templates": True,  # Always embed component templates
         "release": release,
         "tools": tools,
         "global_env": global_env,
