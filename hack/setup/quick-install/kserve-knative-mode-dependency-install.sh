@@ -443,18 +443,17 @@ set_env_with_priority() {
     local current_value
     eval "current_value=\${${var_name}}"
 
-    # If current value differs from default/component/global, it must be runtime - keep it
-    if [ -n "$current_value" ] && [ "$current_value" != "$default_value" ] &&
-       [ "$current_value" != "$component_value" ] && [ "$current_value" != "$global_value" ]; then
+    # If current value exists and differs from default, it's a runtime value - keep it
+    if [ -n "$current_value" ] && [ -n "$default_value" ] && [ "$current_value" != "$default_value" ]; then
         # This is a runtime value, keep it
         return
     fi
 
     # Apply priority: component env > global env > default
     if [ -n "$component_value" ]; then
-        export "$var_name=$component_value"
+        eval "export $var_name=\"$component_value\""
     elif [ -n "$global_value" ]; then
-        export "$var_name=$global_value"
+        eval "export $var_name=\"$global_value\""
     fi
     # If both are empty, variable keeps its default value
 }
@@ -546,8 +545,219 @@ KSERVE_CUSTOM_ISVC_CONFIGS="${KSERVE_CUSTOM_ISVC_CONFIGS:-}"
 # Component-Specific Variables
 #================================================
 
+NETWORK_LAYER="${NETWORK_LAYER:-istio}"
+TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 ADDON_RELEASE_NAME="keda-otel-scaler"
 OTEL_RELEASE_NAME="my-opentelemetry-operator"
+
+#================================================
+# Template Functions (EMBED_TEMPLATES MODE)
+#================================================
+
+# ============================================================================
+# Template Functions: knative-operator
+# ============================================================================
+
+get_knative_serving_istio() {
+    cat <<'KNATIVE_SERVING_ISTIO_EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-serving
+---
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  version: "1.15.2"
+  config:
+    deployment:
+      # Skip tag resolution for certain domains
+      registries-skipping-tag-resolving: "nvcr.io,index.docker.io"
+    domain:
+      # Patch the external domain as the default domain svc.cluster.local is not exposed on ingress (from knative 1.8)
+      example.com: ""
+  workloads:
+    - name: controller
+      resources:
+        - container: controller
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: activator
+      resources:
+        - container: activator
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: autoscaler
+      resources:
+        - container: autoscaler
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: domain-mapping
+      resources:
+        - container: domain-mapping
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: webhook
+      resources:
+        - container: webhook
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: domainmapping-webhook
+      resources:
+        - container: domainmapping-webhook
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: net-istio-controller
+      resources:
+        - container: controller
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: net-istio-webhook
+      resources:
+        - container: webhook
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+KNATIVE_SERVING_ISTIO_EOF
+}
+
+get_knative_serving_kourier() {
+    cat <<'KNATIVE_SERVING_KOURIER_EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-serving
+---
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  version: "1.15.2"
+  ingress:
+    kourier:
+      enabled: true
+  config:
+    network:
+      ingress-class: "kourier.ingress.networking.knative.dev"
+    deployment:
+      # Skip tag resolution for certain domains
+      registries-skipping-tag-resolving: "nvcr.io,index.docker.io"
+    domain:
+      # Patch the external domain as the default domain svc.cluster.local is not exposed on ingress (from knative 1.8)
+      example.com: ""
+  workloads:
+    - name: controller
+      resources:
+        - container: controller
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: activator
+      resources:
+        - container: activator
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: autoscaler
+      resources:
+        - container: autoscaler
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: domain-mapping
+      resources:
+        - container: domain-mapping
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: webhook
+      resources:
+        - container: webhook
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: domainmapping-webhook
+      resources:
+        - container: domainmapping-webhook
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: net-kourier-controller
+      resources:
+        - container: controller
+          requests:
+            cpu: 5m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    - name: 3scale-kourier-gateway
+      resources:
+        - container: kourier-gateway
+          requests:
+            cpu: 200m
+            memory: 200Mi
+          limits:
+            cpu: 300m
+            memory: 500Mi
+KNATIVE_SERVING_KOURIER_EOF
+}
+
+
 
 #================================================
 # Component Functions
@@ -861,6 +1071,114 @@ EOF
 }
 
 # ----------------------------------------
+# CLI/Component: knative-operator
+# ----------------------------------------
+
+uninstall_knative_operator() {
+    log_info "Uninstalling Knative Serving..."
+
+    if [ "$EMBED_TEMPLATES" = "true" ]; then
+        get_knative_serving_${NETWORK_LAYER} | \
+            kubectl delete -f - --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    else
+        kubectl delete -f "${TEMPLATE_DIR}/knative-serving-${NETWORK_LAYER}.yaml" --ignore-not-found=true --force --grace-period=0 2>/dev/null || true
+    fi
+
+    kubectl delete all --all -n "${SERVING_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${SERVING_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+
+    log_info "Uninstalling Knative Operator..."
+    helm uninstall knative-operator -n "${OPERATOR_NAMESPACE}" 2>/dev/null || true
+    kubectl delete all --all -n "${OPERATOR_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
+    kubectl delete namespace "${OPERATOR_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
+
+    log_success "Knative uninstalled"
+}
+
+install_knative_operator() {
+    log_info "Network layer: ${NETWORK_LAYER}"
+
+    if helm list -n "${OPERATOR_NAMESPACE}" 2>/dev/null | grep -q "knative-operator"; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "Knative Operator is already installed. Checking Knative Serving..."
+
+            if kubectl get knativeserving knative-serving -n "${SERVING_NAMESPACE}" &>/dev/null; then
+                log_info "Knative Serving is already deployed. Use --reinstall to reinstall."
+                return 0
+            fi
+        else
+            log_info "Reinstalling Knative..."
+            uninstall_knative_operator
+        fi
+    fi
+
+    log_info "Installing Knative Operator ${KNATIVE_OPERATOR_VERSION}..."
+
+    if [[ "${KNATIVE_OPERATOR_VERSION}" == v* ]]; then
+        OPERATOR_CHART_URL="https://github.com/knative/operator/releases/download/knative-${KNATIVE_OPERATOR_VERSION}/knative-operator-${KNATIVE_OPERATOR_VERSION}.tgz"
+        log_info "Using GitHub release: ${OPERATOR_CHART_URL}"
+
+        # shellcheck disable=SC2086
+        helm install knative-operator \
+            --namespace "${OPERATOR_NAMESPACE}" \
+            --create-namespace \
+            --wait \
+            ${KNATIVE_OPERATOR_EXTRA_ARGS:-} \
+            "${OPERATOR_CHART_URL}"
+    else
+        log_info "Adding Knative Operator Helm repository..."
+        helm repo add knative-operator https://knative.github.io/operator --force-update
+
+        # shellcheck disable=SC2086
+        helm install knative-operator knative-operator/knative-operator \
+            --namespace "${OPERATOR_NAMESPACE}" \
+            --create-namespace \
+            --version "${KNATIVE_OPERATOR_VERSION}" \
+            --wait \
+            ${KNATIVE_OPERATOR_EXTRA_ARGS:-}
+    fi
+
+    log_success "Successfully installed Knative Operator ${KNATIVE_OPERATOR_VERSION}"
+
+    wait_for_pods "${OPERATOR_NAMESPACE}" "name=knative-operator" "300s"
+
+    log_info "Deploying Knative Serving ${KNATIVE_SERVING_VERSION} with ${NETWORK_LAYER} network layer..."
+
+    if [ "$EMBED_TEMPLATES" = "true" ]; then
+        if [[ "${KNATIVE_SERVING_VERSION}" != "1.15.2" ]]; then
+            log_info "Customizing template with version=${KNATIVE_SERVING_VERSION}"
+            get_knative_serving_${NETWORK_LAYER} | \
+                sed -e "s/version: \".*\"/version: \"${KNATIVE_SERVING_VERSION}\"/" | \
+                kubectl apply --server-side -f -
+        else
+            get_knative_serving_${NETWORK_LAYER} | kubectl apply --server-side -f -
+        fi
+    else
+        TEMPLATE_FILE="${TEMPLATE_DIR}/knative-serving-${NETWORK_LAYER}.yaml"
+
+        if [[ ! -f "${TEMPLATE_FILE}" ]]; then
+            log_error "Template file not found: ${TEMPLATE_FILE}"
+            exit 1
+        fi
+
+        if [[ "${KNATIVE_SERVING_VERSION}" != "1.15.2" ]]; then
+            log_info "Customizing template with version=${KNATIVE_SERVING_VERSION}"
+            sed -e "s/version: \".*\"/version: \"${KNATIVE_SERVING_VERSION}\"/" \
+                "${TEMPLATE_FILE}" | kubectl apply -f -
+        else
+            kubectl apply -f "${TEMPLATE_FILE}"
+        fi
+    fi
+
+    log_success "Knative Serving CR applied"
+
+    log_info "Waiting for Knative Serving to be ready..."
+    kubectl wait --for=condition=Ready -n "${SERVING_NAMESPACE}" KnativeServing knative-serving --timeout=300s
+
+    log_success "Knative Operator and Serving are ready!"
+}
+
+# ----------------------------------------
 # CLI/Component: keda
 # ----------------------------------------
 
@@ -1001,6 +1319,7 @@ main() {
         uninstall_opentelemetry
         uninstall_keda_otel_addon
         uninstall_keda
+        uninstall_knative_operator
         uninstall_istio_ingress_class
         uninstall_istio
         uninstall_cert_manager
@@ -1017,7 +1336,7 @@ main() {
     echo "Install KServe Knative Mode dependencies only"
     echo "=========================================="
 
-
+    export EMBED_TEMPLATES="true"
 
     install_helm
     install_kustomize
@@ -1025,6 +1344,7 @@ main() {
     install_cert_manager
     install_istio
     install_istio_ingress_class
+    install_knative_operator
     install_keda
     install_keda_otel_addon
     install_opentelemetry
