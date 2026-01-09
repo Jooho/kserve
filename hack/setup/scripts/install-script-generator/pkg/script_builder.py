@@ -128,7 +128,8 @@ def build_install_calls(components: list[dict[str, Any]],
         # Determine actual install function to call
         install_func = comp["install_func"]
         if embed_manifests and comp["name"] in ("kserve", "kserve-helm", "kserve-kustomize"):
-            install_func = "install_kserve_manifest"
+            install_func = "install_kserve_kustomize"
+            comp["env"]["EMBED_MANIFESTS"] = "true"
 
         if comp["env"]:
             env_calls = []
