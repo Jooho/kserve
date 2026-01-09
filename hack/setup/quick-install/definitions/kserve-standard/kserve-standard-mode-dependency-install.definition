@@ -1,5 +1,4 @@
 DESCRIPTION: Install KServe Standard Mode/LLMIsvc dependencies
-METHOD: helm
 
 TOOLS:
   - helm

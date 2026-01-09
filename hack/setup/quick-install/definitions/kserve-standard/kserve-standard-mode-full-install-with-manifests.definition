@@ -1,5 +1,4 @@
 DESCRIPTION: Install KServe Standard Mode, LLMISvc, and all related dependencies with manifests included in the script.
-METHOD: helm
 EMBED_MANIFESTS: true
 
 
@@ -21,6 +20,6 @@ COMPONENTS:
   - name: gateway-api-gwclass
   - name: gateway-api-gw
   - name: lws-operator
-  - name: kserve
+  - name: kserve-kustomize
     env:
       DEPLOYMENT_MODE: Standard
