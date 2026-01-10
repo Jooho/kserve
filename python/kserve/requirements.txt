@@ -1,7 +1,7 @@
 #
 # Default dependencies
 #
-aiohttp==3.8.4 \
+aiohttp==3.13.3 \
     --hash=sha256:5ce45967538fb747370308d3145aa68a074bdecb4f3a300869590f725ced69c1 \
     --hash=sha256:b744c33b6f14ca26b7544e8d8aadff6b765a80ad6164fb1a430bbadd593dfb1a \
     --hash=sha256:1a45865451439eb320784918617ba54b7a377e3501fb70402ab84d38c2cd891b \
@@ -1161,7 +1161,7 @@ tritonclient==2.33.0 \
 typing-extensions==4.5.0 \
     --hash=sha256:fb33085c39dd998ac16d1431ebc293a8b3eedd00fd4a32de0ff79002c19511b4 \
     --hash=sha256:5cb5f4a79139d699607b3ef622a1dedafa84e115ab0024e0d9c044a9479ca7cb
-urllib3==1.26.15 \
+urllib3==2.6.3 \
     --hash=sha256:aa751d169e23c7479ce47a0cb0da579e3ede798f994f5816a74e4f4500dcea42 \
     --hash=sha256:8a388717b9476f934a21484e8c8e61875ab60644d29b9b39e11e4b9dc1c6b305
 uvicorn==0.16.0 \
