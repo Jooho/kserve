@@ -1,7 +1,6 @@
 DESCRIPTION: Install KServe Standard Mode, LLMISvc, and all related dependencies with manifests included in the script.
 EMBED_MANIFESTS: true
 
-
 TOOLS:
   - helm
   - kustomize

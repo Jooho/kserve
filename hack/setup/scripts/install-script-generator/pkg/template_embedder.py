@@ -16,6 +16,7 @@
 
 """Template discovery and embedding utilities for component scripts."""
 
+import re
 from pathlib import Path
 from typing import Optional
 

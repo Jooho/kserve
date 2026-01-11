@@ -225,9 +225,8 @@ def generate_script_content(
     # install script must include templates by default
     config["global_env"]["EMBED_TEMPLATES"] = "true"
     component_template_functions = build_component_template_functions(components)
-
     # Generate KServe manifest functions if EMBED_MANIFESTS mode
-    kserve_manifest_functions = ""
+    kserve_manifest_functions = ""    
     if config["embed_manifests"]:
         config["global_env"]["EMBED_MANIFESTS"] = "true"
         crd_manifest, core_manifest = manifest_builder.build_kserve_manifests(repo_root, config, components)
