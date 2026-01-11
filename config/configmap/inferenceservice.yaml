@@ -63,6 +63,7 @@ data:
         #  "autoscaling.knative.dev/max-scale",
         #  "internal.serving.kserve.io/storage-initializer-sourceuri",
         #  "kubectl.kubernetes.io/last-applied-configuration"
+        #  "modelFormat"
         # Any new value will be appended to the list.
         "serviceAnnotationDisallowedList": [
           "my.custom.annotation/1"  

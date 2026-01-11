@@ -440,6 +440,7 @@ var (
 		autoscaling.MaxScaleAnnotationKey,
 		StorageInitializerSourceUriInternalAnnotationKey,
 		"kubectl.kubernetes.io/last-applied-configuration",
+		ModelFrameworkAnnotationKey,
 	}
 
 	RevisionTemplateLabelDisallowedList = []string{
