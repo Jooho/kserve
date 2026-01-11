@@ -1,5 +1,4 @@
 DESCRIPTION: Install KServe LLM InferenceService and all related dependencies with manifests included in the script.
-METHOD: helm
 EMBED_MANIFESTS: true
 
 TOOLS:
@@ -15,6 +14,6 @@ COMPONENTS:
   - name: gateway-api-gwclass
   - name: gateway-api-gw
   - name: lws-operator
-  - name: kserve-helm
+  - name: kserve-kustomize
     env:
       LLMISVC: "true"
