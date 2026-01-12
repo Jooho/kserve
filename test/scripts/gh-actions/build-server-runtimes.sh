@@ -30,6 +30,7 @@ XGB_IMG_TAG=${DOCKER_REPO}/${XGB_IMG}:${GITHUB_SHA}
 LGB_IMG_TAG=${DOCKER_REPO}/${LGB_IMG}:${GITHUB_SHA}
 PMML_IMG_TAG=${DOCKER_REPO}/${PMML_IMG}:${GITHUB_SHA}
 PADDLE_IMG_TAG=${DOCKER_REPO}/${PADDLE_IMG}:${GITHUB_SHA}
+PREDICTIVE_IMG_TAG=${DOCKER_REPO}/${PREDICTIVE_IMG}:${GITHUB_SHA}
 CUSTOM_MODEL_GRPC_IMG_TAG=${DOCKER_REPO}/${CUSTOM_MODEL_GRPC_IMG}:${GITHUB_SHA}
 CUSTOM_TRANSFORMER_GRPC_IMG_TAG=${DOCKER_REPO}/${CUSTOM_TRANSFORMER_GRPC_IMG}:${GITHUB_SHA}
 HUGGINGFACE_CPU_IMG_TAG=${DOCKER_REPO}/${HUGGINGFACE_IMG}:${GITHUB_SHA}
@@ -80,6 +81,11 @@ pushd python >/dev/null
     docker buildx build -t "${HUGGINGFACE_CPU_IMG_TAG}" -f huggingface_server_cpu.Dockerfile \
       -o type=docker,dest="${DOCKER_IMAGES_PATH}/${HUGGINGFACE_IMG}-${GITHUB_SHA}",compression-level=0 .
     echo "Disk usage after Building Huggingface CPU image:"
+        df -hT
+    echo "Building Predictive server image"
+    docker buildx build -t "${PREDICTIVE_IMG_TAG}" -f predictiveserver.Dockerfile \
+      -o type=docker,dest="${DOCKER_IMAGES_PATH}/${PREDICTIVE_IMG}-${GITHUB_SHA}",compression-level=0 .
+    echo "Disk usage after Building Predictive server image:"
         df -hT
   fi
 
