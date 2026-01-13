@@ -3,12 +3,17 @@ kind: Kustomization
 
 namespace: kserve
 
+commonLabels:
+  app.kubernetes.io/name: kserve
+  app.kubernetes.io/component: llmisvc
+
 resources:
+  - ../crd/full/llmisvc
+  - ../certmanager/llmisvc
+  - ../rbac/llmisvc
   - service.yaml
   - manager.yaml
   - gateway-inference-extension.yaml
-  - ../certmanager/llmisvc
-  - ../rbac/llmisvc
   - ../llmisvcconfig
   - ../webhook/llmisvc
 

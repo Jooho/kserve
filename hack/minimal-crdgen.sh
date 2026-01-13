@@ -18,3 +18,11 @@ find config/crd/full/llmisvc -name 'serving.kserve.io*.yaml' | while read -r fil
   cp "$file" "$minimal"
   go run ./cmd/crd-gen removecrdvalidation "$minimal"
 done
+
+find config/crd/full/localmodel -name 'serving.kserve.io*.yaml' | while read -r file; do
+  # create minimal
+  minimal="config/crd/minimal/localmodel/$(basename "$file")"
+  echo "Creating minimal CRD file: ${minimal}"
+  cp "$file" "$minimal"
+  go run ./cmd/crd-gen removecrdvalidation "$minimal"
+done
