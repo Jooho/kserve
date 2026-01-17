@@ -26,6 +26,6 @@ source "${SCRIPT_DIR}/../../../hack/setup/common.sh"
 ${REPO_ROOT}/hack/setup/cli/install-uv.sh
 
 echo "Creating virtual environment..."
-uv venv
+uv venv --allow-existing
 source .venv/bin/activate
 

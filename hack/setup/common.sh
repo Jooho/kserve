@@ -441,6 +441,12 @@ if [[ -f "${KSERVE_DEPS_FILE}" ]]; then
     source "${KSERVE_DEPS_FILE}"
 fi
 
+# Load images configuration
+IMAGES_CONFIG_FILE="${REPO_ROOT}/kserve-images.sh"
+if [[ -f "${IMAGES_CONFIG_FILE}" ]]; then
+    source "${IMAGES_CONFIG_FILE}"
+fi
+
 # Load global variables
 GLOBAL_VARS_FILE="${REPO_ROOT}/hack/setup/global-vars.env"
 if [[ -f "${GLOBAL_VARS_FILE}" ]]; then

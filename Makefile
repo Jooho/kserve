@@ -266,7 +266,6 @@ test: fmt vet manifests envtest test-qpext
 test-qpext:
 	cd qpext && go test -v ./... -cover
 
-# Build manager binary
 manager: generate fmt vet go-lint
 	go build -o bin/manager ./cmd/manager
 
@@ -340,6 +339,9 @@ redeploy-dev-image:
 	
 	kubectl rollout restart deployment/llmisvc-controller-manager -n kserve
 	kubectl rollout status deployment/llmisvc-controller-manager -n kserve --timeout=300s
+	
+	kubectl rollout restart deployment/kserve-localmodel-controller-manager -n kserve
+	kubectl rollout status deployment/kserve-localmodel-controller-manager -n kserve --timeout=300s
 	
 	@echo "Deployments updated successfully"
 	kubectl get pods -n kserve
