@@ -90,8 +90,12 @@ py-lint: $(FLAKE8_LINT)
 validate-infra-scripts:
 	@python3 hack/setup/scripts/validate-install-scripts.py
 
-generate-quick-install-scripts: validate-infra-scripts $(PYTHON_VENV)
+test-install-script-generator: $(PYTHON_VENV)
+	@echo "Running install-script-generator tests..."
 	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/install-script-generator/requirements.txt
+	@cd hack/setup/scripts/install-script-generator && $(PYTHON_BIN)/python -m pytest tests/ -v
+
+generate-quick-install-scripts: validate-infra-scripts test-install-script-generator $(PYTHON_VENV)
 	@$(PYTHON_BIN)/python hack/setup/scripts/install-script-generator/generator.py
 
 # Generate manifests e.g. CRD, RBAC etc.

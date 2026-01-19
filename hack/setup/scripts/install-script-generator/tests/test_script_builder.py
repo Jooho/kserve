@@ -118,10 +118,10 @@ def test_build_component_functions():
 
     result = script_builder.build_component_functions(components)
 
-    assert "# Component: cert-manager" in result
+    assert "# CLI/Component: cert-manager" in result
     assert "install_cert_manager() {" in result
     assert "uninstall_cert_manager() {" in result
-    assert "# Component: istio" in result
+    assert "# CLI/Component: istio" in result
     assert "install_istio() {" in result
     assert "uninstall_istio() {" in result
 
@@ -135,8 +135,8 @@ def test_build_definition_global_env():
 
     result = script_builder.build_definition_global_env(global_env)
 
-    assert 'export KSERVE_NAMESPACE="${KSERVE_NAMESPACE:-kserve}"' in result
-    assert 'export CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.13.0}"' in result
+    assert 'export KSERVE_NAMESPACE="kserve"' in result
+    assert 'export CERT_MANAGER_VERSION="v1.13.0"' in result
 
 
 def test_build_definition_global_env_empty():
@@ -145,31 +145,40 @@ def test_build_definition_global_env_empty():
     assert result == ""
 
 
-def test_build_tool_install_calls(tmp_path):
-    """Test building tool installation calls."""
-    # Create repo structure
-    repo_root = tmp_path
-    cli_dir = repo_root / "hack/setup/cli"
-    cli_dir.mkdir(parents=True)
+def test_build_install_calls_embed_manifests():
+    """Test building install calls with EMBED_MANIFESTS mode."""
+    components = [
+        {
+            "name": "kserve-helm",
+            "install_func": "install_kserve_helm",
+            "env": {},
+            "variables": [],
+            "include_section": []
+        }
+    ]
+    global_env = {}
 
-    # Create tool scripts
-    (cli_dir / "install-kubectl.sh").write_text("#!/bin/bash\n")
-    (cli_dir / "install-helm.sh").write_text("#!/bin/bash\n")
+    result = script_builder.build_install_calls(components, global_env, embed_manifests=True)
 
-    tools = ["kubectl", "helm", "nonexistent"]
-
-    result = script_builder.build_tool_install_calls(tools, repo_root)
-
-    assert "install-kubectl.sh" in result
-    assert "install-helm.sh" in result
-    assert "log_warning" in result
-    assert "Tool installation script not found: install-nonexistent.sh" in result
+    # Should use install_kserve_kustomize instead of install_kserve_helm
+    assert "install_kserve_kustomize" in result
+    assert "install_kserve_helm" not in result
 
 
-def test_build_tool_install_calls_empty():
-    """Test building tool install calls with empty list."""
-    result = script_builder.build_tool_install_calls([], Path("/tmp"))
-    assert result == ""
+def test_build_uninstall_calls_embed_manifests():
+    """Test building uninstall calls with EMBED_MANIFESTS mode."""
+    components = [
+        {
+            "name": "kserve-helm",
+            "uninstall_func": "uninstall_kserve_helm"
+        }
+    ]
+
+    result = script_builder.build_uninstall_calls(components, embed_manifests=True)
+
+    # Should use uninstall_kserve_manifest instead
+    assert "uninstall_kserve_manifest" in result
+    assert "uninstall_kserve_helm" not in result
 
 
 def test_build_install_calls_basic():
