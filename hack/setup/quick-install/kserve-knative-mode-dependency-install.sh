@@ -539,6 +539,7 @@ DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 GATEWAY_NETWORK_LAYER="${GATEWAY_NETWORK_LAYER:-false}"
 LLMISVC="${LLMISVC:-false}"
 EMBED_MANIFESTS="${EMBED_MANIFESTS:-false}"
+EMBED_TEMPLATES="${EMBED_TEMPLATES:-false}"
 KSERVE_CUSTOM_ISVC_CONFIGS="${KSERVE_CUSTOM_ISVC_CONFIGS:-}"
 
 #================================================
@@ -547,8 +548,6 @@ KSERVE_CUSTOM_ISVC_CONFIGS="${KSERVE_CUSTOM_ISVC_CONFIGS:-}"
 
 NETWORK_LAYER="${NETWORK_LAYER:-istio}"
 TEMPLATE_DIR="${SCRIPT_DIR}/templates"
-ADDON_RELEASE_NAME="keda-otel-scaler"
-OTEL_RELEASE_NAME="my-opentelemetry-operator"
 
 #================================================
 # Template Functions (EMBED_TEMPLATES MODE)
@@ -1178,133 +1177,6 @@ install_knative_operator() {
     log_success "Knative Operator and Serving are ready!"
 }
 
-# ----------------------------------------
-# CLI/Component: keda
-# ----------------------------------------
-
-uninstall_keda() {
-    log_info "Uninstalling KEDA..."
-
-    helm uninstall keda-otel-scaler -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    helm uninstall keda -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    kubectl delete all --all -n "${KEDA_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
-    kubectl delete namespace "${KEDA_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
-
-    log_success "KEDA uninstalled"
-}
-
-install_keda() {
-    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "keda"; then
-        if [ "$REINSTALL" = false ]; then
-            log_info "KEDA is already installed. Use --reinstall to reinstall."
-            return 0
-        else
-            log_info "Reinstalling KEDA..."
-            uninstall_keda
-        fi
-    fi
-
-    log_info "Adding KEDA Helm repository..."
-    helm repo add kedacore https://kedacore.github.io/charts --force-update
-
-    log_info "Installing KEDA ${KEDA_VERSION}..."
-    helm install keda kedacore/keda \
-        --namespace "${KEDA_NAMESPACE}" \
-        --create-namespace \
-        --version "${KEDA_VERSION}" \
-        --wait \
-        ${KEDA_EXTRA_ARGS:-}
-
-    log_success "Successfully installed KEDA ${KEDA_VERSION} via Helm"
-
-    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/name=keda-operator" "300s"
-
-    log_success "KEDA is ready!"
-}
-
-# ----------------------------------------
-# CLI/Component: keda-otel-addon
-# ----------------------------------------
-
-uninstall_keda_otel_addon() {
-    log_info "Uninstalling KEDA OTel add-on..."
-    helm uninstall "${ADDON_RELEASE_NAME}" -n "${KEDA_NAMESPACE}" 2>/dev/null || true
-    log_success "KEDA OTel add-on uninstalled"
-}
-
-install_keda_otel_addon() {
-    if ! kubectl get namespace "${KEDA_NAMESPACE}" &>/dev/null; then
-        log_error "KEDA namespace '${KEDA_NAMESPACE}' does not exist. Please install KEDA first."
-        exit 1
-    fi
-
-    if helm list -n "${KEDA_NAMESPACE}" 2>/dev/null | grep -q "${ADDON_RELEASE_NAME}"; then
-        if [ "$REINSTALL" = false ]; then
-            log_info "KEDA OTel add-on is already installed. Use --reinstall to reinstall."
-            return 0
-        else
-            log_info "Reinstalling KEDA OTel add-on..."
-            uninstall_keda_otel_addon
-        fi
-    fi
-
-    log_info "Installing KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} from kedify/otel-add-on..."
-    helm upgrade -i "${ADDON_RELEASE_NAME}" \
-        oci://ghcr.io/kedify/charts/otel-add-on \
-        --namespace "${KEDA_NAMESPACE}" \
-        --version="${KEDA_OTEL_ADDON_VERSION}" \
-        --wait \
-        ${KEDA_OTEL_ADDON_EXTRA_ARGS:-}
-
-    log_success "Successfully installed KEDA OTel add-on ${KEDA_OTEL_ADDON_VERSION} via Helm"
-
-    wait_for_pods "${KEDA_NAMESPACE}" "app.kubernetes.io/instance=${ADDON_RELEASE_NAME}" "300s"
-
-    log_success "KEDA OTel add-on is ready!"
-}
-
-# ----------------------------------------
-# CLI/Component: opentelemetry
-# ----------------------------------------
-
-uninstall_opentelemetry() {
-    log_info "Uninstalling OpenTelemetry Operator..."
-    helm uninstall "${OTEL_RELEASE_NAME}" -n "${OTEL_NAMESPACE}" 2>/dev/null || true
-    kubectl delete all --all -n "${OTEL_NAMESPACE}" --force --grace-period=0 2>/dev/null || true
-    kubectl delete namespace "${OTEL_NAMESPACE}" --wait=true --timeout=60s --force --grace-period=0 2>/dev/null || true
-    log_success "OpenTelemetry Operator uninstalled"
-}
-
-install_opentelemetry() {
-    if helm list -n "${OTEL_NAMESPACE}" 2>/dev/null | grep -q "${OTEL_RELEASE_NAME}"; then
-        if [ "$REINSTALL" = false ]; then
-            log_info "OpenTelemetry Operator is already installed. Use --reinstall to reinstall."
-            return 0
-        else
-            log_info "Reinstalling OpenTelemetry Operator..."
-            uninstall_opentelemetry
-        fi
-    fi
-
-    log_info "Adding OpenTelemetry Helm repository..."
-    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
-
-    log_info "Installing OpenTelemetry Operator ${OPENTELEMETRY_OPERATOR_VERSION}..."
-    helm install "${OTEL_RELEASE_NAME}" open-telemetry/opentelemetry-operator \
-        --namespace "${OTEL_NAMESPACE}" \
-        --create-namespace \
-        --version "${OPENTELEMETRY_OPERATOR_VERSION}" \
-        --wait \
-        --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
-        ${OTEL_OPERATOR_EXTRA_ARGS:-}
-
-    log_success "Successfully installed OpenTelemetry Operator via Helm"
-
-    wait_for_pods "${OTEL_NAMESPACE}" "app.kubernetes.io/name=opentelemetry-operator" "300s"
-
-    log_success "OpenTelemetry Operator is ready!"
-}
-
 
 
 #================================================
@@ -1316,9 +1188,6 @@ main() {
         echo "=========================================="
         echo "Uninstalling components..."
         echo "=========================================="
-        uninstall_opentelemetry
-        uninstall_keda_otel_addon
-        uninstall_keda
         uninstall_knative_operator
         uninstall_istio_ingress_class
         uninstall_istio
@@ -1345,9 +1214,6 @@ main() {
     install_istio
     install_istio_ingress_class
     install_knative_operator
-    install_keda
-    install_keda_otel_addon
-    install_opentelemetry
 
     echo "=========================================="
     echo "✅ Installation completed successfully!"
