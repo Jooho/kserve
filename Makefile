@@ -78,6 +78,23 @@ generate-quick-install-scripts: validate-infra-scripts $(PYTHON_VENV)
 	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/install-script-generator/requirements.txt
 	@$(PYTHON_BIN)/python hack/setup/scripts/install-script-generator/generator.py
 
+generate-helm-charts: $(PYTHON_VENV)
+	@echo "Generating Helm charts from Kustomize manifests..."
+	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/helm-converter/requirements.txt
+	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
+		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-kserve.yaml \
+		--output charts_test/kserve-resources \
+		--force
+	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
+		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-llmisvc.yaml \
+		--output charts_test/kserve-llmisvc-resources \
+		--force
+	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
+		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-kserve-runtime-configs.yaml \
+		--output charts_test/kserve-runtime-configs \
+		--force
+	@echo "✓ Helm charts generated successfully"
+
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen yq
 	@$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=./pkg/apis/serving/... output:crd:dir=config/crd/full	
@@ -243,7 +260,7 @@ ensure-golangci-go-version: yq
 
 
 # This runs all necessary steps to prepare for a commit.
-precommit: ensure-go-version-upgrade sync-deps sync-img-env vet tidy go-lint py-fmt py-lint generate manifests uv-lock generate-quick-install-scripts
+precommit: ensure-go-version-upgrade sync-deps sync-img-env vet tidy go-lint py-fmt py-lint generate manifests uv-lock generate-quick-install-scripts generate-helm-charts
 
 # This is used by CI to ensure that the precommit checks are met.
 check: precommit

@@ -1,0 +1,144 @@
+# Helm Mapping Configuration for LLMISVC Chart
+# Chart Name: llmisvc
+# Description: Large Language Model Inference Service with optional localmodel support
+# Source of truth: kustomize manifests in config/
+
+# =============================================================================
+# EXTENDS
+# =============================================================================
+# Include common/shared configurations from helm-mapping-common.yaml
+# This file provides: common, localmodel
+extends: helm-mapping-common.yaml
+
+# =============================================================================
+# CHART METADATA
+# =============================================================================
+metadata:
+  name: llmisvc
+  description: "Large Language Model Inference Service for KServe"
+  version: "0.1.0"
+  appVersion: "latest"
+
+# =============================================================================
+# LLMISVC COMPONENT (main component for this chart)
+# =============================================================================
+llmisvc:
+  enabled:
+    valuePath: llmisvc.enabled
+    defaultValue: true
+    description: "Enable LLMISVC (Large Language Model Inference Service) controller"
+
+  manifestPath: config/components/llmisvc
+
+  # LLMISVC Controller Manager Deployment
+  controllerManager:
+    kind: Deployment
+    name: llmisvc-controller-manager
+    namespace: kserve
+    manifestPath: config/llmisvc/manager.yaml
+
+    image:
+      repository:
+        path: spec.template.spec.containers[0].image
+        valuePath: llmisvc.controllerManager.image.repository
+        defaultValue: "kserve/llmisvc-controller"
+      tag:
+        valuePath: llmisvc.controllerManager.image.tag
+        defaultValue: "latest"
+      pullPolicy:
+        path: spec.template.spec.containers[0].imagePullPolicy
+        valuePath: llmisvc.controllerManager.image.pullPolicy
+        defaultValue: "Always"
+
+    resources:
+      path: spec.template.spec.containers[0].resources
+      valuePath: llmisvc.controllerManager.resources
+      defaultValue:
+        limits:
+          cpu: 100m
+          memory: 300Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+
+# =============================================================================
+# CRDs (Custom Resource Definitions)
+# =============================================================================
+crds:
+  install:
+    valuePath: crds.install
+    defaultValue: true
+    description: "Install CRDs as part of this chart"
+
+  # Full CRDs for LLMISVC
+  full:
+    enabledPath: crds.full.enabled
+    defaultEnabled: true
+    manifestPath: config/crd/full/llmisvc/kustomization.yaml
+    description: "Full CRDs with all features for LLMISVC"
+
+# =============================================================================
+# CONVERSION RULES
+# =============================================================================
+conversionRules:
+  # Helm conditional wrapping patterns
+  conditionalBlocks:
+    - componentPath: common.enabled
+      wrapPattern: "{{- if .Values.common.enabled }}"
+      applyTo:
+        - config/base
+        - config/configmap
+      note: "Common resources can be disabled if kserve chart is already installed"
+
+    - componentPath: llmisvc.enabled
+      wrapPattern: "{{- if .Values.llmisvc.enabled }}"
+      applyTo:
+        - config/components/llmisvc
+        - config/llmisvc
+
+    - componentPath: localmodel.enabled
+      wrapPattern: "{{- if .Values.localmodel.enabled }}"
+      applyTo:
+        - config/components/localmodel
+        - config/localmodels
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  LLMISVC Chart Mapping Configuration
+
+  This chart includes:
+  1. Common/base resources (controlled by common.enabled) - CAN BE DISABLED if kserve chart installed
+  2. LLMISVC controller (always installed)
+  3. Optional localmodel controller (controlled by localmodel.enabled) - SAME as in kserve chart
+  4. CRDs for LLMISVC (controlled by crds.install)
+
+  Installation Scenarios:
+
+  Scenario 1: Install LLMISVC with common resources (standalone)
+    common.enabled: true
+    llmisvc.enabled: true
+
+  Scenario 2: Install LLMISVC alongside existing KServe chart
+    common.enabled: false  # Skip common resources (already installed by kserve chart)
+    llmisvc.enabled: true
+
+  Scenario 3: Install both with localmodel
+    # In kserve chart:
+    common.enabled: true
+    kserve.enabled: true
+    localmodel.enabled: true
+
+    # In llmisvc chart:
+    common.enabled: false
+    llmisvc.enabled: true
+    localmodel.enabled: false  # Already installed by kserve chart
+
+  Structure mirrors kustomize components:
+  - config/base -> common resources (shared with kserve)
+  - config/components/llmisvc -> llmisvc controller
+  - config/components/localmodel -> localmodel controller (shared with kserve)
+
+  Note: ClusterServingRuntimes and LLMInferenceServiceConfigs are now provided
+  in a separate kserve-runtime-configs chart for better modularity.

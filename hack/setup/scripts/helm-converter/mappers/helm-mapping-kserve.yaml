@@ -1,0 +1,123 @@
+# Helm Mapping Configuration for KServe Chart
+# Chart Name: kserve
+# Description: KServe core inference service with optional localmodel support
+# Source of truth: kustomize manifests in config/
+
+# =============================================================================
+# EXTENDS
+# =============================================================================
+# Include common/shared configurations from helm-mapping-common.yaml
+# This file provides: common, localmodel
+extends: helm-mapping-common.yaml
+
+# =============================================================================
+# CHART METADATA
+# =============================================================================
+metadata:
+  name: kserve
+  description: "KServe - Standard Model Inference Platform on Kubernetes"
+  version: "0.1.0"
+  appVersion: "latest"
+
+# =============================================================================
+# KSERVE COMPONENT (main component for this chart)
+# =============================================================================
+kserve:
+  enabled:
+    valuePath: kserve.enabled
+    defaultValue: true
+    description: "Enable KServe core inference service controller"
+
+  manifestPath: config/components/kserve
+
+  # KServe Controller Manager Deployment
+  controllerManager:
+    kind: Deployment
+    name: kserve-controller-manager
+    namespace: kserve
+    manifestPath: config/manager/manager.yaml
+
+    image:
+      repository:
+        path: spec.template.spec.containers[0].image
+        valuePath: kserve.controllerManager.image.repository
+        defaultValue: "kserve/kserve-controller"
+      tag:
+        valuePath: kserve.controllerManager.image.tag
+        defaultValue: "latest"
+      pullPolicy:
+        path: spec.template.spec.containers[0].imagePullPolicy
+        valuePath: kserve.controllerManager.image.pullPolicy
+        defaultValue: "Always"
+
+    resources:
+      path: spec.template.spec.containers[0].resources
+      valuePath: kserve.controllerManager.resources
+      defaultValue:
+        limits:
+          cpu: 100m
+          memory: 300Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
+
+# =============================================================================
+# CRDs (Custom Resource Definitions)
+# =============================================================================
+crds:
+  install:
+    valuePath: crds.install
+    defaultValue: true
+    description: "Install CRDs as part of this chart"
+
+  # Full CRDs (includes all features)
+  full:
+    enabledPath: crds.full.enabled
+    defaultEnabled: true
+    manifestPath: config/crd/full/kustomization.yaml
+    description: "Full CRDs with all features for KServe"
+
+# =============================================================================
+# CONVERSION RULES
+# =============================================================================
+conversionRules:
+  # Helm conditional wrapping patterns
+  conditionalBlocks:
+    - componentPath: common.enabled
+      wrapPattern: "{{- if .Values.common.enabled }}"
+      applyTo:
+        - config/base
+        - config/configmap
+
+    - componentPath: kserve.enabled
+      wrapPattern: "{{- if .Values.kserve.enabled }}"
+      applyTo:
+        - config/components/kserve
+        - config/manager
+        - config/default
+
+    - componentPath: localmodel.enabled
+      wrapPattern: "{{- if .Values.localmodel.enabled }}"
+      applyTo:
+        - config/components/localmodel
+        - config/localmodels
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  KServe Chart Mapping Configuration
+
+  This chart includes:
+  1. Common/base resources (controlled by common.enabled)
+  2. KServe core controller (always installed)
+  3. Optional localmodel controller (controlled by localmodel.enabled)
+  4. CRDs (controlled by crds.install)
+
+  Structure mirrors kustomize components:
+  - config/base -> common resources
+  - config/components/kserve -> kserve controller
+  - config/components/localmodel -> localmodel controller
+
+  Note: ClusterServingRuntimes are now provided in a separate
+  kserve-runtime-configs chart for better modularity.

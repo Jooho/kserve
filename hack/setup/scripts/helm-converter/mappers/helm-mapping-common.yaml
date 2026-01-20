@@ -1,0 +1,282 @@
+# Helm Mapping Configuration - Common/Shared Components
+# This file contains shared configurations used by both kserve and llmisvc charts
+#
+# This file is included via the 'extends' mechanism in:
+#   - helm-mapping-kserve.yaml
+#   - helm-mapping-llmisvc.yaml
+
+# =============================================================================
+# CERT-MANAGER RESOURCES
+# Optional cert-manager Issuer for certificate management
+# Set certManager.enabled=false if you already have a cert-manager Issuer
+# or if you're using a different certificate management solution
+# =============================================================================
+certManager:
+  enabled:
+    valuePath: certManager.enabled
+    defaultValue: true
+    description: "Enable cert-manager self-signed Issuer creation"
+
+  issuer:
+    kind: Issuer
+    name: selfsigned-issuer
+    manifestPath: config/certmanager/issuer.yaml
+
+# =============================================================================
+# INFERENCESERVICE CONFIG
+# Core ConfigMap containing all KServe configuration settings
+# This is required for KServe to function properly
+# =============================================================================
+inferenceServiceConfig:
+  enabled:
+    valuePath: inferenceServiceConfig.enabled
+    defaultValue: true
+    description: "Enable inferenceservice-config ConfigMap installation"
+
+  configMap:
+    kind: ConfigMap
+    name: inferenceservice-config
+    namespace: kserve
+    manifestPath: config/configmap/inferenceservice.yaml
+
+    # All data fields exposed as values
+    dataFields:
+      # Explainers Configuration
+      - key: explainers
+        valuePath: inferenceServiceConfig.explainers
+        defaultValue: |
+          {
+              "art": {
+                  "image" : "kserve/art-explainer",
+                  "defaultImageVersion": "latest"
+              }
+          }
+
+      # Storage Initializer Configuration
+      - key: storageInitializer
+        valuePath: inferenceServiceConfig.storageInitializer
+        defaultValue: |
+          {
+              "image" : "kserve/storage-initializer:latest",
+              "memoryRequest": "100Mi",
+              "memoryLimit": "1Gi",
+              "cpuRequest": "100m",
+              "cpuLimit": "1",
+              "caBundleConfigMapName": "",
+              "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+              "enableModelcar": true,
+              "cpuModelcar": "10m",
+              "memoryModelcar": "15Mi",
+              "uidModelcar": 1010
+          }
+
+      # Credentials Configuration
+      - key: credentials
+        valuePath: inferenceServiceConfig.credentials
+        defaultValue: |
+          {
+             "storageSpecSecretName": "storage-config",
+             "storageSecretNameAnnotation": "serving.kserve.io/storageSecretName",
+             "gcs": {
+                 "gcsCredentialFileName": "gcloud-application-credentials.json"
+             },
+             "s3": {
+                 "s3AccessKeyIDName": "AWS_ACCESS_KEY_ID",
+                 "s3SecretAccessKeyName": "AWS_SECRET_ACCESS_KEY",
+                 "s3Endpoint": "",
+                 "s3UseHttps": "",
+                 "s3Region": "",
+                 "s3VerifySSL": "",
+                 "s3UseVirtualBucket": "",
+                 "s3UseAccelerate": "",
+                 "s3UseAnonymousCredential": "",
+                 "s3CABundleConfigMap": "",
+                 "s3CABundle": ""
+             }
+          }
+
+      # Ingress Configuration
+      - key: ingress
+        valuePath: inferenceServiceConfig.ingress
+        defaultValue: |
+          {
+              "enableGatewayApi": false,
+              "kserveIngressGateway": "kserve/kserve-ingress-gateway",
+              "ingressGateway" : "knative-serving/knative-ingress-gateway",
+              "localGateway" : "knative-serving/knative-local-gateway",
+              "localGatewayService" : "knative-local-gateway.istio-system.svc.cluster.local",
+              "ingressDomain"  : "example.com",
+              "ingressClassName" : "istio",
+              "domainTemplate": "{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}",
+              "urlScheme": "http",
+              "disableIstioVirtualHost": false,
+              "disableIngressCreation": false
+          }
+
+      # Logger Configuration
+      - key: logger
+        valuePath: inferenceServiceConfig.logger
+        defaultValue: |
+          {
+              "image" : "kserve/agent:latest",
+              "memoryRequest": "100Mi",
+              "memoryLimit": "1Gi",
+              "cpuRequest": "100m",
+              "cpuLimit": "1",
+              "defaultUrl": "http://default-broker"
+          }
+
+      # Batcher Configuration
+      - key: batcher
+        valuePath: inferenceServiceConfig.batcher
+        defaultValue: |
+          {
+              "image" : "kserve/agent:latest",
+              "memoryRequest": "1Gi",
+              "memoryLimit": "1Gi",
+              "cpuRequest": "1",
+              "cpuLimit": "1",
+              "maxBatchSize": "32",
+              "maxLatency": "5000"
+          }
+
+      # Agent Configuration
+      - key: agent
+        valuePath: inferenceServiceConfig.agent
+        defaultValue: |
+          {
+              "image" : "kserve/agent:latest",
+              "memoryRequest": "100Mi",
+              "memoryLimit": "1Gi",
+              "cpuRequest": "100m",
+              "cpuLimit": "1"
+          }
+
+      # Router Configuration
+      - key: router
+        valuePath: inferenceServiceConfig.router
+        defaultValue: |
+          {
+              "image" : "kserve/router:latest",
+              "memoryRequest": "100Mi",
+              "memoryLimit": "1Gi",
+              "cpuRequest": "100m",
+              "cpuLimit": "1",
+              "imagePullPolicy": "IfNotPresent"
+          }
+
+      # Deploy Configuration
+      - key: deploy
+        valuePath: inferenceServiceConfig.deploy
+        defaultValue: |
+          {
+            "defaultDeploymentMode": "Serverless"
+          }
+
+      # Metrics Aggregator Configuration
+      - key: metricsAggregator
+        valuePath: inferenceServiceConfig.metricsAggregator
+        defaultValue: |
+          {
+            "enableMetricAggregation": "false",
+            "enablePrometheusScraping" : "false"
+          }
+
+      # LocalModel Configuration
+      - key: localModel
+        valuePath: inferenceServiceConfig.localModel
+        defaultValue: |
+          {
+            "enabled": false,
+            "jobNamespace": "kserve-localmodel-jobs",
+            "defaultJobImage" : "kserve/storage-initializer:latest",
+            "fsGroup": 1000
+          }
+
+      # Security Configuration
+      - key: security
+        valuePath: inferenceServiceConfig.security
+        defaultValue: |
+          {
+            "autoMountServiceAccountToken": true
+          }
+
+      # InferenceService Configuration
+      - key: inferenceService
+        valuePath: inferenceServiceConfig.inferenceService
+        defaultValue: |
+          {
+            "resource": {
+                "cpuLimit": "1",
+                "memoryLimit": "2Gi",
+                "cpuRequest": "1",
+                "memoryRequest": "2Gi"
+              }
+          }
+
+      # OpenTelemetry Collector Configuration
+      - key: opentelemetryCollector
+        valuePath: inferenceServiceConfig.opentelemetryCollector
+        defaultValue: |
+          {
+            "scrapeInterval": "5s",
+            "metricReceiverEndpoint": "keda-otel-scaler.keda.svc:4317",
+            "metricScalerEndpoint": "keda-otel-scaler.keda.svc:4318",
+            "resource": {
+                "cpuLimit": "1",
+                "memoryLimit": "2Gi",
+                "cpuRequest": "200m",
+                "memoryRequest": "512Mi"
+            }
+          }
+
+      # Autoscaler Configuration
+      - key: autoscaler
+        valuePath: inferenceServiceConfig.autoscaler
+        defaultValue: |
+          {
+            "scaleUpStabilizationWindowSeconds": "0",
+            "scaleDownStabilizationWindowSeconds": "300"
+          }
+
+# =============================================================================
+# LOCALMODEL COMPONENT (optional - shared between kserve and llmisvc charts)
+# =============================================================================
+localmodel:
+  enabled:
+    valuePath: localmodel.enabled
+    defaultValue: false
+    description: "Enable local model storage and caching controller"
+
+  manifestPath: config/components/localmodel
+
+  # LocalModel Controller Manager Deployment
+  controllerManager:
+    kind: Deployment
+    name: kserve-localmodel-controller-manager
+    namespace: kserve
+    manifestPath: config/localmodels/manager.yaml
+
+    image:
+      repository:
+        path: spec.template.spec.containers[0].image
+        valuePath: localmodel.controllerManager.image.repository
+        defaultValue: "kserve/localmodel-controller"
+      tag:
+        valuePath: localmodel.controllerManager.image.tag
+        defaultValue: "latest"
+      pullPolicy:
+        path: spec.template.spec.containers[0].imagePullPolicy
+        valuePath: localmodel.controllerManager.image.pullPolicy
+        defaultValue: "Always"
+
+    resources:
+      path: spec.template.spec.containers[0].resources
+      valuePath: localmodel.controllerManager.resources
+      defaultValue:
+        limits:
+          cpu: 100m
+          memory: 300Mi
+        requests:
+          cpu: 100m
+          memory: 200Mi
