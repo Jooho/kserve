@@ -5,7 +5,7 @@ kind: CustomResourceDefinition
 metadata:
   name: llminferenceserviceconfigs.serving.kserve.io
   annotations:
-    cert-manager.io/inject-ca-from: kserve/llmisvc-serving-cert
+    cert-manager.io/inject-ca-from: kserve/kserve-llmisvc-serving-cert
 spec:
   conversion:
     strategy: Webhook

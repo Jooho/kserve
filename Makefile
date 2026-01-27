@@ -78,27 +78,49 @@ generate-quick-install-scripts: validate-infra-scripts $(PYTHON_VENV)
 	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/install-script-generator/requirements.txt
 	@$(PYTHON_BIN)/python hack/setup/scripts/install-script-generator/generator.py
 
-generate-helm-charts: $(PYTHON_VENV)
-	@echo "Generating Helm charts from Kustomize manifests..."
+.PHONY: convert-helm-charts
+convert-helm-charts: $(PYTHON_VENV)
+	@echo "Converting Kustomize manifests to Helm charts..."
 	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/helm-converter/requirements.txt
 	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
 		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-kserve.yaml \
-		--output charts_test/kserve-resources \
+		--output charts/kserve-resources \
 		--force
 	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
 		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-llmisvc.yaml \
-		--output charts_test/kserve-llmisvc-resources \
+		--output charts/kserve-llmisvc-resources \
+		--force
+	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
+		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-localmodel.yaml \
+		--output charts/kserve-localmodel-resources \
 		--force
 	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/convert.py \
 		--mapping hack/setup/scripts/helm-converter/mappers/helm-mapping-kserve-runtime-configs.yaml \
-		--output charts_test/kserve-runtime-configs \
+		--output charts/kserve-runtime-configs \
 		--force
-	@echo "✓ Helm charts generated successfully"
+	@echo "✓ Helm charts converted successfully"
+
+.PHONY: verify-helm-charts
+verify-helm-charts: $(PYTHON_VENV)
+	@echo "Verifying Helm charts against Kustomize manifests..."
+	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/helm-converter/requirements.txt
+	@$(PYTHON_BIN)/python hack/setup/scripts/helm-converter/compare_manifests.py
+
+.PHONY: test-helm-converter
+test-helm-converter: $(PYTHON_VENV)
+	@echo "Running helm-converter unit tests..."
+	@$(PYTHON_BIN)/pip install -q -r hack/setup/scripts/helm-converter/requirements.txt
+	@cd hack/setup/scripts/helm-converter && $(PYTHON_BIN)/python -m pytest -v
+
+.PHONY: generate-helm-charts
+generate-helm-charts: test-helm-converter convert-helm-charts verify-helm-charts
+	@echo "✓ Helm charts generated and verified successfully"
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen yq
-	@$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=./pkg/apis/serving/... output:crd:dir=config/crd/full	
+	@$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=./pkg/apis/serving/... output:crd:dir=config/crd/full
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-manager-role paths={./pkg/controller/v1alpha1/inferencegraph,./pkg/controller/v1alpha1/trainedmodel,./pkg/controller/v1beta1/...} output:rbac:artifacts:config=config/rbac
+	@$(CONTROLLER_GEN) rbac:roleName=kserve-llmisvc-manager-role paths=./pkg/controller/v1alpha2/llmisvc output:rbac:artifacts:config=config/rbac/llmisvc
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-localmodel-manager-role paths=./pkg/controller/v1alpha1/localmodel output:rbac:artifacts:config=config/rbac/localmodel
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-localmodelnode-agent-role paths=./pkg/controller/v1alpha1/localmodelnode output:rbac:artifacts:config=config/rbac/localmodelnode
 	
@@ -110,18 +132,6 @@ manifests: controller-gen yq
 	mv config/crd/full/serving.kserve.io_localmodelcaches.yaml config/crd/full/localmodel/serving.kserve.io_localmodelcaches.yaml
 	mv config/crd/full/serving.kserve.io_localmodelnodegroups.yaml config/crd/full/localmodel/serving.kserve.io_localmodelnodegroups.yaml
 	mv config/crd/full/serving.kserve.io_localmodelnodes.yaml config/crd/full/localmodel/serving.kserve.io_localmodelnodes.yaml
-	
-	# Copy the cluster role to the helm chart
-	cp config/rbac/auth_proxy_role.yaml charts/kserve-resources/templates/clusterrole.yaml
-	cat config/rbac/role.yaml >> charts/kserve-resources/templates/clusterrole.yaml
-	# Copy the local model role with Helm chart while keeping the Helm template condition
-	echo '{{- if .Values.kserve.localmodel.enabled }}' > charts/kserve-resources/templates/localmodel/role.yaml
-	cat config/rbac/localmodel/role.yaml >> charts/kserve-resources/templates/localmodel/role.yaml
-	echo '{{- end }}' >> charts/kserve-resources/templates/localmodel/role.yaml
-	# Copy the local model node role with Helm chart while keeping the Helm template condition
-	echo '{{- if .Values.kserve.localmodel.enabled }}'> charts/kserve-resources/templates/localmodelnode/role.yaml
-	cat config/rbac/localmodelnode/role.yaml >> charts/kserve-resources/templates/localmodelnode/role.yaml
-	echo '{{- end }}' >> charts/kserve-resources/templates/localmodelnode/role.yaml
 
 	@$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths=./pkg/apis/serving/v1alpha1
 	@$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths=./pkg/apis/serving/v1alpha2
@@ -195,27 +205,24 @@ manifests: controller-gen yq
 	kubectl kustomize config/crd/full/localmodel >> test/crds/serving.kserve.io_all_crds.yaml
 	# Generate llmisvc rbac
 	@$(CONTROLLER_GEN) rbac:roleName=llmisvc-manager-role paths={./pkg/controller/v1alpha2/llmisvc} output:rbac:artifacts:config=config/rbac/llmisvc
-	# Copy the cluster role to the helm chart
-	cat config/rbac/llmisvc/role.yaml > charts/kserve-llmisvc-resources/templates/clusterrole.yaml
-	cat config/rbac/llmisvc/leader_election_role.yaml > charts/kserve-llmisvc-resources/templates/leader_election_role.yaml
-	
+	# Note: RBAC files are processed by helm-converter, no manual copy needed
+
 	# Copy the minimal crd to the helm chart
 	cp config/crd/minimal/*.yaml charts/kserve-crd-minimal/templates/
 	cp config/crd/minimal/llmisvc/*.yaml charts/kserve-llmisvc-crd-minimal/templates/
-	cp -f config/crd/minimal/localmodel/*.yaml charts/kserve-crd-minimal/templates/
-	cp -f config/crd/minimal/localmodel/*.yaml charts/kserve-llmisvc-crd-minimal/templates/
+	cp config/crd/minimal/localmodel/*.yaml charts/kserve-localmodel-crd-minimal/templates/
 	rm charts/kserve-crd-minimal/templates/kustomization.yaml
 	rm charts/kserve-llmisvc-crd-minimal/templates/kustomization.yaml
+	rm charts/kserve-localmodel-crd-minimal/templates/kustomization.yaml
 
 	# Copy the full crd to the helm chart
 	cp config/crd/full/*.yaml charts/kserve-crd/templates/
 	# Copy llmisvc crd (with conversion webhook patches applied via kustomize)
 	kubectl kustomize config/crd/full/llmisvc | $(YQ) 'select(.metadata.name == "llminferenceservices.serving.kserve.io")' > charts/kserve-llmisvc-crd/templates/serving.kserve.io_llminferenceservices.yaml
 	kubectl kustomize config/crd/full/llmisvc | $(YQ) 'select(.metadata.name == "llminferenceserviceconfigs.serving.kserve.io")' > charts/kserve-llmisvc-crd/templates/serving.kserve.io_llminferenceserviceconfigs.yaml
-	cp -f config/crd/full/localmodel/*.yaml charts/kserve-crd/templates/
-	cp -f config/crd/full/localmodel/*.yaml charts/kserve-llmisvc-crd/templates/
+	cp config/crd/full/localmodel/*.yaml charts/kserve-localmodel-crd/templates/
 	rm charts/kserve-crd/templates/kustomization.yaml
-	rm charts/kserve-llmisvc-crd/templates/kustomization.yaml
+	rm charts/kserve-localmodel-crd/templates/kustomization.yaml
     # Copy Test inferenceconfig configmap to test overlay
 	cp config/configmap/inferenceservice.yaml config/overlays/test/configmap/inferenceservice.yaml
 

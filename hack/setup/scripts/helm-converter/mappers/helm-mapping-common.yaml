@@ -14,7 +14,6 @@
 certManager:
   enabled:
     valuePath: certManager.enabled
-    defaultValue: true
     description: "Enable cert-manager self-signed Issuer creation"
 
   issuer:
@@ -30,7 +29,6 @@ certManager:
 inferenceServiceConfig:
   enabled:
     valuePath: inferenceServiceConfig.enabled
-    defaultValue: true
     description: "Enable inferenceservice-config ConfigMap installation"
 
   configMap:
@@ -39,244 +37,266 @@ inferenceServiceConfig:
     namespace: kserve
     manifestPath: config/configmap/inferenceservice.yaml
 
-    # All data fields exposed as values
+    # All data fields use path to extract values from ConfigMap manifest
+    # Image fields use useVersionAnchor for centralized version management
     dataFields:
       # Explainers Configuration
-      - key: explainers
-        valuePath: inferenceServiceConfig.explainers
-        defaultValue: |
-          {
-              "art": {
-                  "image" : "kserve/art-explainer",
-                  "defaultImageVersion": "latest"
-              }
-          }
+      # Note: explainers uses "defaultImageVersion" instead of splitting image:tag
+      # Explainers always use "latest" (regex doesn't match quoted "latest" in JSON)
+      explainers:
+        art:
+          image:
+            path: data.explainers.art.image
+            valuePath: inferenceServiceConfig.explainers.art.image
+          tag:
+            path: data.explainers.art.defaultImageVersion
+            valuePath: inferenceServiceConfig.explainers.art.tag
 
       # Storage Initializer Configuration
-      - key: storageInitializer
-        valuePath: inferenceServiceConfig.storageInitializer
-        defaultValue: |
-          {
-              "image" : "kserve/storage-initializer:latest",
-              "memoryRequest": "100Mi",
-              "memoryLimit": "1Gi",
-              "cpuRequest": "100m",
-              "cpuLimit": "1",
-              "caBundleConfigMapName": "",
-              "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-              "enableModelcar": true,
-              "cpuModelcar": "10m",
-              "memoryModelcar": "15Mi",
-              "uidModelcar": 1010
-          }
-
-      # Credentials Configuration
-      - key: credentials
-        valuePath: inferenceServiceConfig.credentials
-        defaultValue: |
-          {
-             "storageSpecSecretName": "storage-config",
-             "storageSecretNameAnnotation": "serving.kserve.io/storageSecretName",
-             "gcs": {
-                 "gcsCredentialFileName": "gcloud-application-credentials.json"
-             },
-             "s3": {
-                 "s3AccessKeyIDName": "AWS_ACCESS_KEY_ID",
-                 "s3SecretAccessKeyName": "AWS_SECRET_ACCESS_KEY",
-                 "s3Endpoint": "",
-                 "s3UseHttps": "",
-                 "s3Region": "",
-                 "s3VerifySSL": "",
-                 "s3UseVirtualBucket": "",
-                 "s3UseAccelerate": "",
-                 "s3UseAnonymousCredential": "",
-                 "s3CABundleConfigMap": "",
-                 "s3CABundle": ""
-             }
-          }
-
-      # Ingress Configuration
-      - key: ingress
-        valuePath: inferenceServiceConfig.ingress
-        defaultValue: |
-          {
-              "enableGatewayApi": false,
-              "kserveIngressGateway": "kserve/kserve-ingress-gateway",
-              "ingressGateway" : "knative-serving/knative-ingress-gateway",
-              "localGateway" : "knative-serving/knative-local-gateway",
-              "localGatewayService" : "knative-local-gateway.istio-system.svc.cluster.local",
-              "ingressDomain"  : "example.com",
-              "ingressClassName" : "istio",
-              "domainTemplate": "{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}",
-              "urlScheme": "http",
-              "disableIstioVirtualHost": false,
-              "disableIngressCreation": false
-          }
-
-      # Logger Configuration
-      - key: logger
-        valuePath: inferenceServiceConfig.logger
-        defaultValue: |
-          {
-              "image" : "kserve/agent:latest",
-              "memoryRequest": "100Mi",
-              "memoryLimit": "1Gi",
-              "cpuRequest": "100m",
-              "cpuLimit": "1",
-              "defaultUrl": "http://default-broker"
-          }
-
-      # Batcher Configuration
-      - key: batcher
-        valuePath: inferenceServiceConfig.batcher
-        defaultValue: |
-          {
-              "image" : "kserve/agent:latest",
-              "memoryRequest": "1Gi",
-              "memoryLimit": "1Gi",
-              "cpuRequest": "1",
-              "cpuLimit": "1",
-              "maxBatchSize": "32",
-              "maxLatency": "5000"
-          }
+      storageInitializer:
+        image:
+          path: data.storageInitializer.image+(:,0)
+          valuePath: inferenceServiceConfig.storageInitializer.image
+        tag:
+          path: data.storageInitializer.image+(:,1)
+          valuePath: inferenceServiceConfig.storageInitializer.tag
+          useVersionAnchor: true
+        memoryRequest:
+          path: data.storageInitializer.memoryRequest
+          valuePath: inferenceServiceConfig.storageInitializer.memoryRequest
+        memoryLimit:
+          path: data.storageInitializer.memoryLimit
+          valuePath: inferenceServiceConfig.storageInitializer.memoryLimit
+        cpuRequest:
+          path: data.storageInitializer.cpuRequest
+          valuePath: inferenceServiceConfig.storageInitializer.cpuRequest
+        cpuLimit:
+          path: data.storageInitializer.cpuLimit
+          valuePath: inferenceServiceConfig.storageInitializer.cpuLimit
+        caBundleConfigMapName:
+          path: data.storageInitializer.caBundleConfigMapName
+          valuePath: inferenceServiceConfig.storageInitializer.caBundleConfigMapName
+        caBundleVolumeMountPath:
+          path: data.storageInitializer.caBundleVolumeMountPath
+          valuePath: inferenceServiceConfig.storageInitializer.caBundleVolumeMountPath
+        enableModelcar:
+          path: data.storageInitializer.enableModelcar
+          valuePath: inferenceServiceConfig.storageInitializer.enableModelcar
+          type: boolean
+        cpuModelcar:
+          path: data.storageInitializer.cpuModelcar
+          valuePath: inferenceServiceConfig.storageInitializer.cpuModelcar
+        memoryModelcar:
+          path: data.storageInitializer.memoryModelcar
+          valuePath: inferenceServiceConfig.storageInitializer.memoryModelcar
+        uidModelcar:
+          path: data.storageInitializer.uidModelcar
+          valuePath: inferenceServiceConfig.storageInitializer.uidModelcar
+          type: number
 
       # Agent Configuration
-      - key: agent
-        valuePath: inferenceServiceConfig.agent
-        defaultValue: |
-          {
-              "image" : "kserve/agent:latest",
-              "memoryRequest": "100Mi",
-              "memoryLimit": "1Gi",
-              "cpuRequest": "100m",
-              "cpuLimit": "1"
-          }
+      agent:
+        image:
+          path: data.agent.image+(:,0)
+          valuePath: inferenceServiceConfig.agent.image
+        tag:
+          path: data.agent.image+(:,1)
+          valuePath: inferenceServiceConfig.agent.tag
+          useVersionAnchor: true
+        memoryRequest:
+          path: data.agent.memoryRequest
+          valuePath: inferenceServiceConfig.agent.memoryRequest
+        memoryLimit:
+          path: data.agent.memoryLimit
+          valuePath: inferenceServiceConfig.agent.memoryLimit
+        cpuRequest:
+          path: data.agent.cpuRequest
+          valuePath: inferenceServiceConfig.agent.cpuRequest
+        cpuLimit:
+          path: data.agent.cpuLimit
+          valuePath: inferenceServiceConfig.agent.cpuLimit
+
+      # Logger Configuration
+      logger:
+        image:
+          path: data.logger.image+(:,0)
+          valuePath: inferenceServiceConfig.logger.image
+        tag:
+          path: data.logger.image+(:,1)
+          valuePath: inferenceServiceConfig.logger.tag
+          useVersionAnchor: true
+        memoryRequest:
+          path: data.logger.memoryRequest
+          valuePath: inferenceServiceConfig.logger.memoryRequest
+        memoryLimit:
+          path: data.logger.memoryLimit
+          valuePath: inferenceServiceConfig.logger.memoryLimit
+        cpuRequest:
+          path: data.logger.cpuRequest
+          valuePath: inferenceServiceConfig.logger.cpuRequest
+        cpuLimit:
+          path: data.logger.cpuLimit
+          valuePath: inferenceServiceConfig.logger.cpuLimit
+        defaultUrl:
+          path: data.logger.defaultUrl
+          valuePath: inferenceServiceConfig.logger.defaultUrl
+
+      # Batcher Configuration
+      batcher:
+        image:
+          path: data.batcher.image+(:,0)
+          valuePath: inferenceServiceConfig.batcher.image
+        tag:
+          path: data.batcher.image+(:,1)
+          valuePath: inferenceServiceConfig.batcher.tag
+          useVersionAnchor: true
+        memoryRequest:
+          path: data.batcher.memoryRequest
+          valuePath: inferenceServiceConfig.batcher.memoryRequest
+        memoryLimit:
+          path: data.batcher.memoryLimit
+          valuePath: inferenceServiceConfig.batcher.memoryLimit
+        cpuRequest:
+          path: data.batcher.cpuRequest
+          valuePath: inferenceServiceConfig.batcher.cpuRequest
+        cpuLimit:
+          path: data.batcher.cpuLimit
+          valuePath: inferenceServiceConfig.batcher.cpuLimit
+        maxBatchSize:
+          path: data.batcher.maxBatchSize
+          valuePath: inferenceServiceConfig.batcher.maxBatchSize
+        maxLatency:
+          path: data.batcher.maxLatency
+          valuePath: inferenceServiceConfig.batcher.maxLatency
 
       # Router Configuration
-      - key: router
-        valuePath: inferenceServiceConfig.router
-        defaultValue: |
-          {
-              "image" : "kserve/router:latest",
-              "memoryRequest": "100Mi",
-              "memoryLimit": "1Gi",
-              "cpuRequest": "100m",
-              "cpuLimit": "1",
-              "imagePullPolicy": "IfNotPresent"
-          }
+      router:
+        image:
+          path: data.router.image+(:,0)
+          valuePath: inferenceServiceConfig.router.image
+        tag:
+          path: data.router.image+(:,1)
+          valuePath: inferenceServiceConfig.router.tag
+          useVersionAnchor: true
+        memoryRequest:
+          path: data.router.memoryRequest
+          valuePath: inferenceServiceConfig.router.memoryRequest
+        memoryLimit:
+          path: data.router.memoryLimit
+          valuePath: inferenceServiceConfig.router.memoryLimit
+        cpuRequest:
+          path: data.router.cpuRequest
+          valuePath: inferenceServiceConfig.router.cpuRequest
+        cpuLimit:
+          path: data.router.cpuLimit
+          valuePath: inferenceServiceConfig.router.cpuLimit
+        imagePullPolicy:
+          path: data.router.imagePullPolicy
+          valuePath: inferenceServiceConfig.router.imagePullPolicy
+        imagePullSecrets:
+          path: data.router.imagePullSecrets
+          valuePath: inferenceServiceConfig.router.imagePullSecrets
+          type: array
+
+      # Credentials Configuration (keep as JSON for complex nested structure)
+      credentials:
+        path: data.credentials
+        valuePath: inferenceServiceConfig.credentials
+
+      # Ingress Configuration (keep as JSON for complex nested structure)
+      ingress:
+        path: data.ingress
+        valuePath: inferenceServiceConfig.ingress
 
       # Deploy Configuration
-      - key: deploy
-        valuePath: inferenceServiceConfig.deploy
-        defaultValue: |
-          {
-            "defaultDeploymentMode": "Serverless"
-          }
+      deploy:
+        defaultDeploymentMode:
+          path: data.deploy.defaultDeploymentMode
+          valuePath: inferenceServiceConfig.deploy.defaultDeploymentMode
 
       # Metrics Aggregator Configuration
-      - key: metricsAggregator
-        valuePath: inferenceServiceConfig.metricsAggregator
-        defaultValue: |
-          {
-            "enableMetricAggregation": "false",
-            "enablePrometheusScraping" : "false"
-          }
+      metricsAggregator:
+        enableMetricAggregation:
+          path: data.metricsAggregator.enableMetricAggregation
+          valuePath: inferenceServiceConfig.metricsAggregator.enableMetricAggregation
+        enablePrometheusScraping:
+          path: data.metricsAggregator.enablePrometheusScraping
+          valuePath: inferenceServiceConfig.metricsAggregator.enablePrometheusScraping
 
       # LocalModel Configuration
-      - key: localModel
-        valuePath: inferenceServiceConfig.localModel
-        defaultValue: |
-          {
-            "enabled": false,
-            "jobNamespace": "kserve-localmodel-jobs",
-            "defaultJobImage" : "kserve/storage-initializer:latest",
-            "fsGroup": 1000
-          }
+      localModel:
+        enabled:
+          path: data.localModel.enabled
+          valuePath: inferenceServiceConfig.localModel.enabled
+          type: boolean
+        jobNamespace:
+          path: data.localModel.jobNamespace
+          valuePath: inferenceServiceConfig.localModel.jobNamespace
+        defaultJobImage:
+          path: data.localModel.defaultJobImage+(:,0)
+          valuePath: inferenceServiceConfig.localModel.defaultJobImage
+        defaultJobImageTag:
+          path: data.localModel.defaultJobImage+(:,1)
+          valuePath: inferenceServiceConfig.localModel.defaultJobImageTag
+          useVersionAnchor: true
+        fsGroup:
+          path: data.localModel.fsGroup
+          valuePath: inferenceServiceConfig.localModel.fsGroup
+          type: number
+        jobTTLSecondsAfterFinished:
+          path: data.localModel.jobTTLSecondsAfterFinished
+          valuePath: inferenceServiceConfig.localModel.jobTTLSecondsAfterFinished
+          type: number
+        reconcilationFrequencyInSecs:
+          path: data.localModel.reconcilationFrequencyInSecs
+          valuePath: inferenceServiceConfig.localModel.reconcilationFrequencyInSecs
+          type: number
+        disableVolumeManagement:
+          path: data.localModel.disableVolumeManagement
+          valuePath: inferenceServiceConfig.localModel.disableVolumeManagement
+          type: boolean
 
       # Security Configuration
-      - key: security
-        valuePath: inferenceServiceConfig.security
-        defaultValue: |
-          {
-            "autoMountServiceAccountToken": true
-          }
+      security:
+        autoMountServiceAccountToken:
+          path: data.security.autoMountServiceAccountToken
+          valuePath: inferenceServiceConfig.security.autoMountServiceAccountToken
+          type: boolean
 
-      # InferenceService Configuration
-      - key: inferenceService
+      # Service Configuration
+      service:
+        serviceClusterIPNone:
+          path: data.service.serviceClusterIPNone
+          valuePath: inferenceServiceConfig.service.serviceClusterIPNone
+          type: boolean
+
+      # InferenceService Configuration (keep as JSON for nested resource structure)
+      inferenceService:
+        path: data.inferenceService
         valuePath: inferenceServiceConfig.inferenceService
-        defaultValue: |
-          {
-            "resource": {
-                "cpuLimit": "1",
-                "memoryLimit": "2Gi",
-                "cpuRequest": "1",
-                "memoryRequest": "2Gi"
-              }
-          }
 
-      # OpenTelemetry Collector Configuration
-      - key: opentelemetryCollector
+      # OpenTelemetry Collector Configuration (keep as JSON for nested resource structure)
+      opentelemetryCollector:
+        path: data.opentelemetryCollector
         valuePath: inferenceServiceConfig.opentelemetryCollector
-        defaultValue: |
-          {
-            "scrapeInterval": "5s",
-            "metricReceiverEndpoint": "keda-otel-scaler.keda.svc:4317",
-            "metricScalerEndpoint": "keda-otel-scaler.keda.svc:4318",
-            "resource": {
-                "cpuLimit": "1",
-                "memoryLimit": "2Gi",
-                "cpuRequest": "200m",
-                "memoryRequest": "512Mi"
-            }
-          }
 
       # Autoscaler Configuration
-      - key: autoscaler
-        valuePath: inferenceServiceConfig.autoscaler
-        defaultValue: |
-          {
-            "scaleUpStabilizationWindowSeconds": "0",
-            "scaleDownStabilizationWindowSeconds": "300"
-          }
+      autoscaler:
+        scaleUpStabilizationWindowSeconds:
+          path: data.autoscaler.scaleUpStabilizationWindowSeconds
+          valuePath: inferenceServiceConfig.autoscaler.scaleUpStabilizationWindowSeconds
+        scaleDownStabilizationWindowSeconds:
+          path: data.autoscaler.scaleDownStabilizationWindowSeconds
+          valuePath: inferenceServiceConfig.autoscaler.scaleDownStabilizationWindowSeconds
 
 # =============================================================================
-# LOCALMODEL COMPONENT (optional - shared between kserve and llmisvc charts)
+# NOTE: LOCALMODEL has been moved to a separate chart
 # =============================================================================
-localmodel:
-  enabled:
-    valuePath: localmodel.enabled
-    defaultValue: false
-    description: "Enable local model storage and caching controller"
-
-  manifestPath: config/components/localmodel
-
-  # LocalModel Controller Manager Deployment
-  controllerManager:
-    kind: Deployment
-    name: kserve-localmodel-controller-manager
-    namespace: kserve
-    manifestPath: config/localmodels/manager.yaml
-
-    image:
-      repository:
-        path: spec.template.spec.containers[0].image
-        valuePath: localmodel.controllerManager.image.repository
-        defaultValue: "kserve/localmodel-controller"
-      tag:
-        valuePath: localmodel.controllerManager.image.tag
-        defaultValue: "latest"
-      pullPolicy:
-        path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: localmodel.controllerManager.image.pullPolicy
-        defaultValue: "Always"
-
-    resources:
-      path: spec.template.spec.containers[0].resources
-      valuePath: localmodel.controllerManager.resources
-      defaultValue:
-        limits:
-          cpu: 100m
-          memory: 300Mi
-        requests:
-          cpu: 100m
-          memory: 200Mi
+# LocalModel is now available as a standalone chart: kserve-localmodel-resources
+# See: hack/setup/scripts/helm-converter/mappers/helm-mapping-localmodel.yaml
+#
+# To use LocalModel:
+# 1. Install CRDs: helm install kserve-localmodel-crd charts/kserve-localmodel-crd
+# 2. Install controller: helm install kserve-localmodel charts/kserve-localmodel-resources
+#
+# Or add as a dependency in kserve-resources/Chart.yaml for backward compatibility

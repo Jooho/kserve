@@ -541,7 +541,7 @@ data:
     # Example
     deploy: |-
       {
-        "defaultDeploymentMode": "Serverless",
+        "defaultDeploymentMode": "Knative",
         "deploymentRolloutStrategy": {
           "defaultRollout": {
             "maxSurge": "1",
@@ -670,7 +670,7 @@ data:
     }
 
   ingress: |-
-    {   
+    {
         "enableGatewayApi": false,
         "kserveIngressGateway": "kserve/kserve-ingress-gateway",
         "ingressGateway" : "knative-serving/knative-ingress-gateway",
@@ -681,7 +681,10 @@ data:
         "domainTemplate": "{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}",
         "urlScheme": "http",
         "disableIstioVirtualHost": false,
-        "disableIngressCreation": false
+        "disableIngressCreation": false,
+        "additionalIngressDomains": [],
+        "knativeLocalGatewayService": "",
+        "pathTemplate": ""
     }
 
   logger: |-
@@ -721,12 +724,13 @@ data:
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
         "cpuLimit": "1",
-        "imagePullPolicy": "IfNotPresent"
+        "imagePullPolicy": "IfNotPresent",
+        "imagePullSecrets": []
     }
 
   deploy: |-
     {
-      "defaultDeploymentMode": "Serverless"
+      "defaultDeploymentMode": "Knative"
     }
 
   metricsAggregator: |-
@@ -740,12 +744,20 @@ data:
       "enabled": false,
       "jobNamespace": "kserve-localmodel-jobs",
       "defaultJobImage" : "kserve/storage-initializer:latest",
-      "fsGroup": 1000
+      "fsGroup": 1000,
+      "jobTTLSecondsAfterFinished": 3600,
+      "reconcilationFrequencyInSecs": 60,
+      "disableVolumeManagement": false
     }
 
   security: |-
     {
       "autoMountServiceAccountToken": true
+    }
+
+  service: |-
+    {
+      "serviceClusterIPNone": false
     }
 
   inferenceService: |-

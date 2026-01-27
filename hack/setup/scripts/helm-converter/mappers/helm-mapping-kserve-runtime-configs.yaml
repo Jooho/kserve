@@ -29,21 +29,16 @@ clusterServingRuntimes:
       enabledPath: runtimes.sklearn.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.sklearn.image.repository
-        tagPath: runtimes.sklearn.image.tag
-        defaultRepository: "kserve/sklearnserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.sklearn.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.sklearn.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.sklearn.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # XGBoost Runtime
     - name: kserve-xgbserver
@@ -52,21 +47,16 @@ clusterServingRuntimes:
       enabledPath: runtimes.xgboost.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.xgboost.image.repository
-        tagPath: runtimes.xgboost.image.tag
-        defaultRepository: "kserve/xgbserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.xgboost.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.xgboost.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.xgboost.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # TensorFlow Serving Runtime
     - name: kserve-tensorflow-serving
@@ -75,21 +65,15 @@ clusterServingRuntimes:
       enabledPath: runtimes.tensorflow.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.tensorflow.image.repository
-        tagPath: runtimes.tensorflow.image.tag
-        defaultRepository: "tensorflow/serving"
-        defaultTag: "2.6.2"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.tensorflow.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.tensorflow.image.tag
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.tensorflow.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # Triton Server Runtime
     - name: kserve-tritonserver
@@ -98,21 +82,15 @@ clusterServingRuntimes:
       enabledPath: runtimes.triton.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.triton.image.repository
-        tagPath: runtimes.triton.image.tag
-        defaultRepository: "nvcr.io/nvidia/tritonserver"
-        defaultTag: "23.05-py3"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.triton.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.triton.image.tag
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.triton.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # MLServer Runtime
     - name: kserve-mlserver
@@ -121,21 +99,15 @@ clusterServingRuntimes:
       enabledPath: runtimes.mlserver.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.mlserver.image.repository
-        tagPath: runtimes.mlserver.image.tag
-        defaultRepository: "docker.io/seldonio/mlserver"
-        defaultTag: "1.5.0"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.mlserver.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.mlserver.image.tag
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.mlserver.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # PMML Server Runtime
     - name: kserve-pmmlserver
@@ -144,21 +116,16 @@ clusterServingRuntimes:
       enabledPath: runtimes.pmml.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.pmml.image.repository
-        tagPath: runtimes.pmml.image.tag
-        defaultRepository: "kserve/pmmlserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.pmml.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.pmml.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.pmml.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # LightGBM Server Runtime
     - name: kserve-lgbserver
@@ -167,21 +134,16 @@ clusterServingRuntimes:
       enabledPath: runtimes.lightgbm.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.lightgbm.image.repository
-        tagPath: runtimes.lightgbm.image.tag
-        defaultRepository: "kserve/lgbserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.lightgbm.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.lightgbm.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.lightgbm.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # Paddle Server Runtime
     - name: kserve-paddleserver
@@ -190,21 +152,16 @@ clusterServingRuntimes:
       enabledPath: runtimes.paddle.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.paddle.image.repository
-        tagPath: runtimes.paddle.image.tag
-        defaultRepository: "kserve/paddleserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.paddle.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.paddle.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.paddle.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # TorchServe Runtime
     - name: kserve-torchserve
@@ -213,21 +170,15 @@ clusterServingRuntimes:
       enabledPath: runtimes.torchserve.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.torchserve.image.repository
-        tagPath: runtimes.torchserve.image.tag
-        defaultRepository: "pytorch/torchserve-kfs"
-        defaultTag: "0.9.0"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.torchserve.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.torchserve.image.tag
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.torchserve.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # HuggingFace Server Runtime
     - name: kserve-huggingfaceserver
@@ -236,44 +187,34 @@ clusterServingRuntimes:
       enabledPath: runtimes.huggingface.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.huggingface.image.repository
-        tagPath: runtimes.huggingface.image.tag
-        defaultRepository: "kserve/huggingfaceserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.huggingface.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.huggingface.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.huggingface.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # HuggingFace Server Multinode Runtime
+    # Note: Uses latest-gpu tag instead of version anchor to preserve -gpu suffix
     - name: kserve-huggingfaceserver-multinode
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-huggingfaceserver-multinode.yaml
       enabledPath: runtimes.huggingfaceMultinode.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.huggingfaceMultinode.image.repository
-        tagPath: runtimes.huggingfaceMultinode.image.tag
-        defaultRepository: "kserve/huggingfaceserver"
-        defaultTag: "latest-gpu"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.huggingfaceMultinode.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.huggingfaceMultinode.image.tag
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.huggingfaceMultinode.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
     # Predictive Server Runtime
     - name: kserve-predictiveserver
@@ -282,44 +223,19 @@ clusterServingRuntimes:
       enabledPath: runtimes.predictive.enabled
       defaultEnabled: true
       image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.predictive.image.repository
-        tagPath: runtimes.predictive.image.tag
-        defaultRepository: "kserve/predictiveserver"
-        defaultTag: "latest"
+        repository:
+          path: spec.containers[0].image+(:,0)
+          valuePath: runtimes.predictive.image.repository
+        tag:
+          path: spec.containers[0].image+(:,1)
+          valuePath: runtimes.predictive.image.tag
+          useVersionAnchor: true
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.predictive.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
 
-    # OpenVINO Runtime
-    - name: kserve-openvino
-      kind: ClusterServingRuntime
-      manifestPath: config/runtimes/kserve-openvino.yaml
-      enabledPath: runtimes.openvino.enabled
-      defaultEnabled: true
-      image:
-        path: spec.containers[0].image
-        repositoryPath: runtimes.openvino.image.repository
-        tagPath: runtimes.openvino.image.tag
-        defaultRepository: "openvino/model_server"
-        defaultTag: "latest"
-      resources:
-        path: spec.containers[0].resources
-        valuePath: runtimes.openvino.resources
-        defaultValue:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "1"
-            memory: 2Gi
+    # Note: OpenVINO runtime exists in config/runtimes/kserve-openvino.yaml
+    # but is not included in config/runtimes/kustomization.yaml, so we don't include it here
 
 # =============================================================================
 # LLM INFERENCE SERVICE CONFIGS
@@ -331,28 +247,8 @@ llmisvcConfigs:
     defaultValue: false
     description: "Enable installation of LLMInferenceServiceConfigs"
 
-  manifestPath: config/components/llmisvc
-
-# =============================================================================
-# CONVERSION RULES
-# =============================================================================
-conversionRules:
-  # Helm conditional wrapping patterns
-  conditionalBlocks:
-    - componentPath: runtimes.enabled
-      wrapPattern: "{{- if .Values.runtimes.enabled }}"
-      applyTo:
-        - config/runtimes
-
-    - componentPath: llmisvcConfigs.enabled
-      wrapPattern: "{{- if .Values.llmisvcConfigs.enabled }}"
-      applyTo:
-        - config/components/llmisvc
-
-  # Individual runtime conditional wrapping
-  runtimeConditionals:
-    enabled: true
-    pattern: "{{- if .Values.runtimes.<runtime>.enabled }}"
+  manifestPath: config/llmisvcconfig
+  copyAsIs: true  # These resources contain Go templates and must be copied as-is
 
 # =============================================================================
 # NOTES

@@ -114,6 +114,7 @@ class ManifestReader:
             'components': {},
             'deployments': {},
             'runtimes': [],
+            'llmisvcConfigs': [],
             'crds': {}
         }
 
@@ -127,13 +128,6 @@ class ManifestReader:
             component_config = mapping[chart_name]
             manifests['components'][chart_name] = self._read_component(component_config)
 
-        # Read llmisvcConfigs component if exists (even if not main chart)
-        if 'llmisvcConfigs' in mapping and chart_name != 'llmisvc':
-            manifests['components']['llmisvc'] = self._read_component(mapping['llmisvcConfigs'])
-        # Also support old 'llmisvc' key for backward compatibility
-        elif 'llmisvc' in mapping and chart_name != 'llmisvc':
-            manifests['components']['llmisvc'] = self._read_component(mapping['llmisvc'])
-
         # Read localmodel component if exists
         if 'localmodel' in mapping:
             manifests['components']['localmodel'] = self._read_component(mapping['localmodel'])
@@ -143,6 +137,10 @@ class ManifestReader:
             manifests['runtimes'] = self._read_runtimes(mapping['clusterServingRuntimes'])
         elif 'runtimes' in mapping:
             manifests['runtimes'] = self._read_runtimes(mapping['runtimes'])
+
+        # Read llmisvcConfigs (similar to runtimes, not a component)
+        if 'llmisvcConfigs' in mapping:
+            manifests['llmisvcConfigs'] = self._read_llmisvc_configs(mapping['llmisvcConfigs'])
 
         # Read CRDs
         if 'crds' in mapping:
@@ -177,7 +175,8 @@ class ManifestReader:
         """Read a component's manifests using kustomize build"""
         component_data = {
             'config': component_config,
-            'manifests': {}
+            'manifests': {},
+            'copyAsIs': component_config.get('copyAsIs', False)  # Flag for resources with Go templates
         }
 
         # Read component using kustomize build if manifestPath is specified
@@ -187,30 +186,107 @@ class ManifestReader:
                 # Use kustomize build to get all resources
                 component_data['manifests']['resources'] = self._read_kustomize_build(component_path)
 
-        # Also read controller manager deployment separately for templating
-        if 'controllerManager' in component_config:
+        # Extract controller manager deployment from kustomize build results (with patches applied)
+        if 'controllerManager' in component_config and 'resources' in component_data['manifests']:
             cm_config = component_config['controllerManager']
-            manifest_path = self.repo_root / cm_config['manifestPath']
-            if manifest_path.exists():
-                component_data['manifests']['controllerManager'] = self._read_yaml_file(manifest_path)
+            cm_name = cm_config.get('name', 'controller-manager')
+            cm_namespace = cm_config.get('namespace')
+
+            # Find deployment in kustomize build results (resources is a dict with kind/name keys)
+            for resource_key, resource in component_data['manifests']['resources'].items():
+                if (resource.get('kind') == 'Deployment' and
+                    resource.get('metadata', {}).get('name') == cm_name and
+                    (not cm_namespace or resource.get('metadata', {}).get('namespace') == cm_namespace)):
+                    component_data['manifests']['controllerManager'] = resource
+                    break
+
+        # Extract nodeAgent (DaemonSet) manifest if configured
+        if 'nodeAgent' in component_config and 'resources' in component_data['manifests']:
+            na_config = component_config['nodeAgent']
+            na_name = na_config.get('name')
+            na_namespace = na_config.get('namespace')
+
+            # Find daemonset in kustomize build results
+            for resource_key, resource in component_data['manifests']['resources'].items():
+                if (resource.get('kind') == 'DaemonSet' and
+                    resource.get('metadata', {}).get('name') == na_name and
+                    (not na_namespace or resource.get('metadata', {}).get('namespace') == na_namespace)):
+                    component_data['manifests']['nodeAgent'] = resource
+                    break
 
         return component_data
 
     def _read_runtimes(self, runtimes_config: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Read ClusterServingRuntime manifests"""
+        """Read ClusterServingRuntime manifests using kustomize build
+
+        Uses kustomize build to get the final rendered manifests with all patches applied
+        (e.g., image replacements from kustomization.yaml)
+        """
         runtimes = []
 
         if 'runtimes' in runtimes_config:
-            for runtime_config in runtimes_config['runtimes']:
-                manifest_path = self.repo_root / runtime_config['manifestPath']
-                if manifest_path.exists():
-                    runtime_data = {
-                        'config': runtime_config,
-                        'manifest': self._read_yaml_file(manifest_path)
-                    }
-                    runtimes.append(runtime_data)
+            # Run kustomize build on config/runtimes to get all runtimes with patches applied
+            runtimes_path = self.repo_root / 'config' / 'runtimes'
+            if runtimes_path.exists():
+                # Get all runtime manifests from kustomize build
+                kustomize_runtimes = self._read_kustomize_build(runtimes_path)
+
+                # Match each runtime config with its kustomize build result
+                for runtime_config in runtimes_config['runtimes']:
+                    runtime_name = runtime_config['name']
+                    runtime_kind = runtime_config.get('kind', 'ClusterServingRuntime')
+
+                    # Find the runtime in kustomize build results
+                    resource_key = f"{runtime_kind}/{runtime_name}"
+                    if resource_key in kustomize_runtimes:
+                        runtime_data = {
+                            'config': runtime_config,
+                            'manifest': kustomize_runtimes[resource_key]
+                        }
+                        runtimes.append(runtime_data)
+                    else:
+                        print(f"Warning: Runtime {runtime_name} not found in kustomize build results")
 
         return runtimes
+
+    def _read_llmisvc_configs(self, llmisvc_configs_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Read LLMInferenceServiceConfig manifests directly from YAML files
+
+        These resources contain Go templates and need to be copied as-is with original formatting
+        """
+        configs = []
+
+        if 'manifestPath' in llmisvc_configs_config:
+            manifest_path = self.repo_root / llmisvc_configs_config['manifestPath']
+            if manifest_path.exists():
+                # Read YAML files directly from the directory to preserve formatting
+                for yaml_file in manifest_path.glob('*.yaml'):
+                    if yaml_file.name == 'kustomization.yaml':
+                        continue
+
+                    # Read the original YAML text to preserve formatting
+                    with open(yaml_file, 'r') as f:
+                        original_yaml = f.read()
+
+                    # Also parse it to get metadata
+                    with open(yaml_file, 'r') as f:
+                        manifest = yaml.safe_load(f)
+
+                    if manifest:
+                        config_data = {
+                            'config': {
+                                'name': manifest.get('metadata', {}).get('name', 'unnamed'),
+                                'kind': manifest.get('kind', 'Unknown'),
+                                'enabledPath': llmisvc_configs_config.get('enabled', {}).get('valuePath', 'llmisvcConfigs.enabled'),
+                            },
+                            'manifest': manifest,
+                            'original_yaml': original_yaml,  # Store original YAML text
+                            'original_filename': yaml_file.name,  # Store original filename
+                            'copyAsIs': llmisvc_configs_config.get('copyAsIs', True)  # Default to True for these resources
+                        }
+                        configs.append(config_data)
+
+        return configs
 
     def _read_crds(self, crds_config: Dict[str, Any]) -> Dict[str, Any]:
         """Read CRD manifests"""

@@ -24,7 +24,7 @@ class TestChartGenerator:
         }
 
         generator = ChartGenerator(mapping, {}, tmp_path, tmp_path)
-        generator._generate_chart_yaml()
+        generator.metadata_gen.generate_chart_yaml(tmp_path)
 
         chart_file = tmp_path / 'Chart.yaml'
         assert chart_file.exists()
@@ -50,7 +50,7 @@ class TestChartGenerator:
         templates_dir.mkdir()
 
         generator = ChartGenerator(mapping, {}, tmp_path, tmp_path)
-        generator._generate_helpers()
+        generator.metadata_gen.generate_helpers()
 
         helpers_file = templates_dir / '_helpers.tpl'
         assert helpers_file.exists()
@@ -76,7 +76,7 @@ class TestChartGenerator:
         templates_dir.mkdir()
 
         generator = ChartGenerator(mapping, {}, tmp_path, tmp_path)
-        generator._generate_notes()
+        generator.metadata_gen.generate_notes()
 
         notes_file = templates_dir / 'NOTES.txt'
         assert notes_file.exists()
@@ -180,7 +180,7 @@ class TestChartGenerator:
         common_dir = templates_dir / 'common'
         common_dir.mkdir()
 
-        generator._generate_issuer_template(common_dir)
+        generator.common_gen._generate_issuer_template(common_dir, manifests['common']['certManager-issuer'])
 
         issuer_file = common_dir / 'cert-manager-issuer.yaml'
         assert issuer_file.exists()
@@ -242,7 +242,7 @@ class TestChartGenerator:
         common_dir = templates_dir / 'common'
         common_dir.mkdir()
 
-        generator._generate_configmap_template(common_dir)
+        generator.common_gen._generate_configmap_template(common_dir)
 
         configmap_file = common_dir / 'inferenceservice-config.yaml'
         assert configmap_file.exists()
@@ -254,8 +254,9 @@ class TestChartGenerator:
         assert '{{- if .Values.inferenceServiceConfig.enabled }}' in content
         # Check for namespace templating
         assert '{{ .Release.Namespace }}' in content
-        # Check for data field templating (actual format uses toJson without quote)
-        assert 'deploy: {{- toJson .Values.inferenceServiceConfig.deploy' in content
+        # Check for data field templating with literal block scalar and nindent
+        assert 'deploy: |-' in content
+        assert '{{- toJson .Values.inferenceServiceConfig.deploy | nindent 4 }}' in content
 
 
 if __name__ == '__main__':

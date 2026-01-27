@@ -22,7 +22,40 @@ from pathlib import Path
 
 from helm_converter.manifest_reader import ManifestReader
 from helm_converter.chart_generator import ChartGenerator
-from helm_converter.values_generator import ValuesGenerator
+from helm_converter.values_gen import ValuesGenerator
+
+
+def _read_kserve_version(repo_root: Path) -> str | None:
+    """
+    Read KSERVE_VERSION from kserve-deps.env file.
+
+    Args:
+        repo_root: Repository root directory
+
+    Returns:
+        KSERVE_VERSION value (e.g., "v0.16.0") or None if not found
+    """
+    deps_file = repo_root / 'kserve-deps.env'
+
+    if not deps_file.exists():
+        return None
+
+    try:
+        with open(deps_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip comments and empty lines
+                if not line or line.startswith('#'):
+                    continue
+                # Parse KEY=VALUE format
+                if '=' in line and line.startswith('KSERVE_VERSION'):
+                    key, value = line.split('=', 1)
+                    return value.strip()
+    except Exception as e:
+        print(f"Warning: Failed to read kserve-deps.env: {e}")
+        return None
+
+    return None
 
 
 def main():
@@ -85,6 +118,16 @@ def main():
         reader = ManifestReader(mapping_file, repo_root)
         mapping = reader.load_mapping()
         print(f"  ✓ Loaded mapping for chart: {mapping['metadata']['name']}")
+
+        # Override version from kserve-deps.env
+        kserve_version = _read_kserve_version(repo_root)
+        if kserve_version:
+            mapping['metadata']['version'] = kserve_version
+            mapping['metadata']['appVersion'] = kserve_version
+            print(f"  ✓ Using KSERVE_VERSION from kserve-deps.env: {kserve_version}")
+        else:
+            print(f"  ⚠ Could not read KSERVE_VERSION, using mapper defaults")
+
         print()
 
         # Step 2: Read and parse manifests

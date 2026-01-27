@@ -15,7 +15,7 @@ extends: helm-mapping-common.yaml
 # =============================================================================
 metadata:
   name: kserve
-  description: "KServe - Standard Model Inference Platform on Kubernetes"
+  description: "KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform"
   version: "0.1.0"
   appVersion: "latest"
 
@@ -25,7 +25,6 @@ metadata:
 kserve:
   enabled:
     valuePath: kserve.enabled
-    defaultValue: true
     description: "Enable KServe core inference service controller"
 
   manifestPath: config/components/kserve
@@ -39,68 +38,19 @@ kserve:
 
     image:
       repository:
-        path: spec.template.spec.containers[0].image
-        valuePath: kserve.controllerManager.image.repository
-        defaultValue: "kserve/kserve-controller"
+        path: spec.template.spec.containers[0].image+(:,0)
+        valuePath: kserve.controller.image
       tag:
-        valuePath: kserve.controllerManager.image.tag
-        defaultValue: "latest"
+        path: spec.template.spec.containers[0].image+(:,1)
+        valuePath: kserve.controller.tag
+        useVersionAnchor: true
       pullPolicy:
         path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: kserve.controllerManager.image.pullPolicy
-        defaultValue: "Always"
+        valuePath: kserve.controller.imagePullPolicy
 
     resources:
       path: spec.template.spec.containers[0].resources
-      valuePath: kserve.controllerManager.resources
-      defaultValue:
-        limits:
-          cpu: 100m
-          memory: 300Mi
-        requests:
-          cpu: 100m
-          memory: 200Mi
-
-# =============================================================================
-# CRDs (Custom Resource Definitions)
-# =============================================================================
-crds:
-  install:
-    valuePath: crds.install
-    defaultValue: true
-    description: "Install CRDs as part of this chart"
-
-  # Full CRDs (includes all features)
-  full:
-    enabledPath: crds.full.enabled
-    defaultEnabled: true
-    manifestPath: config/crd/full/kustomization.yaml
-    description: "Full CRDs with all features for KServe"
-
-# =============================================================================
-# CONVERSION RULES
-# =============================================================================
-conversionRules:
-  # Helm conditional wrapping patterns
-  conditionalBlocks:
-    - componentPath: common.enabled
-      wrapPattern: "{{- if .Values.common.enabled }}"
-      applyTo:
-        - config/base
-        - config/configmap
-
-    - componentPath: kserve.enabled
-      wrapPattern: "{{- if .Values.kserve.enabled }}"
-      applyTo:
-        - config/components/kserve
-        - config/manager
-        - config/default
-
-    - componentPath: localmodel.enabled
-      wrapPattern: "{{- if .Values.localmodel.enabled }}"
-      applyTo:
-        - config/components/localmodel
-        - config/localmodels
+      valuePath: kserve.controller.resources
 
 # =============================================================================
 # NOTES
@@ -109,10 +59,9 @@ notes: |
   KServe Chart Mapping Configuration
 
   This chart includes:
-  1. Common/base resources (controlled by common.enabled)
-  2. KServe core controller (always installed)
-  3. Optional localmodel controller (controlled by localmodel.enabled)
-  4. CRDs (controlled by crds.install)
+  1. Common/base resources
+  2. KServe core controller
+  3. Optional localmodel controller
 
   Structure mirrors kustomize components:
   - config/base -> common resources
@@ -121,3 +70,5 @@ notes: |
 
   Note: ClusterServingRuntimes are now provided in a separate
   kserve-runtime-configs chart for better modularity.
+
+  Note: CRDs are managed separately via kserve-crd chart and Makefile.
