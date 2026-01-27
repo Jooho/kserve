@@ -111,24 +111,27 @@ ${SCRIPT_DIR}/setup/infra/gateway-api/manage.gateway-api-extension-crd.sh
 
 # Download Envoy Gateway values files for AI Gateway integration
 echo "Downloading Envoy Gateway configuration for AI Gateway integration ..."
-ENVOY_GW_VALUES_DIR=$(mktemp -d)
-curl -sL "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${ENVOY_AI_GATEWAY_VERSION#v}/manifests/envoy-gateway-values.yaml" -o "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values.yaml"
-curl -sL "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${ENVOY_AI_GATEWAY_VERSION#v}/examples/inference-pool/envoy-gateway-values-addon.yaml" -o "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values-addon.yaml"
+# ENVOY_GW_VALUES_DIR=$(mktemp -d)
+# curl -sL "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${ENVOY_AI_GATEWAY_VERSION#v}/manifests/envoy-gateway-values.yaml" -o "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values.yaml"
+# curl -sL "https://raw.githubusercontent.com/envoyproxy/ai-gateway/v${ENVOY_AI_GATEWAY_VERSION#v}/examples/inference-pool/envoy-gateway-values-addon.yaml" -o "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values-addon.yaml"
 
-# Install Envoy Gateway with AI Gateway and InferencePool support
-echo "Installing Envoy Gateway with AI Gateway integration ..."
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version ${ENVOY_GATEWAY_VERSION} \
-  --namespace envoy-gateway-system \
-  --create-namespace \
-  -f "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values.yaml" \
-  -f "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values-addon.yaml"
-echo "😀 Successfully installed Envoy Gateway"
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+# # Install Envoy Gateway with AI Gateway and InferencePool support
+# echo "Installing Envoy Gateway with AI Gateway integration ..."
+# helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
+#   --version ${ENVOY_GATEWAY_VERSION} \
+#   --namespace envoy-gateway-system \
+#   --create-namespace \
+#   -f "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values.yaml" \
+#   -f "${ENVOY_GW_VALUES_DIR}/envoy-gateway-values-addon.yaml"
+# echo "😀 Successfully installed Envoy Gateway"
+# kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
-# Cleanup temp files
-rm -rf "${ENVOY_GW_VALUES_DIR}"
+# # Cleanup temp files
+# rm -rf "${ENVOY_GW_VALUES_DIR}"
 
+${SCRIPT_DIR}/setup/infra/manage.envoy-gateway-helm.sh
+
+# ${SCRIPT_DIR}/setup/infra/manage.envoy-ai-gateway-helm.sh
 # Install Envoy AI Gateway
 echo "Installing Envoy AI Gateway ..."
 helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
@@ -148,6 +151,7 @@ echo "😀 Successfully configured Envoy Gateway with InferencePool support (inf
 # Create kserve namespace if it doesn't exist
 kubectl create namespace kserve --dry-run=client -o yaml | kubectl apply -f -
 
+# ${SCRIPT_DIR}/setup/infra/external-lb/manage.external-lb.sh
 # Configure MetalLB if it's available (for minikube LoadBalancer support)
 if kubectl get namespace metallb-system >/dev/null 1>&1; then
   echo "🔧 Configuring MetalLB for LoadBalancer services..."
@@ -190,6 +194,7 @@ EOF
     echo "✅ MetalLB already properly configured"
   fi
 fi
+# ${SCRIPT_DIR}/setup/infra/manage.leader-worker-set-helm.sh
 
 # Install Leader Worker Set (LWS)
 echo "Installing Leader Worker Set ..."
@@ -215,6 +220,9 @@ echo "😀 Successfully created GatewayClass for Envoy"
 LLMISVC=true ${SCRIPT_DIR}/setup/infra/manage.kserve-kustomize.sh
 
 echo "😀 Successfully installed LLMISvc"
+
+# ${SCRIPT_DIR}/setup/infra/manage.gateway-api-gwclass.sh
+# ${SCRIPT_DIR}/setup/infra/manage.gateway-api-gw.sh
 
 # Create Gateway resource
 echo "Creating kserve-ingress-gateway ..."
