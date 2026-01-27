@@ -116,11 +116,11 @@ jobs:
 
           # Update the deployment to use our built image with Never pull policy
           # Use 'local-test' tag since that's what was loaded into minikube
-          kubectl patch deployment kserve-llmisvc-controller-manager -n kserve \
+          kubectl patch deployment llmisvc-controller-manager -n kserve \
             -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","image":"kserve/llmisvc-controller:local-test","imagePullPolicy":"Never"}]}}}}'
 
           # Wait for deployment rollout to complete (ensures new pod is ready, not just the old one)
-          kubectl rollout status deployment/kserve-llmisvc-controller-manager -n kserve --timeout=300s
+          kubectl rollout status deployment/llmisvc-controller-manager -n kserve --timeout=300s
 
       - name: Verify LLMISvc setup
         run: |
