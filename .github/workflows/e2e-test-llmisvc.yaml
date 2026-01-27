@@ -3,6 +3,7 @@ name: LLMInferenceService E2E Tests
 on:
   pull_request:
     paths:
+      - "hack/**"
       - "pkg/apis/serving/v1alpha1/llm*"
       - "pkg/apis/serving/v1alpha2/llm*"
       - "pkg/controller/v1alpha1/llmisvc/**"
