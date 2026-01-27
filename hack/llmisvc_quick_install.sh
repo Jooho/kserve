@@ -95,14 +95,16 @@ if [ "$(get_kube_version)" -lt 24 ]; then
 fi
 
 # Install Cert Manager
-helm repo add jetstack https://charts.jetstack.io --force-update
-helm upgrade --install \
-   cert-manager jetstack/cert-manager \
-   --namespace cert-manager \
-   --create-namespace \
-   --version ${CERT_MANAGER_VERSION} \
-   --set crds.enabled=true
-echo "😀 Successfully installed Cert Manager"
+# helm repo add jetstack https://charts.jetstack.io --force-update
+# helm upgrade --install \
+#    cert-manager jetstack/cert-manager \
+#    --namespace cert-manager \
+#    --create-namespace \
+#    --version ${CERT_MANAGER_VERSION} \
+#    --set crds.enabled=true
+# echo "😀 Successfully installed Cert Manager"
+
+${SCRIPT_DIR}/setup/infra/manage.cert-manager-helm.sh
 
 # Need to install before Envoy Gateway
 ${SCRIPT_DIR}/setup/infra/gateway-api/manage.gateway-api-extension-crd.sh
@@ -210,7 +212,6 @@ spec:
 EOF
 echo "😀 Successfully created GatewayClass for Envoy"
 
-# LLMISVC=true ${SCRIPT_DIR}/setup/infra/manage.kserve-helm.sh
 LLMISVC=true ${SCRIPT_DIR}/setup/infra/manage.kserve-kustomize.sh
 
 echo "😀 Successfully installed LLMISvc"
