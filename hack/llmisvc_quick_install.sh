@@ -131,22 +131,22 @@ echo "Downloading Envoy Gateway configuration for AI Gateway integration ..."
 
 ${SCRIPT_DIR}/setup/infra/manage.envoy-gateway-helm.sh
 
-# ${SCRIPT_DIR}/setup/infra/manage.envoy-ai-gateway-helm.sh
-# Install Envoy AI Gateway
-echo "Installing Envoy AI Gateway ..."
-helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-  --version ${ENVOY_AI_GATEWAY_VERSION} \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
+${SCRIPT_DIR}/setup/infra/manage.envoy-ai-gateway-helm.sh
+# # Install Envoy AI Gateway
+# echo "Installing Envoy AI Gateway ..."
+# helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+#   --version ${ENVOY_AI_GATEWAY_VERSION} \
+#   --namespace envoy-ai-gateway-system \
+#   --create-namespace
 
-helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version ${ENVOY_AI_GATEWAY_VERSION} \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
-echo "😀 Successfully installed Envoy AI Gateway"
-kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
+# helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+#   --version ${ENVOY_AI_GATEWAY_VERSION} \
+#   --namespace envoy-ai-gateway-system \
+#   --create-namespace
+# echo "😀 Successfully installed Envoy AI Gateway"
+# kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
 
-echo "😀 Successfully configured Envoy Gateway with InferencePool support (inference.networking.k8s.io/v1)"
+# echo "😀 Successfully configured Envoy Gateway with InferencePool support (inference.networking.k8s.io/v1)"
 
 # Create kserve namespace if it doesn't exist
 kubectl create namespace kserve --dry-run=client -o yaml | kubectl apply -f -
