@@ -211,7 +211,7 @@ EOF
 echo "😀 Successfully created GatewayClass for Envoy"
 
 # LLMISVC=true ${SCRIPT_DIR}/setup/infra/manage.kserve-helm.sh
-KSERVE_OVERLAY_DIR=test-llmisvc ${SCRIPT_DIR}/setup/infra/manage.kserve-kustomize.sh
+LLMISVC=true ${SCRIPT_DIR}/setup/infra/manage.kserve-kustomize.sh
 
 echo "😀 Successfully installed LLMISvc"
 
