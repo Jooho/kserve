@@ -194,7 +194,7 @@ ${SCRIPT_DIR}/setup/infra/external-lb/manage.external-lb.sh
 #     echo "✅ MetalLB already properly configured"
 #   fi
 # fi
-${SCRIPT_DIR}/setup/infra/manage.leader-worker-set-helm.sh
+${SCRIPT_DIR}/setup/infra/manage.lws-operator.sh
 
 # Install Leader Worker Set (LWS)
 # echo "Installing Leader Worker Set ..."
@@ -204,6 +204,8 @@ ${SCRIPT_DIR}/setup/infra/manage.leader-worker-set-helm.sh
 #   --create-namespace \
 #   --wait --timeout 300s
 # echo "😀 Successfully installed Leader Worker Set"
+
+# ${SCRIPT_DIR}/setup/infra/gateway-api/manage.gateway-api-gwclass.sh
 
 # Create GatewayClass for Envoy
 echo "Creating GatewayClass for Envoy ..."
@@ -225,6 +227,7 @@ echo "😀 Successfully installed LLMISvc"
 # ${SCRIPT_DIR}/setup/infra/manage.gateway-api-gw.sh
 
 # Create Gateway resource
+# ${SCRIPT_DIR}/setup/infra/gateway-api/manage.gateway-api-gw.sh
 echo "Creating kserve-ingress-gateway ..."
 kubectl apply -f - <<EOF
 apiVersion: gateway.networking.k8s.io/v1
