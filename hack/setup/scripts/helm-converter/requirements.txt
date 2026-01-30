@@ -1,0 +1,5 @@
+# Requirements for Kustomize to Helm Converter
+# All other dependencies are Python standard library
+
+# YAML parsing and generation
+PyYAML>=6.0

@@ -3,7 +3,7 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: llmisvc-serving-cert  # this name should match the one appeared in kustomizeconfig.yaml
+  name: kserve-llmisvc-serving-cert  # this name should match the one appeared in kustomizeconfig.yaml
   namespace: kserve
 spec:
   # $(SERVICE_NAME) and $(SERVICE_NAMESPACE) will be substituted by kustomize
@@ -13,4 +13,4 @@ spec:
   issuerRef:
     kind: Issuer
     name: selfsigned-issuer
-  secretName: llmisvc-webhook-server-cert # this secret will not be prefixed, since it's not managed by kustomize
+  secretName: kserve-llmisvc-webhook-server-cert # this secret will not be prefixed, since it's not managed by kustomize

@@ -9,7 +9,7 @@ resources:
   - gateway-inference-extension.yaml
   - ../certmanager/llmisvc
   - ../rbac/llmisvc
-  - ../llmisvcconfig
+  # - ../llmisvcconfig
   - ../webhook/llmisvc
 
 replacements:
@@ -17,7 +17,7 @@ replacements:
 - source:
     fieldPath: metadata.namespace
     kind: Deployment
-    name: llmisvc-controller-manager
+    name: kserve-llmisvc-controller-manager
     version: v1
   targets:  
   - fieldPaths:
@@ -38,7 +38,7 @@ replacements:
       index: 1
     select:
       kind: Certificate
-      name: llmisvc-serving-cert
+      name: kserve-llmisvc-serving-cert
       namespace: kserve
   - fieldPaths:
       - metadata.annotations.[cert-manager.io/inject-ca-from]
@@ -60,7 +60,7 @@ replacements:
 - source:
     fieldPath: metadata.name
     kind: Service
-    name: llmisvc-webhook-server-service
+    name: kserve-llmisvc-webhook-server-service
     version: v1
   targets:
   - fieldPaths:
@@ -81,30 +81,30 @@ replacements:
       index: 0
     select:
       kind: Certificate
-      name: llmisvc-serving-cert
+      name: kserve-llmisvc-serving-cert
       namespace: kserve
 # Replace llmisvc service account name
 - source:
     fieldPath: metadata.name
     kind: ServiceAccount
-    name: llmisvc-controller-manager
+    name: kserve-llmisvc-controller-manager
     version: v1
   targets:
   - fieldPaths:
     - subjects.*.name
     select:
       kind: ClusterRoleBinding
-      name: llmisvc-manager-rolebinding
+      name: kserve-llmisvc-manager-rolebinding
   - fieldPaths:
     - subjects.*.name
     select:
       kind: RoleBinding
-      name: llmisvc-leader-election-rolebinding
+      name: kserve-llmisvc-leader-election-rolebinding
   - fieldPaths:
     - spec.template.spec.serviceAccountName
     select:
       kind: Deployment
-      name: llmisvc-controller-manager    
+      name: kserve-llmisvc-controller-manager    
 patches:
 - path: llmisvc_validatingwebhook_cainjection_patch.yaml
 - path: llmisvcconfig_validatingwebhook_cainjection_patch.yaml
