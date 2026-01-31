@@ -27,6 +27,9 @@
 #   ENABLE_LLMISVC        - Enable LLM Inference Service Controller (default: false)
 #   ENABLE_LOCALMODEL     - Enable LocalModel Controller (default: false)
 #
+#   INSTALL_RUNTIMES      - Install ClusterServingRuntimes (default: based on ENABLE_KSERVE)
+#   INSTALL_LLMISVC_CONFIGS - Install LLMInferenceServiceConfigs (default: based on ENABLE_LLMISVC)
+#
 #   SHARED_EXTRA_ARGS     - Additional helm upgrade -i arguments applied to ALL charts
 #   KSERVE_EXTRA_ARGS     - Additional helm upgrade -i arguments for KServe resources
 #   LLMISVC_EXTRA_ARGS    - Additional helm upgrade -i arguments for LLMIsvc resources
@@ -72,6 +75,9 @@
 #   # Install LLMIsvc with LocalModel from OCI registry
 #   ENABLE_LLMISVC=true ENABLE_LOCALMODEL=true ./manage.kserve-helm.sh
 #
+#   # Install without ClusterServingRuntimes
+#   INSTALL_RUNTIMES=false ./manage.kserve-helm.sh
+#
 #   # Legacy syntax (still supported - deprecated, use ENABLE_* flags)
 #   LLMISVC=true LOCALMODEL=true ./manage.kserve-helm.sh
 
@@ -113,6 +119,9 @@ RESOURCE_EXTRA_ARGS_LIST=()
 TARGET_DEPLOYMENT_NAMES=()
 
 # DEPLOYMENT_MODE, GATEWAY_NETWORK_LAYER, EMBED_MANIFESTS are defined in global-vars.env
+INSTALL_RUNTIMES="${INSTALL_RUNTIMES:-${ENABLE_KSERVE:-false}}"
+INSTALL_LLMISVC_CONFIGS="${INSTALL_LLMISVC_CONFIGS:-${ENABLE_LLMISVC:-false}}"
+RUNTIME_CHARTS_DIR="oci://ghcr.io/kserve/charts"
 # VARIABLES END
 
 # INCLUDE_IN_GENERATED_SCRIPT_START
@@ -130,7 +139,7 @@ if [ "${ENABLE_LLMISVC}" = "true" ]; then
     CRD_CHARTS+=("kserve-llmisvc-crd")
     RESOURCE_CHARTS+=("kserve-llmisvc-resources")
     RESOURCE_EXTRA_ARGS_LIST+=("${LLMISVC_EXTRA_ARGS:-}")
-    TARGET_DEPLOYMENT_NAMES+=("kserve-llmisvc-controller-manager")
+    TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
 fi
 
 if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
@@ -144,6 +153,10 @@ fi
 if [ "${SET_KSERVE_VERSION}" != "" ]; then
     log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
     KSERVE_VERSION="${SET_KSERVE_VERSION}"
+fi
+
+if [ "${USE_LOCAL_CHARTS}" = "true" ]; then
+    RUNTIME_CHARTS_DIR="${CHARTS_DIR}"
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
 
@@ -186,37 +199,37 @@ uninstall() {
     log_success "KServe charts uninstalled"
 }
 
-# Build helm --set arguments for KServe/LLMIsvc configuration
-# This replaces post-install ConfigMap patching
-build_helm_config_args() {
-    local config_args=""
-
-    # Update deployment mode if needed
-    if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
-        log_info "Adding deployment mode configuration: ${DEPLOYMENT_MODE}"
-        config_args+=" --set deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\""
-    fi
-
-    # Enable Gateway API for KServe(ISVC) if needed
-    if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
-        log_info "Adding Gateway API configuration: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
-        config_args+=" --set ingress.enableGatewayApi=true"
-        config_args+=" --set ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\""
-    fi
-
-    # Add custom configurations if provided
-    if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
-        log_info "Adding custom configurations: ${KSERVE_CUSTOM_ISVC_CONFIGS}"
-        IFS='|' read -ra custom_configs <<< "${KSERVE_CUSTOM_ISVC_CONFIGS}"
-        for config in "${custom_configs[@]}"; do
-            config_args+=" --set ${config}"
-        done
-    fi
-
-    echo "${config_args}"
-}
-
 install() {
+    # Build helm --set arguments for KServe/LLMIsvc configuration
+    # This replaces post-install ConfigMap patching
+    build_helm_config_args() {
+        local config_args=""
+
+        # Update deployment mode if needed
+        if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
+            log_info "Adding deployment mode configuration: ${DEPLOYMENT_MODE}"
+            config_args+=" --set deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\""
+        fi
+
+        # Enable Gateway API for KServe(ISVC) if needed
+        if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
+            log_info "Adding Gateway API configuration: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
+            config_args+=" --set ingress.enableGatewayApi=true"
+            config_args+=" --set ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\""
+        fi
+
+        # Add custom configurations if provided
+        if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
+            log_info "Adding custom configurations: ${KSERVE_CUSTOM_ISVC_CONFIGS}"
+            IFS='|' read -ra custom_configs <<< "${KSERVE_CUSTOM_ISVC_CONFIGS}"
+            for config in "${custom_configs[@]}"; do
+                config_args+=" --set ${config}"
+            done
+        fi
+
+        echo "${config_args}"
+    }
+
     # Check if any charts are selected for installation
     if [ ${#RESOURCE_CHARTS[@]} -eq 0 ] && [ ${#CRD_CHARTS[@]} -eq 0 ]; then
         log_error "No charts selected for installation. Please enable at least one component (ENABLE_KSERVE, ENABLE_LLMISVC, or ENABLE_LOCALMODEL)."
@@ -288,7 +301,6 @@ install() {
                 ${extra_args} \
                 ${chart_config_args}
         done
-
         log_success "Successfully installed KServe using local charts"
     else
         # Install KServe from OCI registry
@@ -353,7 +365,6 @@ install() {
                 fi
             fi
         done
-
         log_success "Successfully installed KServe ${KSERVE_VERSION}"
     fi
 
@@ -366,6 +377,17 @@ install() {
     done
 
     log_success "KServe is ready!"
+    if [ ${INSTALL_RUNTIMES} = "true" ] || [ ${INSTALL_LLMISVC_CONFIGS} = "true" ]; then
+        log_info "Installing Runtimes(${INSTALL_RUNTIMES}) and LLMISVC configs(${INSTALL_LLMISVC_CONFIGS})..."
+        helm upgrade -i kserve-runtime-configs \
+            "${RUNTIME_CHARTS_DIR}/kserve-runtime-configs" \
+            --namespace "${KSERVE_NAMESPACE}" \
+            --create-namespace \
+            --wait \
+            --set runtimes.enabled=${INSTALL_RUNTIMES} \
+            --set llmisvcConfigs.enabled=${INSTALL_LLMISVC_CONFIGS}
+        log_success "Successfully installed Runtimes/LLMISVC configs"
+    fi
 }
 
 if [ "$UNINSTALL" = true ]; then

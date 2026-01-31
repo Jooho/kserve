@@ -51,8 +51,11 @@ popd
 if [[ $LLMISVC == "false" ]]; then
   #TODO: Refactor this to use the same logic for both kustomize and helm
   if [[ $INSTALL_METHOD == "helm" ]]; then
-    SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
-    kustomize build config/overlays/test/minio-local-backend/ > config/overlays/test/minio-local-backend/minio-local-backend.yaml
+    KSERVE_EXTRA_ARGS="--set kserve.controller.imagePullPolicy=IfNotPresent" \
+    LOCALMODEL_EXTRA_ARGS="--set localmodel.controller.imagePullPolicy=IfNotPresent" \
+    SET_KSERVE_VERSION=${TAG} ENABLE_LOCALMODEL=true USE_LOCAL_CHARTS=true INSTALL_RUNTIMES=false \
+    ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
+    kustomize build config/overlays/test/s3-local-backend | kubectl apply --server-side --force-conflicts -f -
   else
     KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi
@@ -71,7 +74,7 @@ if [[ $LLMISVC == "false" ]]; then
 else
   #TODO: Refactor this to use the same logic for both kustomize and helm
   if [[ $INSTALL_METHOD == "helm" ]]; then
-    SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
+    SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ENABLE_KSERVE=false LLMISVC_EXTRA_ARGS="--set llmisvc.controller.imagePullPolicy=IfNotPresent" ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
     KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi

@@ -11,9 +11,8 @@ from typing import Dict, Any
 # Import generators
 from .generators import (
     WorkloadGenerator,
-    ResourceGenerator,
     MetadataGenerator,
-    RuntimeTemplateGenerator,
+    GenericPlaceholderGenerator,
     LLMIsvcConfigGenerator,
     CommonTemplateGenerator,
     CustomDumper,
@@ -35,9 +34,8 @@ class ChartGenerator:
 
         # Initialize generators
         self.workload_gen = WorkloadGenerator(mapping)
-        self.resource_gen = ResourceGenerator(mapping)
         self.metadata_gen = MetadataGenerator(mapping, self.templates_dir)
-        self.runtime_gen = RuntimeTemplateGenerator(mapping)
+        self.generic_gen = GenericPlaceholderGenerator(mapping)
         self.llmisvc_config_gen = LLMIsvcConfigGenerator(mapping)
         self.common_gen = CommonTemplateGenerator(mapping)
 
@@ -53,7 +51,7 @@ class ChartGenerator:
         # Generate templates
         self.common_gen.generate_common_templates(self.templates_dir, self.manifests)
         self._generate_component_templates()
-        self.runtime_gen.generate_runtime_templates(self.templates_dir, self.manifests)
+        self.generic_gen.generate_templates(self.templates_dir, self.manifests.get('runtimes', []), 'runtimes')
         self.llmisvc_config_gen.generate_llmisvc_configs_templates(self.templates_dir, self.manifests)
 
         # Generate helpers
@@ -80,35 +78,43 @@ class ChartGenerator:
         if self.manifests.get('llmisvcConfigs'):
             print(f"  Would generate templates/llmisvcconfigs/ ({len(self.manifests['llmisvcConfigs'])} configs)")
 
-        if self.manifests.get('crds'):
-            print("  Would generate templates/crds/")
+        # Note: CRDs are managed in separate kserve-crd chart
 
     def _generate_component_templates(self):
-        """Generate templates for components (kserve, llmisvc, localmodel)"""
+        """Generate templates for components (kserve, llmisvc, localmodel, localmodelnode)"""
         for component_name, component_data in self.manifests.get('components', {}).items():
-            # kserve-localmodel-resources chart only contains localmodel, so skip subfolder
-            chart_name = self.mapping['metadata']['name']
-            if chart_name == 'kserve-localmodel-resources' and component_name == 'localmodel':
-                component_dir = self.templates_dir
-            else:
-                component_dir = self.templates_dir / component_name
+            # All components use subfolder structure
+            component_dir = self.templates_dir / component_name
             component_dir.mkdir(exist_ok=True)
 
-            # Generate deployment template (with values templating)
-            if 'manifests' in component_data and 'controllerManager' in component_data['manifests']:
-                self.workload_gen.generate_deployment(
-                    component_dir,
-                    component_name,
-                    component_data
-                )
+            # Generate workload templates based on kind (with values templating)
+            if 'manifests' in component_data:
+                for manifest_key, manifest in component_data['manifests'].items():
+                    # Skip 'resources' - handled separately
+                    if manifest_key == 'resources':
+                        continue
 
-            # Generate daemonset template for nodeAgent (with values templating)
-            if 'manifests' in component_data and 'nodeAgent' in component_data['manifests']:
-                self.workload_gen.generate_daemonset(
-                    component_dir,
-                    component_name,
-                    component_data
-                )
+                    # Check if this is a workload manifest
+                    if not isinstance(manifest, dict) or 'kind' not in manifest:
+                        continue
+
+                    workload_kind = manifest['kind']
+
+                    # Select generator based on kind
+                    if workload_kind == 'Deployment':
+                        self.workload_gen.generate_deployment(
+                            component_dir,
+                            component_name,
+                            component_data,
+                            manifest_key
+                        )
+                    elif workload_kind == 'DaemonSet':
+                        self.workload_gen.generate_daemonset(
+                            component_dir,
+                            component_name,
+                            component_data,
+                            manifest_key
+                        )
 
             # Generate other resources from kustomize build (static with namespace replacement)
             if 'manifests' in component_data and 'resources' in component_data['manifests']:
@@ -131,7 +137,7 @@ class ChartGenerator:
             copy_as_is: If True, copy resources as-is without escaping Go templates (for resources that already use Go templates)
         """
         chart_name = self.mapping['metadata']['name']
-        is_main_component = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel']
+        is_main_component = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel', 'localmodelnode']
 
         # KServe Core CRD names (managed by kserve-crd chart via Makefile - always skip)
         kserve_core_crds = {

@@ -73,7 +73,8 @@ def normalize_resource(resource: Dict[str, Any]) -> Dict[str, Any]:
                 'app.kubernetes.io/managed-by',
                 'app.kubernetes.io/instance',
                 'app.kubernetes.io/name',
-                'app.kubernetes.io/version'
+                'app.kubernetes.io/version',
+                'app.kubernetes.io/component'  # Kustomize component adds this label
             ]
             for label in helm_labels:
                 labels.pop(label, None)

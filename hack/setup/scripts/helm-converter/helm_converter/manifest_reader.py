@@ -128,9 +128,13 @@ class ManifestReader:
             component_config = mapping[chart_name]
             manifests['components'][chart_name] = self._read_component(component_config)
 
-        # Read localmodel component if exists
+        # Read localmodel components if they exist
         if 'localmodel' in mapping:
             manifests['components']['localmodel'] = self._read_component(mapping['localmodel'])
+
+        # Read localmodelnode component if exists
+        if 'localmodelnode' in mapping:
+            manifests['components']['localmodelnode'] = self._read_component(mapping['localmodelnode'])
 
         # Read cluster serving runtimes (support both 'clusterServingRuntimes' and 'runtimes' keys)
         if 'clusterServingRuntimes' in mapping:
@@ -186,33 +190,24 @@ class ManifestReader:
                 # Use kustomize build to get all resources
                 component_data['manifests']['resources'] = self._read_kustomize_build(component_path)
 
-        # Extract controller manager deployment from kustomize build results (with patches applied)
-        if 'controllerManager' in component_config and 'resources' in component_data['manifests']:
-            cm_config = component_config['controllerManager']
-            cm_name = cm_config.get('name', 'controller-manager')
-            cm_namespace = cm_config.get('namespace')
+        # Extract workloads from kustomize build results based on kind (generic approach)
+        if 'resources' in component_data['manifests']:
+            for config_key, config_value in component_config.items():
+                # Check if this config entry has a 'kind' field (indicates a workload)
+                if not isinstance(config_value, dict) or 'kind' not in config_value:
+                    continue
 
-            # Find deployment in kustomize build results (resources is a dict with kind/name keys)
-            for resource_key, resource in component_data['manifests']['resources'].items():
-                if (resource.get('kind') == 'Deployment' and
-                        resource.get('metadata', {}).get('name') == cm_name and
-                        (not cm_namespace or resource.get('metadata', {}).get('namespace') == cm_namespace)):
-                    component_data['manifests']['controllerManager'] = resource
-                    break
+                workload_kind = config_value['kind']
+                workload_name = config_value.get('name')
+                workload_namespace = config_value.get('namespace')
 
-        # Extract nodeAgent (DaemonSet) manifest if configured
-        if 'nodeAgent' in component_config and 'resources' in component_data['manifests']:
-            na_config = component_config['nodeAgent']
-            na_name = na_config.get('name')
-            na_namespace = na_config.get('namespace')
-
-            # Find daemonset in kustomize build results
-            for resource_key, resource in component_data['manifests']['resources'].items():
-                if (resource.get('kind') == 'DaemonSet' and
-                        resource.get('metadata', {}).get('name') == na_name and
-                        (not na_namespace or resource.get('metadata', {}).get('namespace') == na_namespace)):
-                    component_data['manifests']['nodeAgent'] = resource
-                    break
+                # Find matching resource in kustomize build results
+                for resource_key, resource in component_data['manifests']['resources'].items():
+                    if (resource.get('kind') == workload_kind and
+                            resource.get('metadata', {}).get('name') == workload_name and
+                            (not workload_namespace or resource.get('metadata', {}).get('namespace') == workload_namespace)):
+                        component_data['manifests'][config_key] = resource
+                        break
 
         return component_data
 
@@ -289,17 +284,13 @@ class ManifestReader:
         return configs
 
     def _read_crds(self, crds_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Read CRD manifests"""
-        crds = {}
+        """Read CRD manifests
 
-        if 'full' in crds_config:
-            full_config = crds_config['full']
-            manifest_path = self.repo_root / full_config['manifestPath']
-            if manifest_path.exists():
-                # Read kustomization for CRDs
-                crds['full'] = self._read_kustomization_dir(manifest_path.parent)
-
-        return crds
+        Note: CRD reading is not currently implemented in mapping files.
+        CRDs are managed separately in kserve-crd chart.
+        This method is kept for potential future use.
+        """
+        return {}
 
     def _read_yaml_file(self, file_path: Path) -> Any:
         """Read a single YAML file and return parsed content"""
@@ -309,32 +300,6 @@ class ManifestReader:
             if len(docs) == 1:
                 return docs[0]
             return docs
-
-    def _read_kustomization_dir(self, dir_path: Path) -> Dict[str, Any]:
-        """
-        Read a kustomization directory
-
-        This is a simplified implementation that reads kustomization.yaml
-        For a full implementation, you would need to:
-        1. Parse kustomization.yaml
-        2. Read all referenced resources
-        3. Apply patches, overlays, etc.
-
-        For now, we just read the kustomization.yaml as metadata
-        """
-        kustomization_file = dir_path / 'kustomization.yaml'
-        if kustomization_file.exists():
-            with open(kustomization_file, 'r') as f:
-                return yaml.safe_load(f)
-        return {}
-
-    def _read_kustomization_component(self, component_path: Path) -> Dict[str, Any]:
-        """
-        Read a kustomize component
-
-        Components are like kustomizations but use 'kind: Component'
-        """
-        return self._read_kustomization_dir(component_path)
 
     def _read_kustomize_build(self, component_path: Path) -> Dict[str, Any]:
         """

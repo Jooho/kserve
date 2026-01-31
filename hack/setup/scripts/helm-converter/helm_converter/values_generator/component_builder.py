@@ -57,166 +57,164 @@ class ComponentBuilder:
                 self.version_anchor_fields.append(anchor_path)
 
         # Get the component manifest
-        component_manifest = None
-        if component_name in manifests.get('components', {}):
-            component_data = manifests['components'][component_name]
-            if 'manifests' in component_data and 'controllerManager' in component_data['manifests']:
-                component_manifest = component_data['manifests']['controllerManager']
+        # Generic workload configuration (Deployment, DaemonSet, etc.)
+        component_data = manifests.get('components', {}).get(component_name)
 
-        # Controller manager configuration
-        if 'controllerManager' in component_config:
-            cm_values = self._build_controller_manager_values(
-                component_name,
-                component_config['controllerManager'],
-                component_manifest
-            )
-            values.update(cm_values)
+        if component_data:
+            for config_key, config_value in component_config.items():
+                # Check if this is a workload config (has 'kind' field)
+                if not isinstance(config_value, dict) or 'kind' not in config_value:
+                    continue
 
-        # Node Agent configuration (DaemonSet)
-        if 'nodeAgent' in component_config:
-            # Get the nodeAgent manifest
-            nodeagent_manifest = None
-            if component_name in manifests.get('components', {}):
-                component_data = manifests['components'][component_name]
-                if 'manifests' in component_data and 'nodeAgent' in component_data['manifests']:
-                    nodeagent_manifest = component_data['manifests']['nodeAgent']
+                # Get the workload manifest
+                workload_manifest = None
+                if 'manifests' in component_data and config_key in component_data['manifests']:
+                    workload_manifest = component_data['manifests'][config_key]
 
-            na_values = self._build_node_agent_values(
-                component_name,
-                component_config['nodeAgent'],
-                nodeagent_manifest
-            )
-            values.update(na_values)
+                # Build workload values using generic method
+                workload_kind = config_value['kind']
+                workload_values = self._build_workload_values(
+                    component_name,
+                    config_key,
+                    config_value,
+                    workload_manifest,
+                    workload_kind
+                )
+                values.update(workload_values)
 
         return values
 
-    def _build_controller_manager_values(
+    def _build_workload_values(
         self,
         component_name: str,
-        cm_config: Dict[str, Any],
-        component_manifest: Optional[Dict[str, Any]]
+        config_key: str,
+        workload_config: Dict[str, Any],
+        workload_manifest: Optional[Dict[str, Any]],
+        workload_kind: str
     ) -> Dict[str, Any]:
-        """Build controller manager values.
+        """Build workload values (generic for Deployment, DaemonSet, etc.).
+
+        Unified method that replaces _build_controller_manager_values() and
+        _build_node_agent_values().
 
         Args:
             component_name: Component name
-            cm_config: Controller manager configuration
-            component_manifest: Controller manager Deployment manifest
+            config_key: Key in component_config (e.g., 'controllerManager', 'nodeAgent')
+            workload_config: Workload configuration from mapper
+            workload_manifest: Workload manifest (Deployment, DaemonSet, etc.)
+            workload_kind: Kind of workload ('Deployment', 'DaemonSet', etc.)
 
         Returns:
-            Controller manager values dictionary
+            Workload values dictionary
         """
         values = {}
 
         # Extract the base path from valuePath (e.g., "kserve.controller" from "kserve.controller.image")
-        # We need to determine the controller key name from the valuePath
-        controller_key = 'controllerManager'  # default
+        # Default to config_key if not specified
+        workload_key = config_key
 
-        if 'image' in cm_config and 'repository' in cm_config['image']:
-            value_path = cm_config['image']['repository'].get('valuePath', '')
-            # Parse valuePath like "kserve.controller.image" or "kserve.controllerManager.image.repository"
+        if 'image' in workload_config and 'repository' in workload_config['image']:
+            value_path = workload_config['image']['repository'].get('valuePath', '')
             if value_path:
                 parts = value_path.split('.')
                 if len(parts) >= 2:
-                    # The second part is the controller key (controller or controllerManager)
-                    controller_key = parts[1]
+                    # The second part is the workload key (e.g., 'controller', 'nodeAgent')
+                    workload_key = parts[1]
 
-        values[controller_key] = {}
+        values[workload_key] = {}
 
-        # Image configuration - use path field if available, otherwise fallback to hardcoded
-        if 'image' in cm_config and component_manifest:
+        # Determine workload type for _extract_image_values
+        # 'Deployment' -> 'deployment', 'DaemonSet' -> 'daemonset'
+        workload_type = workload_kind.lower()
+
+        # Image configuration
+        if 'image' in workload_config and workload_manifest:
             img_values = self._extract_image_values(
-                cm_config['image'],
-                component_manifest,
+                workload_config['image'],
+                workload_manifest,
                 component_name,
-                controller_key,
-                workload_type='deployment'
+                workload_key,
+                workload_type=workload_type
             )
-            values[controller_key].update(img_values)
+            values[workload_key].update(img_values)
 
-        # Resources configuration - use path field if available, otherwise fallback to hardcoded
-        if 'resources' in cm_config and component_manifest:
-            res_config = cm_config['resources']
+        # Resources configuration
+        if 'resources' in workload_config and workload_manifest:
+            res_config = workload_config['resources']
             if isinstance(res_config, dict) and 'path' in res_config:
-                # Use path field to extract resources
                 try:
-                    resources = extract_from_manifest(component_manifest, res_config['path'])
+                    resources = extract_from_manifest(workload_manifest, res_config['path'])
                     if resources:
-                        values[controller_key]['resources'] = resources
+                        values[workload_key]['resources'] = resources
                 except (KeyError, IndexError, ValueError) as e:
                     print(f"Warning: Failed to extract resources using path '{res_config['path']}': {e}")
                     # Fallback to hardcoded path
-                    actual_resources = component_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
+                    actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
                     if actual_resources:
-                        values[controller_key]['resources'] = actual_resources
+                        values[workload_key]['resources'] = actual_resources
             else:
                 # No path field - fallback to hardcoded (backward compatibility)
-                actual_resources = component_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
+                actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
                 if actual_resources:
-                    values[controller_key]['resources'] = actual_resources
+                    values[workload_key]['resources'] = actual_resources
+
+        # Generic fields (nodeSelector, affinity, tolerations, etc.)
+        # All fields except 'image' and 'resources' are processed generically
+        generic_fields = self._extract_generic_fields(
+            workload_config,
+            workload_manifest,
+            config_key
+        )
+        values[workload_key].update(generic_fields)
 
         return values
 
-    def _build_node_agent_values(
+    def _extract_generic_fields(
         self,
-        component_name: str,
-        na_config: Dict[str, Any],
-        nodeagent_manifest: Optional[Dict[str, Any]]
+        config: Dict[str, Any],
+        manifest: Optional[Dict[str, Any]],
+        manifest_type: str
     ) -> Dict[str, Any]:
-        """Build node agent values.
+        """Extract generic fields from manifest based on mapper configuration.
+
+        This method provides generic field extraction for fields that follow
+        the standard path-based extraction pattern. Special fields like 'image'
+        and 'resources' that require complex processing are excluded.
 
         Args:
-            component_name: Component name
-            na_config: Node agent configuration
-            nodeagent_manifest: Node agent DaemonSet manifest
+            config: Configuration from mapper (e.g., na_config, cm_config)
+            manifest: Kubernetes manifest (Deployment or DaemonSet)
+            manifest_type: 'controllerManager' or 'nodeAgent'
 
         Returns:
-            Node agent values dictionary
+            Dictionary with extracted field values
         """
-        values = {}
+        result = {}
 
-        # Extract the base path from valuePath
-        nodeagent_key = 'nodeAgent'  # default
+        if not manifest:
+            return result
 
-        if 'image' in na_config and 'repository' in na_config['image']:
-            value_path = na_config['image']['repository'].get('valuePath', '')
-            if value_path:
-                parts = value_path.split('.')
-                if len(parts) >= 2:
-                    nodeagent_key = parts[1]
+        # Special fields that need custom processing logic
+        SPECIAL_FIELDS = {'image', 'resources'}
 
-        values[nodeagent_key] = {}
+        # Process all fields generically
+        for field_name, field_config in config.items():
+            # Skip special fields - they have their own processing logic
+            if field_name in SPECIAL_FIELDS:
+                continue
 
-        # Image configuration
-        if 'image' in na_config and nodeagent_manifest:
-            img_values = self._extract_image_values(
-                na_config['image'],
-                nodeagent_manifest,
-                component_name,
-                nodeagent_key,
-                workload_type='daemonset'
-            )
-            values[nodeagent_key].update(img_values)
-
-        # Resources configuration
-        if 'resources' in na_config and nodeagent_manifest:
-            res_config = na_config['resources']
-            if isinstance(res_config, dict) and 'path' in res_config:
+            # Generic extraction for path-based fields
+            if isinstance(field_config, dict) and 'path' in field_config:
                 try:
-                    resources = extract_from_manifest(nodeagent_manifest, res_config['path'])
-                    if resources:
-                        values[nodeagent_key]['resources'] = resources
+                    value = extract_from_manifest(manifest, field_config['path'])
+                    # Allow None check to include empty dict {} and empty list []
+                    if value is not None:
+                        result[field_name] = value
                 except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract resources using path '{res_config['path']}': {e}")
-                    actual_resources = nodeagent_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
-                    if actual_resources:
-                        values[nodeagent_key]['resources'] = actual_resources
-            else:
-                actual_resources = nodeagent_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
-                if actual_resources:
-                    values[nodeagent_key]['resources'] = actual_resources
+                    print(f"Warning: Failed to extract {field_name} for {manifest_type} "
+                          f"using path '{field_config['path']}': {e}")
 
-        return values
+        return result
 
     def _extract_image_values(
         self,

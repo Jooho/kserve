@@ -22,11 +22,6 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
     spec:
-      serviceAccountName: kserve-controller-manager
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
       containers:
       - name: manager
         image: "{{ .Values.kserve.controller.image }}:{{ .Values.kserve.version | default .Values.kserve.version | default .Values.kserve.controller.tag }}"
@@ -102,6 +97,12 @@ spec:
             name: https
             protocol: TCP
 
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      serviceAccountName: kserve-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
         - name: cert

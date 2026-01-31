@@ -85,6 +85,8 @@ class TestValuesGenerator:
                     'valuePath': 'kserve.enabled'
                 },
                 'controllerManager': {
+                    'kind': 'Deployment',
+                    'name': 'kserve-controller-manager',
                     'image': {
                         'repository': {
                             'valuePath': 'kserve.controllerManager.image.repository'
@@ -144,6 +146,8 @@ class TestValuesGenerator:
                     'valuePath': 'localmodel.enabled'
                 },
                 'controllerManager': {
+                    'kind': 'Deployment',
+                    'name': 'kserve-localmodel-controller',
                     'image': {
                         'repository': {
                             'valuePath': 'localmodel.controllerManager.image.repository'
@@ -191,6 +195,8 @@ class TestValuesGenerator:
             'metadata': {'name': 'kserve'},
             'kserve': {
                 'controllerManager': {
+                    'kind': 'Deployment',
+                    'name': 'kserve-controller-manager',
                     'image': {
                         'repository': {
                             'path': 'spec.template.spec.containers[0].image+(:,0)',
@@ -257,6 +263,8 @@ class TestValuesGenerator:
                     'valuePath': 'kserve.enabled'
                 },
                 'controllerManager': {
+                    'kind': 'Deployment',
+                    'name': 'kserve-controller-manager',
                     'image': {
                         'repository': {
                             # No path field - should fallback to hardcoded

@@ -44,12 +44,17 @@ appVersion: {metadata.get('appVersion', '1.0.0')}
 
         # Check if we need to generate deploymentName helper
         # This is needed when the deployment name differs from chart name
+        # Find the first Deployment workload
         deployment_name = None
         for component_name, component_config in self.mapping.items():
-            if isinstance(component_config, dict) and 'controllerManager' in component_config:
-                cm_config = component_config['controllerManager']
-                if isinstance(cm_config, dict) and 'name' in cm_config:
-                    deployment_name = cm_config['name']
+            if isinstance(component_config, dict):
+                for config_key, config_value in component_config.items():
+                    if (isinstance(config_value, dict) and
+                            config_value.get('kind') == 'Deployment' and
+                            'name' in config_value):
+                        deployment_name = config_value['name']
+                        break
+                if deployment_name:
                     break
 
         # Determine which name helper to use in selectorLabels

@@ -2,7 +2,7 @@
 Workload generator for Helm charts
 Handles generation of Deployment and DaemonSet templates
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 from .utils import (
     add_kustomize_labels,
@@ -10,6 +10,70 @@ from .utils import (
     yaml_to_string,
     replace_cert_manager_namespace
 )
+
+
+class TemplateRenderer:
+    """Generic Helm template renderer for workload fields.
+
+    This class provides generic template rendering for common workload fields
+    like nodeSelector, affinity, tolerations, etc. based on field metadata
+    from the mapper configuration.
+    """
+
+    # Template patterns for different field types
+    TEMPLATE_TYPES = {
+        'configurable': """      {{{{- with .Values.{valuePath} }}}}
+      {fieldName}:
+        {{{{- toYaml . | nindent {indent} }}}}
+      {{{{- end }}}}
+""",
+        'static': """      {fieldName}:
+{value}
+"""
+    }
+
+    def render_field(
+            self,
+            field_name: str,
+            field_config: Dict[str, Any],
+            default_indent: int = 6,
+            static_value: Optional[Any] = None
+    ) -> str:
+        """Render template for a field based on its configuration.
+
+        Args:
+            field_name: Name of the field (e.g., 'nodeSelector', 'affinity')
+            field_config: Field configuration from mapper (must have 'valuePath')
+            default_indent: Default indentation level for the field content
+            static_value: Static value to use if no valuePath (for backward compatibility)
+
+        Returns:
+            Rendered Helm template string for the field
+        """
+        # Determine template type based on configuration
+        template_meta = field_config.get('template', {})
+        template_type = template_meta.get('type', 'configurable')
+
+        # For fields with valuePath, use configurable template (Helm values)
+        if 'valuePath' in field_config:
+            template_type = 'configurable'
+            template_pattern = self.TEMPLATE_TYPES.get(template_type, '')
+
+            # Calculate indent for content (field content is indented more than field name)
+            content_indent = template_meta.get('indent', default_indent + 2)
+
+            return template_pattern.format(
+                valuePath=field_config['valuePath'],
+                fieldName=field_name,
+                indent=content_indent
+            )
+
+        # For static values (fallback for backward compatibility)
+        elif static_value is not None:
+            value_str = yaml_to_string(static_value, indent=default_indent + 2)
+            return f"      {field_name}:\n{value_str}"
+
+        return ""
 
 
 class WorkloadGenerator:
@@ -25,180 +89,240 @@ class WorkloadGenerator:
 
     def generate_deployment(
             self, output_dir: Path, component_name: str,
-            component_data: Dict[str, Any]) -> None:
+            component_data: Dict[str, Any], manifest_key: str) -> None:
         """Generate Deployment template for a component
 
         Args:
             output_dir: Output directory for template
             component_name: Name of the component
             component_data: Component configuration and manifests
+            manifest_key: Key in component_data['manifests'] for the deployment
         """
-        config = component_data['config']
-        manifest = component_data['manifests'].get('controllerManager')
-
-        if not manifest:
-            return
-
-        # Get deployment from manifest (could be multi-doc)
-        deployment = manifest if isinstance(manifest, dict) else manifest[0]
-
-        cm_config = config.get('controllerManager', {})
-        chart_name = self.mapping['metadata']['name']
-
-        # Main component (kserve/llmisvc/localmodel) is always installed
-        is_main_component = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel']
-        enabled_path = None if is_main_component else config.get('enabled', {}).get('valuePath')
-
-        # Generate header with metadata and labels
-        template = self._generate_workload_header(deployment, is_main_component, enabled_path)
-        template += '\nspec:\n  selector:\n    matchLabels:\n'
-
-        # Add selector labels
-        for key, value in deployment['spec']['selector']['matchLabels'].items():
-            template += f'      {key}: {quote_label_value_if_needed(value)}\n'
-
-        template += '  template:\n'
-        template += '    metadata:\n'
-        template += '      labels:\n'
-
-        # Add pod labels
-        for key, value in deployment['spec']['template']['metadata']['labels'].items():
-            template += f'        {key}: {quote_label_value_if_needed(value)}\n'
-
-        # Add annotations if present
-        if 'annotations' in deployment['spec']['template']['metadata']:
-            # Replace namespace in cert-manager annotations with Helm template
-            processed_annotations = replace_cert_manager_namespace(
-                deployment['spec']['template']['metadata']['annotations']
-            )
-            template += '      annotations:\n'
-            for key, value in processed_annotations.items():
-                template += f'        {key}: {value}\n'
-
-        template += '    spec:\n'
-
-        # Service account
-        template += f'      serviceAccountName: {deployment["spec"]["template"]["spec"]["serviceAccountName"]}\n'
-
-        # Security context
-        if 'securityContext' in deployment['spec']['template']['spec']:
-            template += '      securityContext:\n'
-            template += yaml_to_string(deployment['spec']['template']['spec']['securityContext'], indent=8)
-
-        # Containers
-        template += '      containers:\n'
-        for container in deployment['spec']['template']['spec']['containers']:
-            is_main_container = container['name'] == 'manager'
-            template += self._generate_container_spec(container, is_main_container, cm_config, 'deployment')
-            template += '\n'
-
-        # Termination grace period
-        if 'terminationGracePeriodSeconds' in deployment['spec']['template']['spec']:
-            template += f'      terminationGracePeriodSeconds: {deployment["spec"]["template"]["spec"]["terminationGracePeriodSeconds"]}\n'
-
-        # Volumes
-        if 'volumes' in deployment['spec']['template']['spec']:
-            template += '      volumes:\n'
-            template += yaml_to_string(deployment['spec']['template']['spec']['volumes'], indent=8)
-
-        # Only add closing if for non-main components
-        if not is_main_component:
-            template += '{{- end }}\n'
-
-        output_file = output_dir / 'deployment.yaml'
-        with open(output_file, 'w') as f:
-            f.write(template)
+        self._generate_workload(
+            output_dir=output_dir,
+            component_name=component_name,
+            component_data=component_data,
+            workload_type='deployment',
+            config_key=manifest_key
+        )
 
     def generate_daemonset(
             self, output_dir: Path, component_name: str,
-            component_data: Dict[str, Any]) -> None:
+            component_data: Dict[str, Any], manifest_key: str) -> None:
         """Generate DaemonSet template for a component's nodeAgent
 
         Args:
             output_dir: Output directory for template
             component_name: Name of the component
             component_data: Component configuration and manifests
+            manifest_key: Key in component_data['manifests'] for the daemonset
         """
-        config = component_data['config']
-        manifest = component_data['manifests'].get('nodeAgent')
+        self._generate_workload(
+            output_dir=output_dir,
+            component_name=component_name,
+            component_data=component_data,
+            workload_type='daemonset',
+            config_key=manifest_key
+        )
 
+    def _extract_workload_manifest(
+            self,
+            component_data: Dict[str, Any],
+            config_key: str
+    ) -> Optional[Dict[str, Any]]:
+        """Extract workload manifest from component data
+
+        Args:
+            component_data: Component configuration and manifests
+            config_key: Key to lookup in manifests (e.g., 'controllerManager', 'nodeAgent')
+
+        Returns:
+            Workload manifest dict, or None if not found
+        """
+        manifest = component_data['manifests'].get(config_key)
         if not manifest:
+            return None
+        return manifest if isinstance(manifest, dict) else manifest[0]
+
+    def _determine_component_status(
+            self,
+            component_name: str,
+            component_data: Dict[str, Any]
+    ) -> tuple[bool, Optional[str]]:
+        """Determine if component is main and get enabled path
+
+        Args:
+            component_name: Name of the component
+            component_data: Component configuration and manifests
+
+        Returns:
+            Tuple of (is_main_component, enabled_path)
+        """
+        chart_name = self.mapping['metadata']['name']
+        is_main = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel', 'localmodelnode']
+        enabled_path = None if is_main else component_data['config'].get('enabled', {}).get('valuePath')
+        return is_main, enabled_path
+
+    def _generate_selector_labels(self, match_labels: Dict[str, str]) -> str:
+        """Generate selector labels template
+
+        Args:
+            match_labels: Label dict from spec.selector.matchLabels
+
+        Returns:
+            YAML template string for selector labels
+        """
+        lines = []
+        for key, value in match_labels.items():
+            lines.append(f'      {key}: {quote_label_value_if_needed(value)}')
+        return '\n'.join(lines)
+
+    def _get_output_filename(self, workload_type: str, workload_name: str) -> str:
+        """Get output filename for workload
+
+        Args:
+            workload_type: 'deployment' or 'daemonset'
+            workload_name: Name of the workload resource
+
+        Returns:
+            Output filename (e.g., 'deployment.yaml', 'daemonset_foo.yaml')
+        """
+        if workload_type == 'deployment':
+            return 'deployment.yaml'
+        else:  # daemonset
+            return f'daemonset_{workload_name}.yaml'
+
+    def _generate_pod_metadata(
+            self,
+            pod_metadata: Dict[str, Any],
+            workload_type: str
+    ) -> str:
+        """Generate pod metadata with correct field ordering
+
+        Args:
+            pod_metadata: Pod metadata from spec.template.metadata
+            workload_type: 'deployment' or 'daemonset'
+
+        Returns:
+            YAML template string for pod metadata
+        """
+        lines = ['    metadata:']
+
+        # Order depends on workload type
+        # Deployment: labels → annotations
+        # DaemonSet: annotations → labels
+        field_order = ['labels', 'annotations'] if workload_type == 'deployment' else ['annotations', 'labels']
+
+        for field_name in field_order:
+            if field_name == 'labels':
+                lines.append('      labels:')
+                for key, value in pod_metadata['labels'].items():
+                    lines.append(f'        {key}: {quote_label_value_if_needed(value)}')
+            elif field_name == 'annotations' and 'annotations' in pod_metadata:
+                processed_annotations = replace_cert_manager_namespace(pod_metadata['annotations'])
+                lines.append('      annotations:')
+                for key, value in processed_annotations.items():
+                    lines.append(f'        {key}: {value}')
+
+        return '\n'.join(lines)
+
+    def _generate_pod_spec_fields(
+            self,
+            pod_spec: Dict[str, Any],
+            component_config: Dict[str, Any],
+            workload_type: str
+    ) -> str:
+        """Generate pod spec fields (containers and others)
+
+        Args:
+            pod_spec: Pod spec from spec.template.spec
+            component_config: Component configuration (controllerManager or nodeAgent)
+            workload_type: 'deployment' or 'daemonset'
+
+        Returns:
+            YAML template string for pod spec fields
+        """
+        lines = []
+        renderer = TemplateRenderer()
+
+        for field_name, field_value in pod_spec.items():
+            if field_name == 'containers':
+                # Special handling for containers (image/resources substitution)
+                lines.append('      containers:')
+                for container in pod_spec['containers']:
+                    is_main = container['name'] == 'manager'
+                    container_spec = self._generate_container_spec(
+                        container, is_main, component_config, workload_type
+                    )
+                    lines.append(container_spec)
+            else:
+                # Check mapper for configurability
+                if field_name in component_config and isinstance(component_config[field_name], dict) and 'valuePath' in component_config[field_name]:
+                    # Mapper defined → configurable ({{ .Values.xxx }})
+                    value_path = component_config[field_name]['valuePath']
+
+                    # Special handling for affinity/tolerations to output empty values
+                    # This ensures verification accuracy (empty {} or [] are semantically equivalent to omission)
+                    if field_name in ['affinity', 'tolerations']:
+                        lines.append(f'      {field_name}: {{{{- toYaml .Values.{value_path} | nindent 8 }}}}')
+                    else:
+                        lines.append(renderer.render_field(field_name, component_config[field_name], default_indent=6))
+                else:
+                    # Not in mapper → static (keep manifest value as-is)
+                    if isinstance(field_value, (dict, list)):
+                        # Complex value (dict or list)
+                        lines.append(f'      {field_name}:')
+                        lines.append(yaml_to_string(field_value, indent=8))
+                    else:
+                        # Scalar value (string, int, bool, etc.)
+                        yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
+                        lines.append(f'      {field_name}: {yaml_value}')
+
+        return '\n'.join(lines)
+
+    def _generate_workload(
+            self,
+            output_dir: Path,
+            component_name: str,
+            component_data: Dict[str, Any],
+            workload_type: str,
+            config_key: str
+    ) -> None:
+        """Generate workload (Deployment or DaemonSet) template
+
+        Args:
+            output_dir: Output directory for template
+            component_name: Name of the component
+            component_data: Component configuration and manifests
+            workload_type: 'deployment' or 'daemonset'
+            config_key: Config key to lookup ('controllerManager' or 'nodeAgent')
+        """
+        # Extract manifest
+        workload = self._extract_workload_manifest(component_data, config_key)
+        if not workload:
             return
 
-        # Get daemonset from manifest
-        daemonset = manifest if isinstance(manifest, dict) else manifest[0]
+        component_config = component_data['config'].get(config_key, {})
+        is_main, enabled_path = self._determine_component_status(component_name, component_data)
 
-        na_config = config.get('nodeAgent', {})
-        chart_name = self.mapping['metadata']['name']
-
-        # Main component (kserve/llmisvc/localmodel) is always installed
-        is_main_component = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel']
-        enabled_path = None if is_main_component else config.get('enabled', {}).get('valuePath')
-
-        # Generate header with metadata and labels
-        template = self._generate_workload_header(daemonset, is_main_component, enabled_path)
+        # Generate template
+        template = self._generate_workload_header(workload, is_main, enabled_path)
         template += '\nspec:\n  selector:\n    matchLabels:\n'
+        template += self._generate_selector_labels(workload['spec']['selector']['matchLabels'])
+        template += '\n  template:\n'
+        template += self._generate_pod_metadata(workload['spec']['template']['metadata'], workload_type)
+        template += '\n    spec:\n'
+        template += self._generate_pod_spec_fields(
+            workload['spec']['template']['spec'],
+            component_config,
+            workload_type
+        )
 
-        # Add selector labels
-        for key, value in daemonset['spec']['selector']['matchLabels'].items():
-            template += f'      {key}: {quote_label_value_if_needed(value)}\n'
-
-        template += '  template:\n'
-        template += '    metadata:\n'
-
-        # Add annotations if present
-        if 'annotations' in daemonset['spec']['template']['metadata']:
-            # Replace namespace in cert-manager annotations with Helm template
-            processed_annotations = replace_cert_manager_namespace(
-                daemonset['spec']['template']['metadata']['annotations']
-            )
-            template += '      annotations:\n'
-            for key, value in processed_annotations.items():
-                template += f'        {key}: {value}\n'
-
-        template += '      labels:\n'
-
-        # Add pod labels
-        for key, value in daemonset['spec']['template']['metadata']['labels'].items():
-            template += f'        {key}: {quote_label_value_if_needed(value)}\n'
-
-        template += '    spec:\n'
-
-        # Containers
-        template += '      containers:\n'
-        for container in daemonset['spec']['template']['spec']['containers']:
-            is_main_container = container['name'] == 'manager'
-            template += self._generate_container_spec(container, is_main_container, na_config, 'daemonset')
-            template += '\n'
-
-        # Node selector (common in DaemonSets)
-        if 'nodeSelector' in daemonset['spec']['template']['spec']:
-            template += '      nodeSelector:\n'
-            template += yaml_to_string(daemonset['spec']['template']['spec']['nodeSelector'], indent=8)
-
-        # Security context (pod-level)
-        if 'securityContext' in daemonset['spec']['template']['spec']:
-            template += '      securityContext:\n'
-            template += yaml_to_string(daemonset['spec']['template']['spec']['securityContext'], indent=8)
-
-        # Service account
-        template += f'      serviceAccountName: {daemonset["spec"]["template"]["spec"]["serviceAccountName"]}\n'
-
-        # Termination grace period
-        if 'terminationGracePeriodSeconds' in daemonset['spec']['template']['spec']:
-            template += f'      terminationGracePeriodSeconds: {daemonset["spec"]["template"]["spec"]["terminationGracePeriodSeconds"]}\n'
-
-        # Volumes
-        if 'volumes' in daemonset['spec']['template']['spec']:
-            template += '      volumes:\n'
-            template += yaml_to_string(daemonset['spec']['template']['spec']['volumes'], indent=8)
-
-        # Only add closing if for non-main components
-        if not is_main_component:
+        if not is_main:
             template += '{{- end }}\n'
 
-        # Generate filename from daemonset name
-        filename = f'daemonset_{daemonset["metadata"]["name"]}.yaml'
+        # Write file
+        filename = self._get_output_filename(workload_type, workload['metadata']['name'])
         output_file = output_dir / filename
         with open(output_file, 'w') as f:
             f.write(template)

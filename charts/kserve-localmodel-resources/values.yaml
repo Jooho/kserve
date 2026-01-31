@@ -11,7 +11,7 @@ kserve:
   version: &defaultVersion v0.16.0
 
 localmodel:
-  controllerManager:
+  controller:
     image: kserve/kserve-localmodel-controller
     tag: *defaultVersion
     imagePullPolicy: Always
@@ -33,3 +33,7 @@ localmodel:
       requests:
         cpu: 100m
         memory: 200Mi
+    nodeSelector:
+      kserve/localmodel: worker
+    affinity: {}
+    tolerations: []

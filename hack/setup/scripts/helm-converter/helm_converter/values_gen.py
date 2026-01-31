@@ -119,6 +119,18 @@ class ValuesGenerator:
                 self.manifests
             )
 
+        # Add localmodelnode values to localmodel section (they belong together)
+        if 'localmodelnode' in self.mapping:
+            if 'localmodel' not in values:
+                values['localmodel'] = {}
+            localmodelnode_values = self.component_builder.build_component_values(
+                'localmodelnode',
+                self.mapping['localmodelnode'],
+                self.manifests
+            )
+            # Merge localmodelnode values into localmodel section
+            values['localmodel'].update(localmodelnode_values)
+
         # Add runtime values (support both clusterServingRuntimes and runtimes keys)
         if 'clusterServingRuntimes' in self.mapping:
             values['runtimes'] = self.runtime_builder.build_runtime_values(

@@ -88,10 +88,10 @@ LocalModel controller for local model storage and caching.
 
 **Configuration options:**
 
-- `localmodel.controllerManager.image`: Controller image (default: "kserve/kserve-localmodel-controller")
-- `localmodel.controllerManager.tag`: Controller image tag
-- `localmodel.controllerManager.imagePullPolicy`: Image pull policy
-- `localmodel.controllerManager.resources`: Resource limits/requests
+- `localmodel.controller.image`: Controller image (default: "kserve/kserve-localmodel-controller")
+- `localmodel.controller.tag`: Controller image tag
+- `localmodel.controller.imagePullPolicy`: Image pull policy
+- `localmodel.controller.resources`: Resource limits/requests
 - `localmodel.nodeAgent.image`: Node agent image (default: "kserve/kserve-localmodelnode-agent")
 - `localmodel.nodeAgent.tag`: Node agent image tag
 - `localmodel.nodeAgent.imagePullPolicy`: Image pull policy
@@ -268,18 +268,7 @@ helm install kserve charts/kserve-resources -n kserve --create-namespace
 
 ### LLMInferenceServiceConfig Resources
 
-LLMInferenceServiceConfig resources are now fully supported using the `copyAsIs` mechanism. These resources contain Go template expressions (like `{{ ChildName ... }}`) that are preserved during Helm conversion by escaping them as `{{ "{{" }}` and `{{ "}}" }}`. This allows Helm to render the templates while passing the Go template expressions through unchanged.
-
-When rendered by Helm, these resources will contain literal `{{` and `}}` characters, which are then processed by the KServe controller at runtime.
-
-### Chart Dependencies
-
-The four charts have the following relationship:
-
-- **kserve-resources**: Core KServe controller for traditional ML/DL models
-- **kserve-llmisvc-resources**: LLMISVC controller for large language models
-- **kserve-localmodel-resources**: LocalModel controller for edge/on-premise deployments (optional)
-- **kserve-runtime-configs**: Runtime configurations (optional, can be installed with any controller chart)
+LLMInferenceServiceConfig manifests contain Go template expressions that must be preserved for the KServe controller. The copyAsIs mechanism escapes these expressions so Helm doesn't process them, allowing the controller to evaluate them at runtime.
 
 ## References
 

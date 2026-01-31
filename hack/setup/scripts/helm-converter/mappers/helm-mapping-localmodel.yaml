@@ -13,40 +13,44 @@ metadata:
   appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
 
 # =============================================================================
-# LOCALMODEL COMPONENT
+# LOCALMODEL COMPONENT (Controller)
 # =============================================================================
 localmodel:
-  manifestPath: config/components/localmodel
+  manifestPath: config/localmodels
 
   # LocalModel Controller Manager Deployment
   controllerManager:
     kind: Deployment
     name: kserve-localmodel-controller-manager
     namespace: kserve
-    manifestPath: config/localmodels/manager.yaml
 
     image:
       repository:
         path: spec.template.spec.containers[0].image+(:,0)
-        valuePath: localmodel.controllerManager.image
+        valuePath: localmodel.controller.image
       tag:
         path: spec.template.spec.containers[0].image+(:,1)
-        valuePath: localmodel.controllerManager.tag
+        valuePath: localmodel.controller.tag
         useVersionAnchor: true
       pullPolicy:
         path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: localmodel.controllerManager.imagePullPolicy
+        valuePath: localmodel.controller.imagePullPolicy
 
     resources:
       path: spec.template.spec.containers[0].resources
-      valuePath: localmodel.controllerManager.resources
+      valuePath: localmodel.controller.resources
+
+# =============================================================================
+# LOCALMODELNODE COMPONENT (Agent)
+# =============================================================================
+localmodelnode:
+  manifestPath: config/localmodelnodes
 
   # LocalModelNode Agent DaemonSet
   nodeAgent:
     kind: DaemonSet
     name: kserve-localmodelnode-agent
     namespace: kserve
-    manifestPath: config/localmodelnodes/manager.yaml
 
     image:
       repository:
@@ -63,6 +67,18 @@ localmodel:
     resources:
       path: spec.template.spec.containers[0].resources
       valuePath: localmodel.nodeAgent.resources
+
+    nodeSelector:
+      path: spec.template.spec.nodeSelector
+      valuePath: localmodel.nodeAgent.nodeSelector
+
+    affinity:
+      path: spec.template.spec.affinity
+      valuePath: localmodel.nodeAgent.affinity
+
+    tolerations:
+      path: spec.template.spec.tolerations
+      valuePath: localmodel.nodeAgent.tolerations
 
 # =============================================================================
 # NOTES
