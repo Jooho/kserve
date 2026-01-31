@@ -29,6 +29,7 @@ export DEPLOYMENT_MODE="${1:-'Knative'}"
 export NETWORK_LAYER="${2:-'istio'}"
 export GATEWAY_NETWORK_LAYER="false"
 export LLMISVC="${LLMISVC:-'false'}"
+export INSTALL_METHOD="${INSTALL_METHOD:-'kustomize'}"
 
 # Extract gateway class name from NETWORK_LAYER (e.g., "envoy-gatewayapi" -> "envoy")
 # If NETWORK_LAYER contains "-", extract the first part; otherwise, use "false"
@@ -36,7 +37,7 @@ if [[ $NETWORK_LAYER == *"-gatewayapi"* ]]; then
   export GATEWAY_NETWORK_LAYER="${NETWORK_LAYER%%-*}"
 fi
 
-echo "Installing KServe using Kustomize..."
+echo "Installing KServe using ${INSTALL_METHOD^}..."
 
 echo "Creating a namespace kserve-ci-test ..."
 kubectl create namespace kserve-ci-e2e-test
@@ -47,8 +48,14 @@ pushd python/kserve >/dev/null
 popd
 
 
-if [[ $LLMISVC == "false" ]]; then  
-  KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh 
+if [[ $LLMISVC == "false" ]]; then
+  #TODO: Refactor this to use the same logic for both kustomize and helm
+  if [[ $INSTALL_METHOD == "helm" ]]; then
+    SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
+    kustomize build config/overlays/test/minio-local-backend/ > config/overlays/test/minio-local-backend/minio-local-backend.yaml
+  else
+    KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+  fi
 
   echo "Installing KServe Runtimes..."
   kubectl apply --server-side=true -k config/overlays/test/clusterresources
@@ -62,7 +69,12 @@ if [[ $LLMISVC == "false" ]]; then
   echo "Add storageSpec testing secrets ..."
   kubectl apply -f config/overlays/test/s3-local-backend/storage-config-secret.yaml -n kserve-ci-e2e-test
 else
-  KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+  #TODO: Refactor this to use the same logic for both kustomize and helm
+  if [[ $INSTALL_METHOD == "helm" ]]; then
+    SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
+  else
+    KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+  fi
 fi
 
 echo "Show inferenceservice-config configmap..."
