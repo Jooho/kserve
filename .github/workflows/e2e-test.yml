@@ -698,8 +698,9 @@ jobs:
         run: ./test/scripts/gh-actions/setup-uv.sh
 
       - name: Install Kserve from helm
-        run: |
-          ./test/scripts/gh-actions/setup-kserve-helm.sh
+        run: |        
+          export INSTALL_METHOD="helm"          
+          ./test/scripts/gh-actions/setup-kserve.sh
           kubectl get pods -n kserve
           kubectl describe pods -n kserve
 
