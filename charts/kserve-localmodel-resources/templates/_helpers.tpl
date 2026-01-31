@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "llmisvc.name" -}}
+{{- define "kserve-localmodel-resources.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "llmisvc.fullname" -}}
+{{- define "kserve-localmodel-resources.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "llmisvc.chart" -}}
+{{- define "kserve-localmodel-resources.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "llmisvc.labels" -}}
-helm.sh/chart: {{ include "llmisvc.chart" . }}
-{{ include "llmisvc.selectorLabels" . }}
+{{- define "kserve-localmodel-resources.labels" -}}
+helm.sh/chart: {{ include "kserve-localmodel-resources.chart" . }}
+{{ include "kserve-localmodel-resources.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,14 +43,14 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "llmisvc.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "llmisvc.deploymentName" . }}
+{{- define "kserve-localmodel-resources.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "kserve-localmodel-resources.deploymentName" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the deployment name
 */}}
-{{- define "llmisvc.deploymentName" -}}
-llmisvc-controller-manager
+{{- define "kserve-localmodel-resources.deploymentName" -}}
+kserve-localmodel-controller-manager
 {{- end }}
