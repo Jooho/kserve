@@ -1,0 +1,84 @@
+# Helm Mapping Configuration for LocalModel Chart
+# Chart Name: kserve-localmodel-resources
+# Description: LocalModel controller for local model caching
+# NOTE: CRDs are managed separately by user (kserve-localmodel-crd chart)
+
+# =============================================================================
+# CHART METADATA
+# =============================================================================
+metadata:
+  name: kserve-localmodel-resources
+  description: "KServe LocalModel - Local Model Storage and Caching for Edge and On-Premise Deployments"
+  version: "0.1.0"  # Overridden by KSERVE_VERSION from kserve-deps.env
+  appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
+
+# =============================================================================
+# LOCALMODEL COMPONENT
+# =============================================================================
+localmodel:
+  manifestPath: config/components/localmodel
+
+  # LocalModel Controller Manager Deployment
+  controllerManager:
+    kind: Deployment
+    name: kserve-localmodel-controller-manager
+    namespace: kserve
+    manifestPath: config/localmodels/manager.yaml
+
+    image:
+      repository:
+        path: spec.template.spec.containers[0].image+(:,0)
+        valuePath: localmodel.controllerManager.image
+      tag:
+        path: spec.template.spec.containers[0].image+(:,1)
+        valuePath: localmodel.controllerManager.tag
+        useVersionAnchor: true
+      pullPolicy:
+        path: spec.template.spec.containers[0].imagePullPolicy
+        valuePath: localmodel.controllerManager.imagePullPolicy
+
+    resources:
+      path: spec.template.spec.containers[0].resources
+      valuePath: localmodel.controllerManager.resources
+
+  # LocalModelNode Agent DaemonSet
+  nodeAgent:
+    kind: DaemonSet
+    name: kserve-localmodelnode-agent
+    namespace: kserve
+    manifestPath: config/localmodelnodes/manager.yaml
+
+    image:
+      repository:
+        path: spec.template.spec.containers[0].image+(:,0)
+        valuePath: localmodel.nodeAgent.image
+      tag:
+        path: spec.template.spec.containers[0].image+(:,1)
+        valuePath: localmodel.nodeAgent.tag
+        useVersionAnchor: true
+      pullPolicy:
+        path: spec.template.spec.containers[0].imagePullPolicy
+        valuePath: localmodel.nodeAgent.imagePullPolicy
+
+    resources:
+      path: spec.template.spec.containers[0].resources
+      valuePath: localmodel.nodeAgent.resources
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  KServe LocalModel Chart Mapping Configuration
+
+  This chart includes only the LocalModel controller resources (templates).
+  CRDs are managed separately via kserve-localmodel-crd chart.
+
+  Components:
+  - LocalModel controller deployment
+  - LocalModel webhook services
+  - LocalModel certificates
+  - LocalModel RBAC resources
+
+  NOTE: This chart does NOT include CRDs. Users must install CRDs separately:
+  1. helm install kserve-localmodel-crd charts/kserve-localmodel-crd
+  2. helm install kserve-localmodel charts/kserve-localmodel-resources
