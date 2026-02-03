@@ -181,7 +181,8 @@ class TestWorkloadGenerator:
 
         generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
 
-        deployment_file = templates_dir / 'deployment.yaml'
+        # Deployment filename now includes the workload name
+        deployment_file = templates_dir / 'deployment_test-controller.yaml'
         assert deployment_file.exists()
 
         with open(deployment_file, 'r') as f:
@@ -238,7 +239,7 @@ class TestWorkloadGenerator:
 
         generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
 
-        deployment_file = templates_dir / 'deployment.yaml'
+        deployment_file = templates_dir / 'deployment_test-controller.yaml'
         with open(deployment_file, 'r') as f:
             content = f.read()
 
@@ -298,11 +299,11 @@ class TestWorkloadGenerator:
         # Verify nodeSelector is templated (configurable)
         assert '{{- with .Values.test.agent.nodeSelector }}' in content
 
-        # Verify affinity is templated (configurable) - always output even if empty
-        assert 'affinity: {{- toYaml .Values.test.agent.affinity | nindent 8 }}' in content
+        # Verify affinity is templated with default dict (always rendered, preserves empty {})
+        assert 'affinity: {{- toYaml (.Values.test.agent.affinity | default dict)' in content
 
-        # Verify tolerations is templated (configurable) - always output even if empty
-        assert 'tolerations: {{- toYaml .Values.test.agent.tolerations | nindent 8 }}' in content
+        # Verify tolerations is templated with default list (always rendered, preserves empty [])
+        assert 'tolerations: {{- toYaml (.Values.test.agent.tolerations | default list)' in content
 
     def test_new_manifest_field_auto_handled(self, tmp_path, mapping, deployment_manifest):
         """Test that new manifest fields are automatically handled without code changes"""
@@ -335,7 +336,7 @@ class TestWorkloadGenerator:
 
         generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
 
-        deployment_file = templates_dir / 'deployment.yaml'
+        deployment_file = templates_dir / 'deployment_test-controller.yaml'
         with open(deployment_file, 'r') as f:
             content = f.read()
 
@@ -349,7 +350,7 @@ class TestWorkloadGenerator:
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
             'metadata': {
-                'name': 'test-deployment',
+                'name': 'test-deployment',  # This name is used for filename
                 'namespace': 'test',
                 'labels': {
                     'app': 'test-controller'
@@ -426,7 +427,7 @@ class TestWorkloadGenerator:
 
         generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
 
-        deployment_file = templates_dir / 'deployment.yaml'
+        deployment_file = templates_dir / 'deployment_test-deployment.yaml'
         with open(deployment_file, 'r') as f:
             content = f.read()
 
@@ -440,6 +441,82 @@ class TestWorkloadGenerator:
 
         # Verify it's under securityContext parent
         assert 'securityContext:' in content
+
+    def test_container_field_without_mapper_stays_static(self, tmp_path, mapping, deployment_manifest):
+        """Test that container fields not in mapper remain static"""
+        # Add command, env, ports to container
+        deployment_manifest['spec']['template']['spec']['containers'][0]['command'] = ['/manager']
+        deployment_manifest['spec']['template']['spec']['containers'][0]['env'] = [
+            {
+                'name': 'POD_NAMESPACE',
+                'valueFrom': {
+                    'fieldRef': {
+                        'fieldPath': 'metadata.namespace'
+                    }
+                }
+            }
+        ]
+        deployment_manifest['spec']['template']['spec']['containers'][0]['ports'] = [
+            {
+                'containerPort': 9443,
+                'name': 'webhook-server',
+                'protocol': 'TCP'
+            }
+        ]
+
+        component_data = {
+            'config': {
+                'controllerManager': {
+                    'image': {
+                        'repository': {
+                            'path': 'spec.template.spec.containers[0].image+(:,0)',
+                            'valuePath': 'test.controller.image'
+                        },
+                        'tag': {
+                            'path': 'spec.template.spec.containers[0].image+(:,1)',
+                            'valuePath': 'test.controller.tag'
+                        },
+                        'pullPolicy': {
+                            'path': 'spec.template.spec.containers[0].imagePullPolicy',
+                            'valuePath': 'test.controller.imagePullPolicy'
+                        }
+                    },
+                    'resources': {
+                        'path': 'spec.template.spec.containers[0].resources',
+                        'valuePath': 'test.controller.resources'
+                    }
+                    # NOTE: No mapper for command, env, ports, volumeMounts
+                }
+            },
+            'manifests': {
+                'controllerManager': deployment_manifest
+            }
+        }
+
+        generator = WorkloadGenerator(mapping)
+        templates_dir = tmp_path / 'templates'
+        templates_dir.mkdir()
+
+        generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
+
+        deployment_file = templates_dir / 'deployment_test-controller.yaml'
+        with open(deployment_file, 'r') as f:
+            content = f.read()
+
+        # Verify all container fields are static (no Helm templating)
+        assert 'command:' in content
+        assert '- /manager' in content  # Static command value
+
+        assert 'env:' in content
+        assert 'name: POD_NAMESPACE' in content  # Static env value
+
+        assert 'ports:' in content
+        assert 'containerPort: 9443' in content  # Static port value
+
+        # Should NOT have any {{ .Values.xxx }} for these fields
+        assert '.Values.test.controller.command' not in content
+        assert '.Values.test.controller.env' not in content
+        assert '.Values.test.controller.ports' not in content
 
 
 if __name__ == '__main__':

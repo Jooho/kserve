@@ -13,73 +13,53 @@ def apply_version_anchors(
     version: str,
     version_anchor_fields: List[str]
 ) -> str:
-    """Apply YAML anchors for centralized version management.
+    """Apply version management with empty strings for useVersionAnchor fields.
 
-    Uses useVersionAnchor flags from mapper to determine which fields should use version anchors.
-    Supports both controller tags and inferenceServiceConfig image tags.
+    NEW APPROACH: Use template-level fallback instead of YAML anchors.
+    - kserve.version: Plain value (no anchor)
+    - kserve.createSharedResources: Plain value (no anchor)
+    - useVersionAnchor fields: Empty string ""
+    - Templates use: {{ .Values.tag | default .Values.kserve.version }}
 
-    IMPORTANT: kserve.version is the ONLY anchor source for ALL charts.
-    - kserve-resources chart: uses existing kserve section
-    - kserve-llmisvc-resources chart: adds kserve.version (no llmisvc.version)
-    - kserve-localmodel-resources chart: adds kserve.version (no localmodel.version)
-    - kserve-runtime-configs chart: adds kserve.version (no runtimes.version)
+    Transforms field values:
 
-    Transforms:
-      inferenceServiceConfig:
-        agent:
-          tag: latest
-      kserve:
-        controller:
-          tag: latest
+      Before:
+        kserve:
+          controller:
+            tag: latest
+        inferenceServiceConfig:
+          agent:
+            tag: latest
 
-    To:
-      inferenceServiceConfig:
-        agent:
-          tag: *defaultVersion
-      kserve:
-        version: &defaultVersion v0.16.0
-        controller:
-          tag: *defaultVersion
-
-    For charts without kserve section (llmisvc/localmodel/runtime):
-      llmisvc:
-        controller:
-          tag: latest
-
-    To:
-      kserve:
-        version: &defaultVersion v0.16.0
-      llmisvc:
-        controller:
-          tag: *defaultVersion
+      After:
+        kserve:
+          version: v0.16.0
+        inferenceServiceConfig:
+          agent:
+            tag: ""
 
     Args:
         yaml_content: Original YAML content string
         version: Version string from Chart metadata (e.g., "v0.16.0")
-        version_anchor_fields: List of field paths that should use version anchors
+        version_anchor_fields: List of field paths that should use empty strings
 
     Returns:
-        YAML content with version anchors applied
+        YAML content with version management applied
     """
-    # kserve.version is the anchor source for ALL charts
-    # Even in llmisvc/localmodel/runtime-configs charts, we use kserve.version as the anchor
-
-    # Step 1: Add kserve.version anchor (anchor source)
-    # This applies to all charts - kserve.version is always the anchor source
+    # Step 1: Add kserve.version and createSharedResources (NO anchor)
     if 'kserve:\n' in yaml_content:
-        # kserve section exists, add version with anchor
+        # kserve section exists, add version and createSharedResources without anchor
         pattern = r'(^|\n)(kserve:)\n'
         yaml_content = re.sub(
             pattern,
-            rf'\1\2\n  version: &defaultVersion {version}\n',
+            rf'\1\2\n  version: {version}\n  createSharedResources: true\n',
             yaml_content,
             count=1,
             flags=re.MULTILINE
         )
     else:
-        # kserve section doesn't exist (e.g., in llmisvc/localmodel/runtime charts)
-        # Add kserve.version at the top level to define the anchor
-        # Insert after the header comments and before the first top-level key
+        # kserve section doesn't exist
+        # Add kserve.version at the top level
         lines = yaml_content.split('\n')
         insert_index = 0
         for i, line in enumerate(lines):
@@ -88,28 +68,28 @@ def apply_version_anchors(
                 insert_index = i
                 break
 
-        # Insert kserve.version before the first non-comment line
-        kserve_section = f'kserve:\n  version: &defaultVersion {version}\n'
+        # Insert kserve.version and createSharedResources before the first non-comment line
+        kserve_section = f'kserve:\n  version: {version}\n  createSharedResources: true\n'
         lines.insert(insert_index, kserve_section)
         yaml_content = '\n'.join(lines)
 
-    # Apply version anchors to all tracked fields
+    # Step 2: Set useVersionAnchor fields to empty string
     for field_path in version_anchor_fields:
-        yaml_content = apply_anchor_to_field(yaml_content, field_path, version)
+        yaml_content = apply_empty_string_to_field(yaml_content, field_path, version)
 
     return yaml_content
 
 
-def apply_anchor_to_field(yaml_content: str, field_path: str, version: str) -> str:
-    """Apply version anchor to a specific field path.
+def apply_empty_string_to_field(yaml_content: str, field_path: str, version: str) -> str:
+    """Apply empty string to a specific field path for template-level fallback.
 
     Args:
         yaml_content: YAML content string
         field_path: Field path (e.g., "kserve.controller.tag" or "inferenceServiceConfig.agent.tag")
-        version: Version string
+        version: Version string (used for matching)
 
     Returns:
-        YAML content with anchor applied to the field
+        YAML content with empty string applied to the field
     """
     # Split path into components
     parts = field_path.split('.')
@@ -121,22 +101,15 @@ def apply_anchor_to_field(yaml_content: str, field_path: str, version: str) -> s
     # For "kserve.controller.tag" -> match "controller:\n  ...\n  tag: latest"
     # For "inferenceServiceConfig.agent.tag" -> match "agent:\n  ...\n  tag: latest"
 
-    # Get the parent key and field name
-    if len(parts) == 2:
-        # Simple case: parent.field
-        parent_key = parts[0]
-        field_name = parts[1]
-        pattern = rf'({parent_key}:.*?\n(?:.*?\n)*?.*?{field_name}: )(?:latest|' + re.escape(version) + r')(\n)'
-    else:
-        # Nested case: a.b.c -> match "b:\n  ...\n  c: latest"
-        parent_key = parts[-2]
-        field_name = parts[-1]
-        pattern = rf'({parent_key}:.*?\n(?:.*?\n)*?.*?{field_name}: )(?:latest|' + re.escape(version) + r')(\n)'
+    # Get the parent key and field name (use last two parts)
+    parent_key = parts[-2]
+    field_name = parts[-1]
+    pattern = rf'({parent_key}:.*?\n(?:.*?\n)*?.*?{field_name}: )(?:latest|' + re.escape(version) + r')(\n)'
 
-    # Replace with version anchor reference
+    # Replace with empty string
     yaml_content = re.sub(
         pattern,
-        r'\1*defaultVersion\2',
+        r'\1""\2',
         yaml_content,
         flags=re.MULTILINE
     )

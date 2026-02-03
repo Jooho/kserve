@@ -24,21 +24,24 @@ localmodel:
     name: kserve-localmodel-controller-manager
     namespace: kserve
 
-    image:
-      repository:
-        path: spec.template.spec.containers[0].image+(:,0)
-        valuePath: localmodel.controller.image
-      tag:
-        path: spec.template.spec.containers[0].image+(:,1)
-        valuePath: localmodel.controller.tag
-        useVersionAnchor: true
-      pullPolicy:
-        path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: localmodel.controller.imagePullPolicy
+    # Container-level fields (NEW structure with container-relative paths)
+    containers:
+      manager:  # Main container name
+        image:
+          repository:
+            path: image+(:,0)
+            valuePath: localmodel.controller.containers.manager.image
+          tag:
+            path: image+(:,1)
+            valuePath: localmodel.controller.containers.manager.tag
+            useVersionAnchor: true
+          pullPolicy:
+            path: imagePullPolicy
+            valuePath: localmodel.controller.containers.manager.imagePullPolicy
 
-    resources:
-      path: spec.template.spec.containers[0].resources
-      valuePath: localmodel.controller.resources
+        resources:
+          path: resources
+          valuePath: localmodel.controller.containers.manager.resources
 
 # =============================================================================
 # LOCALMODELNODE COMPONENT (Agent)
@@ -52,22 +55,26 @@ localmodelnode:
     name: kserve-localmodelnode-agent
     namespace: kserve
 
-    image:
-      repository:
-        path: spec.template.spec.containers[0].image+(:,0)
-        valuePath: localmodel.nodeAgent.image
-      tag:
-        path: spec.template.spec.containers[0].image+(:,1)
-        valuePath: localmodel.nodeAgent.tag
-        useVersionAnchor: true
-      pullPolicy:
-        path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: localmodel.nodeAgent.imagePullPolicy
+    # Container-level fields (NEW structure with container-relative paths)
+    containers:
+      manager:  # Main container name
+        image:
+          repository:
+            path: image+(:,0)
+            valuePath: localmodel.nodeAgent.containers.manager.image
+          tag:
+            path: image+(:,1)
+            valuePath: localmodel.nodeAgent.containers.manager.tag
+            useVersionAnchor: true
+          pullPolicy:
+            path: imagePullPolicy
+            valuePath: localmodel.nodeAgent.containers.manager.imagePullPolicy
 
-    resources:
-      path: spec.template.spec.containers[0].resources
-      valuePath: localmodel.nodeAgent.resources
+        resources:
+          path: resources
+          valuePath: localmodel.nodeAgent.containers.manager.resources
 
+    # Pod-level fields (stay at root)
     nodeSelector:
       path: spec.template.spec.nodeSelector
       valuePath: localmodel.nodeAgent.nodeSelector

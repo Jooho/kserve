@@ -16,7 +16,7 @@ spec:
     - --model_dir=/mnt/models
     - --http_port=8080
     - --nthread=1
-    image: {{ .Values.runtimes.lightgbm.image.repository }}:{{ .Values.runtimes.lightgbm.image.tag }}
+    image: {{ .Values.runtimes.lightgbm.image.repository }}:{{ .Values.runtimes.lightgbm.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.lightgbm.resources | nindent 6 }}
     securityContext:

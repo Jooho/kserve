@@ -17,7 +17,7 @@ spec:
     - --http_port=8080
     - --framework={{ "{{" }}.Annotations.modelFormat{{ "}}" }}
     - --nthread=1
-    image: {{ .Values.runtimes.predictive.image.repository }}:{{ .Values.runtimes.predictive.image.tag }}
+    image: {{ .Values.runtimes.predictive.image.repository }}:{{ .Values.runtimes.predictive.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.predictive.resources | nindent 6 }}
     securityContext:

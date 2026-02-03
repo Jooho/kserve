@@ -27,7 +27,12 @@ class LLMIsvcConfigGenerator:
             return
 
         configs_dir = templates_dir / 'llmisvcconfigs'
-        configs_dir.mkdir(exist_ok=True)
+
+        # Ensure directory exists with error handling
+        try:
+            configs_dir.mkdir(exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Failed to create llmisvc configs directory '{configs_dir}': {e}")
 
         for config_data in manifests['llmisvcConfigs']:
             self._generate_llmisvc_config_template(configs_dir, config_data)
@@ -37,26 +42,58 @@ class LLMIsvcConfigGenerator:
 
         These resources contain Go templates that should NOT be escaped
         """
-        config = config_data['config']
-        manifest = config_data['manifest']
+        # Validate config_data structure (required fields)
+        try:
+            config = config_data['config']
+            manifest = config_data['manifest']
+        except KeyError as e:
+            raise ValueError(
+                f"LLMIsvc config data missing required field - {e}\n"
+                f"Config data must have: 'config', 'manifest'"
+            )
+
         copy_as_is = config_data.get('copyAsIs', True)
         original_yaml = config_data.get('original_yaml')
         original_filename = config_data.get('original_filename')
 
-        config_name = config['name']
+        # Validate config has name
+        try:
+            config_name = config['name']
+        except KeyError:
+            raise ValueError("LLMIsvc config missing required field 'name'")
 
         # For copyAsIs resources with original YAML, use it directly with minimal processing
         if copy_as_is and original_yaml:
+            # Validate manifest structure
+            try:
+                api_version = manifest['apiVersion']
+                kind = manifest['kind']
+                name = manifest['metadata']['name']
+            except KeyError as e:
+                raise ValueError(
+                    f"LLMIsvc manifest missing required field - {e}\n"
+                    f"Manifest must have: apiVersion, kind, metadata.name"
+                )
+
+            # Validate mapping has metadata.name
+            try:
+                chart_name = self.mapping['metadata']['name']
+            except KeyError as e:
+                raise ValueError(
+                    f"Mapping missing required field - {e}\n"
+                    f"Required path: mapping['metadata']['name']"
+                )
+
             # Parse the original YAML to extract just the spec section
             # We'll recreate the template with our conditional and labels
             template = f'''{{{{- if .Values.llmisvcConfigs.enabled }}}}
-apiVersion: {manifest['apiVersion']}
-kind: {manifest['kind']}
+apiVersion: {api_version}
+kind: {kind}
 metadata:
-  name: {manifest['metadata']['name']}
+  name: {name}
   namespace: {{{{ .Release.Namespace }}}}
   labels:
-    {{{{- include "{self.mapping['metadata']['name']}.labels" . | nindent 4 }}}}
+    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}
 '''
             # Extract spec section from original YAML
             # Find the top-level "spec:" line and include it and everything after it
@@ -77,14 +114,34 @@ metadata:
             template += '{{- end }}\n'
 
         else:
+            # Validate manifest structure
+            try:
+                api_version = manifest['apiVersion']
+                kind = manifest['kind']
+                name = manifest['metadata']['name']
+            except KeyError as e:
+                raise ValueError(
+                    f"LLMIsvc manifest missing required field - {e}\n"
+                    f"Manifest must have: apiVersion, kind, metadata.name"
+                )
+
+            # Validate mapping has metadata.name
+            try:
+                chart_name = self.mapping['metadata']['name']
+            except KeyError as e:
+                raise ValueError(
+                    f"Mapping missing required field - {e}\n"
+                    f"Required path: mapping['metadata']['name']"
+                )
+
             # Fallback to normal processing
             template = f'''{{{{- if .Values.llmisvcConfigs.enabled }}}}
-apiVersion: {manifest['apiVersion']}
-kind: {manifest['kind']}
+apiVersion: {api_version}
+kind: {kind}
 metadata:
-  name: {manifest['metadata']['name']}
+  name: {name}
   labels:
-    {{{{- include "{self.mapping['metadata']['name']}.labels" . | nindent 4 }}}}
+    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}
 '''
             if 'spec' in manifest:
                 template += 'spec:\n'
@@ -101,5 +158,9 @@ metadata:
 
         output_file = output_dir / filename
 
-        with open(output_file, 'w') as f:
-            f.write(template)
+        # Write template file with error handling
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write LLMIsvc config template to '{output_file}': {e}")

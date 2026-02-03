@@ -12,70 +12,6 @@ from .utils import (
 )
 
 
-class TemplateRenderer:
-    """Generic Helm template renderer for workload fields.
-
-    This class provides generic template rendering for common workload fields
-    like nodeSelector, affinity, tolerations, etc. based on field metadata
-    from the mapper configuration.
-    """
-
-    # Template patterns for different field types
-    TEMPLATE_TYPES = {
-        'configurable': """      {{{{- with .Values.{valuePath} }}}}
-      {fieldName}:
-        {{{{- toYaml . | nindent {indent} }}}}
-      {{{{- end }}}}
-""",
-        'static': """      {fieldName}:
-{value}
-"""
-    }
-
-    def render_field(
-            self,
-            field_name: str,
-            field_config: Dict[str, Any],
-            default_indent: int = 6,
-            static_value: Optional[Any] = None
-    ) -> str:
-        """Render template for a field based on its configuration.
-
-        Args:
-            field_name: Name of the field (e.g., 'nodeSelector', 'affinity')
-            field_config: Field configuration from mapper (must have 'valuePath')
-            default_indent: Default indentation level for the field content
-            static_value: Static value to use if no valuePath (for backward compatibility)
-
-        Returns:
-            Rendered Helm template string for the field
-        """
-        # Determine template type based on configuration
-        template_meta = field_config.get('template', {})
-        template_type = template_meta.get('type', 'configurable')
-
-        # For fields with valuePath, use configurable template (Helm values)
-        if 'valuePath' in field_config:
-            template_type = 'configurable'
-            template_pattern = self.TEMPLATE_TYPES.get(template_type, '')
-
-            # Calculate indent for content (field content is indented more than field name)
-            content_indent = template_meta.get('indent', default_indent + 2)
-
-            return template_pattern.format(
-                valuePath=field_config['valuePath'],
-                fieldName=field_name,
-                indent=content_indent
-            )
-
-        # For static values (fallback for backward compatibility)
-        elif static_value is not None:
-            value_str = yaml_to_string(static_value, indent=default_indent + 2)
-            return f"      {field_name}:\n{value_str}"
-
-        return ""
-
-
 class WorkloadGenerator:
     """Generator for Deployment and DaemonSet templates"""
 
@@ -139,10 +75,23 @@ class WorkloadGenerator:
         Returns:
             Workload manifest dict, or None if not found
         """
+        # Validate component_data has manifests
+        if 'manifests' not in component_data:
+            raise ValueError(
+                f"Component data missing required 'manifests' section for '{config_key}'"
+            )
+
         manifest = component_data['manifests'].get(config_key)
         if not manifest:
             return None
-        return manifest if isinstance(manifest, dict) else manifest[0]
+
+        # Handle both dict and list formats
+        if isinstance(manifest, dict):
+            return manifest
+        elif isinstance(manifest, list) and len(manifest) > 0:
+            return manifest[0]
+        else:
+            return None
 
     def _determine_component_status(
             self,
@@ -158,7 +107,15 @@ class WorkloadGenerator:
         Returns:
             Tuple of (is_main_component, enabled_path)
         """
-        chart_name = self.mapping['metadata']['name']
+        # Validate mapping has metadata.name
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError as e:
+            raise ValueError(
+                f"Mapping missing required field - {e}\n"
+                f"Required path: mapping['metadata']['name']"
+            )
+
         is_main = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel', 'localmodelnode']
         enabled_path = None if is_main else component_data['config'].get('enabled', {}).get('valuePath')
         return is_main, enabled_path
@@ -185,10 +142,10 @@ class WorkloadGenerator:
             workload_name: Name of the workload resource
 
         Returns:
-            Output filename (e.g., 'deployment.yaml', 'daemonset_foo.yaml')
+            Output filename (e.g., 'deployment_foo.yaml', 'daemonset_foo.yaml')
         """
         if workload_type == 'deployment':
-            return 'deployment.yaml'
+            return f'deployment_{workload_name}.yaml'
         else:  # daemonset
             return f'daemonset_{workload_name}.yaml'
 
@@ -208,13 +165,13 @@ class WorkloadGenerator:
         """
         lines = ['    metadata:']
 
-        # Order depends on workload type
-        # Deployment: labels → annotations
-        # DaemonSet: annotations → labels
-        field_order = ['labels', 'annotations'] if workload_type == 'deployment' else ['annotations', 'labels']
+        # Consistent field order for all workload types: labels → annotations
+        field_order = ['labels', 'annotations']
 
         for field_name in field_order:
             if field_name == 'labels':
+                if 'labels' not in pod_metadata:
+                    continue
                 lines.append('      labels:')
                 for key, value in pod_metadata['labels'].items():
                     lines.append(f'        {key}: {quote_label_value_if_needed(value)}')
@@ -243,62 +200,42 @@ class WorkloadGenerator:
             YAML template string for pod spec fields
         """
         lines = []
-        renderer = TemplateRenderer()
 
         for field_name, field_value in pod_spec.items():
             if field_name == 'containers':
                 # Special handling for containers (image/resources substitution)
                 lines.append('      containers:')
+
+                # Check if new containers section exists in mapper
+                containers_config = component_config.get('containers', {})
+
                 for container in pod_spec['containers']:
-                    is_main = container['name'] == 'manager'
+                    container_name = container['name']
+
+                    # Determine if container is configured in mapper
+                    if container_name in containers_config:
+                        # Configured container (in mapper) - configurable
+                        container_specific_config = containers_config[container_name]
+                        is_configured = True
+                    else:
+                        # Unconfigured container (not in mapper) - all static
+                        container_specific_config = {}
+                        is_configured = False
+
                     container_spec = self._generate_container_spec(
-                        container, is_main, component_config, workload_type
+                        container, is_configured, container_specific_config, workload_type,
+                        container_name=container_name
                     )
                     lines.append(container_spec)
             else:
                 # Check mapper for configurability
                 if field_name in component_config:
                     mapper_config = component_config[field_name]
-
-                    if isinstance(mapper_config, dict) and 'valuePath' in mapper_config:
-                        # Case 1: Entire field configurable (existing logic)
-                        value_path = mapper_config['valuePath']
-
-                        # Special handling for affinity/tolerations to output empty values
-                        # This ensures verification accuracy (empty {} or [] are semantically equivalent to omission)
-                        if field_name in ['affinity', 'tolerations']:
-                            lines.append(f'      {field_name}: {{{{- toYaml .Values.{value_path} | nindent 8 }}}}')
-                        else:
-                            lines.append(renderer.render_field(field_name, mapper_config, default_indent=6))
-
-                    elif isinstance(mapper_config, dict) and isinstance(field_value, dict):
-                        # Case 2: Nested mapper (NEW!)
-                        # Check if it's a nested config (has sub-fields with path/valuePath)
-                        has_nested_config = any(
-                            isinstance(v, dict) and ('path' in v or 'valuePath' in v)
-                            for v in mapper_config.values()
-                        )
-
-                        if has_nested_config:
-                            # Render as mixed nested (configurable + static)
-                            nested_template = self._render_nested_field(
-                                field_name, field_value, mapper_config, indent=6
-                            )
-                            lines.append(nested_template)
-                        else:
-                            # Not nested config, treat as static
-                            lines.append(f'      {field_name}:')
-                            lines.append(yaml_to_string(field_value, indent=8))
-
-                    else:
-                        # Case 3: Static
-                        if isinstance(field_value, (dict, list)):
-                            lines.append(f'      {field_name}:')
-                            lines.append(yaml_to_string(field_value, indent=8))
-                        else:
-                            yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
-                            lines.append(f'      {field_name}: {yaml_value}')
-
+                    # Use generic field rendering
+                    template = self._render_field_generic(
+                        field_name, field_value, mapper_config, base_indent=6
+                    )
+                    lines.append(template)
                 else:
                     # Not in mapper → static (keep manifest value as-is)
                     if isinstance(field_value, (dict, list)):
@@ -309,6 +246,94 @@ class WorkloadGenerator:
                         # Scalar value (string, int, bool, etc.)
                         yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
                         lines.append(f'      {field_name}: {yaml_value}')
+
+        return '\n'.join(lines)
+
+    def _render_field_generic(
+            self,
+            field_name: str,
+            field_value: Any,
+            mapper_config: Dict[str, Any],
+            base_indent: int
+    ) -> str:
+        """Render a field generically based on mapper configuration.
+
+        This method provides unified rendering logic for both pod-level and container-level fields.
+        It supports three modes:
+        1. Entire field configurable (valuePath in mapper)
+        2. Nested field configuration (partial configurability)
+        3. Static field (no mapper or no valuePath)
+
+        Args:
+            field_name: Name of the field (e.g., 'nodeSelector', 'command', 'securityContext')
+            field_value: Actual value from manifest
+            mapper_config: Mapper configuration for this field
+            base_indent: Base indentation level (6 for pod-level, 8 for container-level)
+
+        Returns:
+            Rendered Helm template string
+
+        Example:
+            # Pod-level configurable field
+            _render_field_generic('nodeSelector', {...}, {'valuePath': 'kserve.controller.nodeSelector'}, 6)
+            # Returns:
+            #       {{- with .Values.kserve.controller.nodeSelector }}
+            #       nodeSelector:
+            #         {{- toYaml . | nindent 8 }}
+            #       {{- end }}
+
+            # Container-level nested field
+            _render_field_generic('securityContext', {'runAsUser': 1000, ...},
+                                 {'runAsUser': {'valuePath': '...'}}, 8)
+            # Returns partially configurable template
+        """
+        lines = []
+        content_indent = base_indent + 2
+        indent_str = ' ' * base_indent
+
+        if isinstance(mapper_config, dict) and 'valuePath' in mapper_config:
+            # Case 1: Entire field configurable
+            value_path = mapper_config['valuePath']
+
+            # Special handling for affinity/tolerations: always render with default empty values
+            # This ensures empty affinity: {} and tolerations: [] from Kustomize manifests are preserved
+            if field_name in ['affinity', 'tolerations']:
+                default_val = 'dict' if field_name == 'affinity' else 'list'
+                lines.append(f"{indent_str}{field_name}: {{{{- toYaml (.Values.{value_path} | default {default_val}) | nindent {content_indent} }}}}")
+            else:
+                # Use {{- with }} for optional fields (only renders if value exists)
+                lines.append(f"{indent_str}{{{{- with .Values.{value_path} }}}}")
+                lines.append(f"{indent_str}{field_name}:")
+                lines.append(f"{indent_str}  {{{{- toYaml . | nindent {content_indent} }}}}")
+                lines.append(f"{indent_str}{{{{- end }}}}")
+
+        elif isinstance(mapper_config, dict) and isinstance(field_value, dict):
+            # Case 2: Nested mapper (partial configurability)
+            # Check if it's a nested config (has sub-fields with path/valuePath)
+            has_nested_config = any(
+                isinstance(v, dict) and ('path' in v or 'valuePath' in v)
+                for v in mapper_config.values()
+            )
+
+            if has_nested_config:
+                # Render as mixed nested (configurable + static)
+                nested_template = self._render_nested_field(
+                    field_name, field_value, mapper_config, indent=base_indent
+                )
+                lines.append(nested_template)
+            else:
+                # Not nested config, treat as static
+                lines.append(f"{indent_str}{field_name}:")
+                lines.append(yaml_to_string(field_value, indent=content_indent))
+
+        else:
+            # Case 3: Static
+            if isinstance(field_value, (dict, list)):
+                lines.append(f"{indent_str}{field_name}:")
+                lines.append(yaml_to_string(field_value, indent=content_indent))
+            else:
+                yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
+                lines.append(f"{indent_str}{field_name}: {yaml_value}")
 
         return '\n'.join(lines)
 
@@ -337,27 +362,47 @@ class WorkloadGenerator:
         component_config = component_data['config'].get(config_key, {})
         is_main, enabled_path = self._determine_component_status(component_name, component_data)
 
+        # Validate workload manifest structure (required for template generation)
+        try:
+            match_labels = workload['spec']['selector']['matchLabels']
+            pod_metadata = workload['spec']['template']['metadata']
+            pod_spec = workload['spec']['template']['spec']
+            workload_name = workload['metadata']['name']
+        except KeyError as e:
+            raise ValueError(
+                f"Workload manifest missing required field - {e}\n"
+                f"Required structure: metadata.name, spec.selector.matchLabels, "
+                f"spec.template.metadata, spec.template.spec"
+            )
+
         # Generate template
         template = self._generate_workload_header(workload, is_main, enabled_path)
         template += '\nspec:\n  selector:\n    matchLabels:\n'
-        template += self._generate_selector_labels(workload['spec']['selector']['matchLabels'])
+        template += self._generate_selector_labels(match_labels)
         template += '\n  template:\n'
-        template += self._generate_pod_metadata(workload['spec']['template']['metadata'], workload_type)
+        template += self._generate_pod_metadata(pod_metadata, workload_type)
         template += '\n    spec:\n'
-        template += self._generate_pod_spec_fields(
-            workload['spec']['template']['spec'],
-            component_config,
-            workload_type
-        )
+        template += self._generate_pod_spec_fields(pod_spec, component_config, workload_type)
 
         if not is_main:
             template += '{{- end }}\n'
 
         # Write file
-        filename = self._get_output_filename(workload_type, workload['metadata']['name'])
+        filename = self._get_output_filename(workload_type, workload_name)
         output_file = output_dir / filename
-        with open(output_file, 'w') as f:
-            f.write(template)
+
+        # Ensure directory exists with error handling
+        try:
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Failed to create workload directory '{output_file.parent}': {e}")
+
+        # Write template file with error handling
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write workload template to '{output_file}': {e}")
 
     def _generate_workload_header(
             self, workload: Dict[str, Any], is_main_component: bool,
@@ -372,7 +417,26 @@ class WorkloadGenerator:
         Returns:
             YAML template string with header, metadata, and labels
         """
-        chart_name = self.mapping['metadata']['name']
+        # Validate mapping has metadata.name
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError as e:
+            raise ValueError(
+                f"Mapping missing required field - {e}\n"
+                f"Required path: mapping['metadata']['name']"
+            )
+
+        # Validate workload manifest structure
+        try:
+            api_version = workload['apiVersion']
+            kind = workload['kind']
+            name = workload['metadata']['name']
+        except KeyError as e:
+            raise ValueError(
+                f"Workload header generation failed: missing required field - {e}\n"
+                f"Workload manifest must have: apiVersion, kind, metadata.name"
+            )
+
         lines = []
 
         # Add conditional wrapper for non-main components
@@ -381,10 +445,10 @@ class WorkloadGenerator:
 
         # Add apiVersion, kind, metadata
         lines.extend([
-            f'apiVersion: {workload["apiVersion"]}',
-            f'kind: {workload["kind"]}',
+            f'apiVersion: {api_version}',
+            f'kind: {kind}',
             'metadata:',
-            f'  name: {workload["metadata"]["name"]}',
+            f'  name: {name}',
             '  namespace: {{ .Release.Namespace }}',
             '  labels:',
             f'    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}'
@@ -399,93 +463,106 @@ class WorkloadGenerator:
         return '\n'.join(lines)
 
     def _generate_container_spec(
-            self, container: Dict[str, Any], is_main_container: bool,
+            self, container: Dict[str, Any], is_configured: bool,
             component_config: Dict[str, Any],
-            workload_type: str = 'deployment') -> str:
+            workload_type: str = 'deployment',
+            container_name: str = '') -> str:
         """Generate complete container specification
 
         Args:
             container: Container spec from manifest
-            is_main_container: Whether this is the main 'manager' container
-            component_config: Component configuration (controllerManager or nodeAgent)
+            is_configured: Whether this container is configured in mapper (configurable vs static)
+            component_config: Container-specific configuration from mapper
             workload_type: 'deployment' or 'daemonset' (affects which fields to include)
+            container_name: Name of the container
 
         Returns:
             Complete container YAML template string
         """
         lines = [f'      - name: {container["name"]}']
 
-        # Image configuration
-        if is_main_container and 'image' in component_config:
-            img_repo_path = component_config['image']['repository']['valuePath']
-            img_tag_path = component_config['image']['tag']['valuePath']
-            chart_name = img_tag_path.split('.')[0]
-            # Use kserve.version as highest priority, then component.version, then component.controller.tag
-            lines.append(f'        image: "{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.kserve.version | default .Values.{chart_name}.version | default .Values.{img_tag_path} }}}}"')
-        else:
-            lines.append(f'        image: "{container["image"]}"')
+        # Define special fields that need custom processing
+        CONTAINER_SPECIAL_FIELDS = {'image', 'imagePullPolicy', 'resources'}
 
-        # Image pull policy
+        # Track processed fields to avoid duplicates
+        processed_fields = {'name'}
+
+        # --- SPECIAL FIELD HANDLING ---
+
+        # 1. Image configuration (split repository:tag)
+        if 'image' in container:
+            if is_configured and 'image' in component_config:
+                img_repo_path = component_config['image']['repository']['valuePath']
+                img_tag_path = component_config['image']['tag']['valuePath']
+                # Use tag path with fallback to kserve.version for flexibility
+                lines.append(f'        image: "{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} | default .Values.kserve.version }}}}"')
+            else:
+                lines.append(f'        image: "{container["image"]}"')
+            processed_fields.add('image')
+
+        # 2. Image pull policy (tied to image config)
         if 'imagePullPolicy' in container:
-            if is_main_container and 'image' in component_config and 'pullPolicy' in component_config['image']:
+            if is_configured and 'image' in component_config and 'pullPolicy' in component_config['image']:
                 policy_path = component_config['image']['pullPolicy']['valuePath']
                 lines.append(f'        imagePullPolicy: {{{{ .Values.{policy_path} }}}}')
             else:
                 lines.append(f'        imagePullPolicy: {container["imagePullPolicy"]}')
+            processed_fields.add('imagePullPolicy')
 
-        # Command
-        if 'command' in container:
-            lines.append('        command:')
-            for cmd in container['command']:
-                lines.append(f'        - {cmd}')
+        # 3. Resources (special extraction logic)
+        if 'resources' in container:
+            if is_configured and 'resources' in component_config:
+                resources_path = component_config['resources']['valuePath']
+                lines.append(f'        resources: {{{{- toYaml .Values.{resources_path} | nindent 10 }}}}')
+            else:
+                lines.append('        resources:')
+                lines.append(yaml_to_string(container['resources'], indent=10))
+            processed_fields.add('resources')
 
-        # Args (deployment only)
-        if workload_type == 'deployment' and 'args' in container:
-            lines.append('        args:')
-            for arg in container['args']:
-                lines.append(f'        - {arg}')
+        # --- GENERIC FIELD HANDLING ---
+        # Process all remaining fields using generic mapper-based logic
+        for field_name, field_value in container.items():
+            # Skip already processed fields
+            if field_name in processed_fields or field_name in CONTAINER_SPECIAL_FIELDS:
+                continue
 
-        # Security context
-        if 'securityContext' in container:
-            lines.append('        securityContext:')
-            lines.append(yaml_to_string(container['securityContext'], indent=10))
+            # Skip deployment-only fields in daemonset
+            if workload_type == 'daemonset' and field_name in ['args', 'ports']:
+                continue
 
-        # Env
-        if 'env' in container:
-            lines.append('        env:')
-            lines.append(yaml_to_string(container['env'], indent=10))
+            # Skip deployment-only probes in daemonset
+            if workload_type == 'daemonset' and field_name in ['livenessProbe', 'readinessProbe']:
+                continue
 
-        # Ports (deployment only)
-        if workload_type == 'deployment' and 'ports' in container:
-            lines.append('        ports:')
-            lines.append(yaml_to_string(container['ports'], indent=10))
+            # Check mapper for configurability
+            if field_name in component_config:
+                mapper_config = component_config[field_name]
 
-        # Probes (deployment only)
-        if workload_type == 'deployment':
-            for probe_name in ['livenessProbe', 'readinessProbe']:
-                if probe_name in container:
-                    # Check if probe is configurable in mapper
-                    if is_main_container and probe_name in component_config and isinstance(component_config[probe_name], dict) and 'valuePath' in component_config[probe_name]:
-                        # Configurable probe
-                        probe_path = component_config[probe_name]['valuePath']
-                        lines.append(f'        {probe_name}: {{{{- toYaml .Values.{probe_path} | nindent 10 }}}}')
+                # Use generic rendering for configured containers
+                # For unconfigured containers (sidecar), render as static
+                if is_configured:
+                    template = self._render_field_generic(
+                        field_name, field_value, mapper_config, base_indent=8
+                    )
+                    lines.append(template)
+                else:
+                    # Unconfigured container - always static
+                    if isinstance(field_value, (dict, list)):
+                        lines.append(f'        {field_name}:')
+                        lines.append(yaml_to_string(field_value, indent=10))
                     else:
-                        # Static probe
-                        lines.append(f'        {probe_name}:')
-                        lines.append(yaml_to_string(container[probe_name], indent=10))
+                        yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
+                        lines.append(f'        {field_name}: {yaml_value}')
+            else:
+                # Not in mapper → static
+                if isinstance(field_value, (dict, list)):
+                    lines.append(f'        {field_name}:')
+                    lines.append(yaml_to_string(field_value, indent=10))
+                else:
+                    yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
+                    lines.append(f'        {field_name}: {yaml_value}')
 
-        # Resources - configurable for main container
-        if is_main_container and 'resources' in component_config:
-            resources_path = component_config['resources']['valuePath']
-            lines.append(f'        resources: {{{{- toYaml .Values.{resources_path} | nindent 10 }}}}')
-        elif 'resources' in container:
-            lines.append('        resources:')
-            lines.append(yaml_to_string(container['resources'], indent=10))
-
-        # Volume mounts
-        if 'volumeMounts' in container:
-            lines.append('        volumeMounts:')
-            lines.append(yaml_to_string(container['volumeMounts'], indent=10))
+            processed_fields.add(field_name)
 
         return '\n'.join(lines)
 

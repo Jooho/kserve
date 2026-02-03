@@ -19,7 +19,7 @@ spec:
     - --rest_api_timeout_in_ms=60000
     command:
     - /usr/bin/tensorflow_model_server
-    image: {{ .Values.runtimes.tensorflow.image.repository }}:{{ .Values.runtimes.tensorflow.image.tag }}
+    image: {{ .Values.runtimes.tensorflow.image.repository }}:{{ .Values.runtimes.tensorflow.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.tensorflow.resources | nindent 6 }}
     securityContext:

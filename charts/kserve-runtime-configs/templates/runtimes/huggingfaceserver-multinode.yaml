@@ -32,7 +32,7 @@ spec:
       value: /tmp
     - name: HF_HUB_CACHE
       value: /tmp
-    image: {{ .Values.runtimes.huggingfaceMultinode.image.repository }}:{{ .Values.runtimes.huggingfaceMultinode.image.tag }}
+    image: {{ .Values.runtimes.huggingfaceMultinode.image.repository }}:{{ .Values.runtimes.huggingfaceMultinode.image.tag | default .Values.kserve.version }}
     livenessProbe:
       exec:
         command:

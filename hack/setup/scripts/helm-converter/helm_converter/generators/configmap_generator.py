@@ -24,10 +24,15 @@ class ConfigMapGenerator:
         Returns:
             Formatted ConfigMap field template
         """
-        # Check if this field has a valuePath (JSON format)
+        # Validate field_config is a dict
+        if not isinstance(field_config, dict):
+            raise ValueError(f"ConfigMap field '{field_name}' config must be a dict, got {type(field_config)}")
+
+        # Check if this field has a valuePath (JSON format - simple passthrough)
         if 'valuePath' in field_config and 'defaultValue' in field_config:
             # JSON format - use toJson
-            return f'  {field_name}: |-\n    {{{{- toJson .Values.{field_config["valuePath"]} | nindent 4 }}}}\n'
+            value_path = field_config['valuePath']
+            return f'  {field_name}: |-\n    {{{{- toJson .Values.{value_path} | nindent 4 }}}}\n'
 
         # Special case: explainers uses defaultImageVersion instead of tag
         if field_name == 'explainers':
@@ -90,6 +95,10 @@ class ConfigMapGenerator:
         Returns:
             Formatted explainers field template
         """
+        # Validate field_config is a dict (for consistency)
+        if not isinstance(field_config, dict):
+            raise ValueError(f"Explainers field config must be a dict, got {type(field_config)}")
+
         lines = ['  explainers: |-']
         lines.append('    {{- $explainers := dict }}')
         lines.append('    {{- range $name, $config := .Values.inferenceServiceConfig.explainers }}')
@@ -115,6 +124,12 @@ class ConfigMapGenerator:
         Returns:
             Formatted ConfigMap field with JSON structure
         """
+        # Validate field_config is a dict
+        if not isinstance(field_config, dict):
+            raise ValueError(
+                f"ConfigMap field '{field_name}': field_config must be a dict, got {type(field_config)}"
+            )
+
         parent_path = f'inferenceServiceConfig.{field_name}'
         lines = [f'  {field_name}: |-', '    {']
         json_lines = []
@@ -137,7 +152,15 @@ class ConfigMapGenerator:
                 continue
 
             # Extract field name and type
-            field_key = value['valuePath'].split('.')[-1]
+            try:
+                value_path = value['valuePath']
+            except KeyError:
+                raise ValueError(
+                    f"ConfigMap field '{field_name}.{key}': missing required 'valuePath' in config"
+                )
+
+            # Extract output field key from valuePath (last component)
+            field_key = value_path.split('.')[-1]
             field_type = value.get('type', 'string')
 
             # Build JSON line with proper type handling

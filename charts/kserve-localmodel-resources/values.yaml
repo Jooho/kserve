@@ -8,31 +8,36 @@
 # Source of truth: Kustomize manifests in config/
 
 kserve:
-  version: &defaultVersion v0.16.0
+  version: v0.16.0
+  createSharedResources: true
 
 localmodel:
   controller:
-    image: kserve/kserve-localmodel-controller
-    tag: *defaultVersion
-    imagePullPolicy: Always
-    resources:
-      limits:
-        cpu: 100m
-        memory: 300Mi
-      requests:
-        cpu: 100m
-        memory: 200Mi
+    containers:
+      manager:
+        image: kserve/kserve-localmodel-controller
+        tag: ""
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 300Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
   nodeAgent:
-    image: kserve/kserve-localmodelnode-agent
-    tag: *defaultVersion
-    imagePullPolicy: Always
-    resources:
-      limits:
-        cpu: 100m
-        memory: 300Mi
-      requests:
-        cpu: 100m
-        memory: 200Mi
+    containers:
+      manager:
+        image: kserve/kserve-localmodelnode-agent
+        tag: ""
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 300Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
     nodeSelector:
       kserve/localmodel: worker
     affinity: {}

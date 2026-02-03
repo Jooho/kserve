@@ -31,7 +31,12 @@ class GenericPlaceholderGenerator:
             return
 
         output_dir = templates_dir / subdir_name
-        output_dir.mkdir(exist_ok=True)
+
+        # Ensure directory exists with error handling
+        try:
+            output_dir.mkdir(exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Failed to create output directory '{output_dir}': {e}")
 
         for resource_data in resource_list:
             self._generate_single_template(output_dir, resource_data, subdir_name)
@@ -47,11 +52,23 @@ class GenericPlaceholderGenerator:
             resource_data: Resource data dict with 'config', 'manifest', etc.
             subdir_name: Subdirectory name for context
         """
-        config = resource_data['config']
-        manifest = copy.deepcopy(resource_data['manifest'])
+        # Validate resource_data structure (required fields)
+        try:
+            config = resource_data['config']
+            manifest = copy.deepcopy(resource_data['manifest'])
+        except KeyError as e:
+            raise ValueError(
+                f"Resource data missing required field - {e}\n"
+                f"Resource data must have: 'config', 'manifest'"
+            )
+
         copy_as_is = resource_data.get('copyAsIs', False)
 
-        resource_name = config['name']
+        # Validate config has name
+        try:
+            resource_name = config['name']
+        except KeyError:
+            raise ValueError("Resource config missing required field 'name'")
 
         # Step 1: Escape Go template expressions
         # All resources may contain Go templates that should be preserved for runtime evaluation
@@ -71,7 +88,7 @@ class GenericPlaceholderGenerator:
             # Note: Assuming spec.containers[0].image for most resources
             if 'spec' in manifest and 'containers' in manifest['spec']:
                 manifest['spec']['containers'][0]['image'] = placeholder_key
-                placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} }}}}'
+                placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} | default .Values.kserve.version }}}}'
 
         # Handle resources field
         if 'resources' in config:
@@ -99,9 +116,18 @@ class GenericPlaceholderGenerator:
         manifest_yaml = quote_numeric_strings_in_labels(manifest_yaml)
 
         # Step 5: Replace placeholders with Helm templates
+        # Validate mapping has metadata.name
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError as e:
+            raise ValueError(
+                f"Mapping missing required field - {e}\n"
+                f"Required path: mapping['metadata']['name']"
+            )
+
         manifest_yaml = manifest_yaml.replace(
             'labels: __HELM_LABELS_PLACEHOLDER__',
-            f'labels:\n    {{{{- include "{self.mapping["metadata"]["name"]}.labels" . | nindent 4 }}}}'
+            f'labels:\n    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}'
         )
 
         if copy_as_is:
@@ -123,8 +149,12 @@ class GenericPlaceholderGenerator:
         filename = self._get_output_filename(resource_name, resource_data)
         output_file = output_dir / filename
 
-        with open(output_file, 'w') as f:
-            f.write(template)
+        # Write template file with error handling
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write resource template to '{output_file}': {e}")
 
     def _wrap_with_conditionals(self, manifest_yaml: str, config: Dict[str, Any], subdir_name: str) -> str:
         """Wrap manifest YAML with Helm conditional blocks

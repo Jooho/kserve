@@ -8,7 +8,8 @@
 # Source of truth: Kustomize manifests in config/
 
 kserve:
-  version: &defaultVersion v0.16.0
+  version: v0.16.0
+  createSharedResources: true
 
 llmisvcConfigs:
   enabled: false
@@ -18,7 +19,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/sklearnserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -30,7 +31,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/xgbserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -78,7 +79,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/pmmlserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -90,7 +91,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/lgbserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -102,7 +103,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/paddleserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -126,7 +127,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/huggingfaceserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'
@@ -150,7 +151,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/predictiveserver
-      tag: *defaultVersion
+      tag: ""
     resources:
       limits:
         cpu: '1'

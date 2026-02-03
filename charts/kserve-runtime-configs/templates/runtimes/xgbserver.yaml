@@ -16,7 +16,7 @@ spec:
     - --model_dir=/mnt/models
     - --http_port=8080
     - --nthread=1
-    image: {{ .Values.runtimes.xgboost.image.repository }}:{{ .Values.runtimes.xgboost.image.tag }}
+    image: {{ .Values.runtimes.xgboost.image.repository }}:{{ .Values.runtimes.xgboost.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.xgboost.resources | nindent 6 }}
     securityContext:

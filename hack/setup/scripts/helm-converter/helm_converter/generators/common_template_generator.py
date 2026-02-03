@@ -29,7 +29,12 @@ class CommonTemplateGenerator:
             return
 
         common_dir = templates_dir / 'common'
-        common_dir.mkdir(exist_ok=True)
+
+        # Ensure directory exists before writing files
+        try:
+            common_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"Failed to create common templates directory '{common_dir}': {e}")
 
         # Generate ConfigMap template if inferenceServiceConfig is enabled
         if 'inferenceservice-config' in manifests['common'] and 'inferenceServiceConfig' in self.mapping:
@@ -45,28 +50,50 @@ class CommonTemplateGenerator:
         Handles both old list format and new dict format for dataFields.
         New format supports individual fields with image/tag separation.
         """
-        config = self.mapping['inferenceServiceConfig']['configMap']
+        # Validate main config structure (required for ConfigMap generation)
+        try:
+            config = self.mapping['inferenceServiceConfig']['configMap']
+        except KeyError as e:
+            raise ValueError(
+                f"ConfigMap template generation failed: missing required config - {e}\n"
+                f"Required path: mapping['inferenceServiceConfig']['configMap']"
+            )
+
+        # Get config fields with safe defaults
+        name = config.get('name', 'inferenceservice-config')
+
+        # Validate required dataFields
+        try:
+            data_fields = config['dataFields']
+        except KeyError:
+            raise ValueError("ConfigMap config missing required field 'dataFields'")
+
+        # Get chart name for labels template
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError:
+            raise ValueError("Mapping missing required 'metadata.name' for chart labels")
 
         # ConfigMap controlled by inferenceServiceConfig.enabled
-        template = f'''{{{{- if .Values.inferenceServiceConfig.enabled }}}}
+        template = f'''{{{{- if .Values.inferenceServiceConfig.enabled | default .Values.kserve.createSharedResources }}}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {config['name']}
+  name: {name}
   namespace: {{{{ .Release.Namespace }}}}
   labels:
-    {{{{- include "{self.mapping['metadata']['name']}.labels" . | nindent 4 }}}}
+    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}
 data:
 '''
-
-        data_fields = config['dataFields']
 
         # Support both old list format and new dict format
         if isinstance(data_fields, list):
             # Old format: list of {key, valuePath, defaultValue}
             for field in data_fields:
-                key = field['key']
-                value_path = field['valuePath']
+                key = field.get('key')
+                value_path = field.get('valuePath')
+                if not key or not value_path:
+                    raise ValueError(f"ConfigMap field missing required 'key' or 'valuePath': {field}")
                 template += f'  {key}: |-\n    {{{{- toJson .Values.{value_path} | nindent 4 }}}}\n'
         else:
             # New format: nested dictionary with individual fields
@@ -75,9 +102,13 @@ data:
 
         template += '{{- end }}\n'
 
+        # Write template file with error handling
         output_file = output_dir / 'inferenceservice-config.yaml'
-        with open(output_file, 'w') as f:
-            f.write(template)
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write ConfigMap template to '{output_file}': {e}")
 
     def _generate_issuer_template(self, output_dir: Path, issuer_manifest: Dict[str, Any]):
         """Generate cert-manager Issuer template
@@ -86,22 +117,44 @@ data:
             output_dir: Output directory for the template
             issuer_manifest: Issuer manifest from kustomize build
         """
+        # Validate issuer manifest structure (required fields)
+        try:
+            api_version = issuer_manifest['apiVersion']
+            kind = issuer_manifest['kind']
+            name = issuer_manifest['metadata']['name']
+            spec = issuer_manifest['spec']
+        except KeyError as e:
+            raise ValueError(
+                f"Issuer template generation failed: missing required field - {e}\n"
+                f"Issuer manifest must have: apiVersion, kind, metadata.name, spec"
+            )
+
+        # Get chart name for labels template
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError:
+            raise ValueError("Mapping missing required 'metadata.name' for chart labels")
+
         # Issuer controlled by certManager.enabled only
-        template = f'''{{{{- if .Values.certManager.enabled }}}}
-apiVersion: {issuer_manifest['apiVersion']}
-kind: {issuer_manifest['kind']}
+        template = f'''{{{{- if .Values.certManager.enabled | default .Values.kserve.createSharedResources }}}}
+apiVersion: {api_version}
+kind: {kind}
 metadata:
-  name: {issuer_manifest['metadata']['name']}
+  name: {name}
   namespace: {{{{ .Release.Namespace }}}}
   labels:
-    {{{{- include "{self.mapping['metadata']['name']}.labels" . | nindent 4 }}}}
+    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}
 spec:
 '''
         # Add spec fields
-        template += yaml_to_string(issuer_manifest['spec'], indent=2)
+        template += yaml_to_string(spec, indent=2)
 
         template += '{{- end }}\n'
 
+        # Write template file with error handling
         output_file = output_dir / 'cert-manager-issuer.yaml'
-        with open(output_file, 'w') as f:
-            f.write(template)
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write Issuer template to '{output_file}': {e}")

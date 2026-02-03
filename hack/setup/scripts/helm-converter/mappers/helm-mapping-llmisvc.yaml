@@ -36,21 +36,24 @@ llmisvc:
     namespace: kserve
     manifestPath: config/llmisvc/manager.yaml
 
-    image:
-      repository:
-        path: spec.template.spec.containers[0].image+(:,0)
-        valuePath: llmisvc.controller.image
-      tag:
-        path: spec.template.spec.containers[0].image+(:,1)
-        valuePath: llmisvc.controller.tag
-        useVersionAnchor: true
-      pullPolicy:
-        path: spec.template.spec.containers[0].imagePullPolicy
-        valuePath: llmisvc.controller.imagePullPolicy
+    # Container-level fields (NEW structure with container-relative paths)
+    containers:
+      manager:  # Main container name
+        image:
+          repository:
+            path: image+(:,0)
+            valuePath: llmisvc.controller.containers.manager.image
+          tag:
+            path: image+(:,1)
+            valuePath: llmisvc.controller.containers.manager.tag
+            useVersionAnchor: true
+          pullPolicy:
+            path: imagePullPolicy
+            valuePath: llmisvc.controller.containers.manager.imagePullPolicy
 
-    resources:
-      path: spec.template.spec.containers[0].resources
-      valuePath: llmisvc.controller.resources
+        resources:
+          path: resources
+          valuePath: llmisvc.controller.containers.manager.resources
 
 # =============================================================================
 # NOTES

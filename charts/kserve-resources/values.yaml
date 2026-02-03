@@ -8,27 +8,30 @@
 # Source of truth: Kustomize manifests in config/
 
 kserve:
-  version: &defaultVersion v0.16.0
+  version: v0.16.0
+  createSharedResources: true
   controller:
-    image: kserve/kserve-controller
-    tag: *defaultVersion
-    imagePullPolicy: Always
-    resources:
-      limits:
-        cpu: 100m
-        memory: 300Mi
-      requests:
-        cpu: 100m
-        memory: 200Mi
+    containers:
+      manager:
+        image: kserve/kserve-controller
+        tag: ""
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 300Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
 inferenceServiceConfig:
-  enabled: true
+  enabled: ""
   explainers:
     art:
       image: kserve/art-explainer
       tag: latest
   storageInitializer:
     image: kserve/storage-initializer
-    tag: *defaultVersion
+    tag: ""
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -41,14 +44,14 @@ inferenceServiceConfig:
     uidModelcar: 1010
   agent:
     image: kserve/agent
-    tag: *defaultVersion
+    tag: ""
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
     cpuLimit: '1'
   logger:
     image: kserve/agent
-    tag: *defaultVersion
+    tag: ""
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -56,7 +59,7 @@ inferenceServiceConfig:
     defaultUrl: http://default-broker
   batcher:
     image: kserve/agent
-    tag: *defaultVersion
+    tag: ""
     memoryRequest: 1Gi
     memoryLimit: 1Gi
     cpuRequest: '1'
@@ -65,7 +68,7 @@ inferenceServiceConfig:
     maxLatency: '5000'
   router:
     image: kserve/router
-    tag: *defaultVersion
+    tag: ""
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -109,7 +112,7 @@ inferenceServiceConfig:
     enabled: false
     jobNamespace: kserve-localmodel-jobs
     defaultJobImage: kserve/storage-initializer
-    defaultJobImageTag: *defaultVersion
+    defaultJobImageTag: ""
     fsGroup: 1000
     jobTTLSecondsAfterFinished: 3600
     reconcilationFrequencyInSecs: 60
@@ -135,4 +138,4 @@ inferenceServiceConfig:
     scaleUpStabilizationWindowSeconds: '0'
     scaleDownStabilizationWindowSeconds: '300'
 certManager:
-  enabled: true
+  enabled: ""

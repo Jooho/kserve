@@ -71,7 +71,12 @@ def yaml_to_string(obj: Any, indent: int = 0) -> str:
     Returns:
         Indented YAML string
     """
-    yaml_str = yaml.dump(obj, default_flow_style=False, sort_keys=False)
+    # Convert object to YAML string with error handling
+    try:
+        yaml_str = yaml.dump(obj, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        raise ValueError(f"Failed to convert object to YAML: {e}")
+
     # Add indentation
     lines = yaml_str.split('\n')
     indented = '\n'.join(' ' * indent + line if line else '' for line in lines)

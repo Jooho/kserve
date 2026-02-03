@@ -9,6 +9,9 @@ import json
 
 from .path_extractor import extract_from_configmap
 
+# Metadata fields that should be skipped during recursive processing
+METADATA_FIELDS = {'valuePath', 'description', 'useVersionAnchor', 'path'}
+
 
 class ConfigMapBuilder:
     """Builds ConfigMap-based values (inferenceServiceConfig)"""
@@ -107,8 +110,8 @@ class ConfigMapBuilder:
         # No 'path' field - this is a nested structure, recurse into it
         result = {}
         for key, value in field_config.items():
-            # Skip metadata fields like 'valuePath', 'description', etc.
-            if key in ['valuePath', 'description', 'useVersionAnchor']:
+            # Skip metadata fields
+            if key in METADATA_FIELDS:
                 continue
 
             # Recursively process nested fields

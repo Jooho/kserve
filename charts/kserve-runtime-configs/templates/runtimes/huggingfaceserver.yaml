@@ -16,7 +16,7 @@ spec:
     env:
     - name: LMCACHE_USE_EXPERIMENTAL
       value: "True"
-    image: {{ .Values.runtimes.huggingface.image.repository }}:{{ .Values.runtimes.huggingface.image.tag }}
+    image: {{ .Values.runtimes.huggingface.image.repository }}:{{ .Values.runtimes.huggingface.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.huggingface.resources | nindent 6 }}
     securityContext:

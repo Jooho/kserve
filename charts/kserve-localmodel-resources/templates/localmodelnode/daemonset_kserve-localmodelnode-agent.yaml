@@ -14,28 +14,21 @@ spec:
       controller-tools.k8s.io: "1.0"
   template:
     metadata:
-      annotations:
-        kubectl.kubernetes.io/default-container: manager
       labels:
         app.kubernetes.io/name: "kserve-localmodelnode-agent"
         control-plane: "kserve-localmodelnode-agent"
         controller-tools.k8s.io: "1.0"
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
     spec:
-      affinity: {{- toYaml .Values.localmodel.nodeAgent.affinity | nindent 8 }}
+      affinity: {{- toYaml (.Values.localmodel.nodeAgent.affinity | default dict) | nindent 8 }}
       containers:
       - name: manager
-        image: "{{ .Values.localmodel.nodeAgent.image }}:{{ .Values.kserve.version | default .Values.localmodel.version | default .Values.localmodel.nodeAgent.tag }}"
-        imagePullPolicy: {{ .Values.localmodel.nodeAgent.imagePullPolicy }}
+        image: "{{ .Values.localmodel.nodeAgent.containers.manager.image }}:{{ .Values.localmodel.nodeAgent.containers.manager.tag | default .Values.kserve.version }}"
+        imagePullPolicy: {{ .Values.localmodel.nodeAgent.containers.manager.imagePullPolicy }}
+        resources: {{- toYaml .Values.localmodel.nodeAgent.containers.manager.resources | nindent 10 }}
         command:
-        - /manager
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          privileged: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
+          - /manager
 
         env:
           - name: POD_NAMESPACE
@@ -47,7 +40,15 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
 
-        resources: {{- toYaml .Values.localmodel.nodeAgent.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+
         volumeMounts:
           - mountPath: /mnt/models
             name: models
@@ -57,7 +58,6 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -65,7 +65,7 @@ spec:
 
       serviceAccountName: kserve-localmodelnode-agent
       terminationGracePeriodSeconds: 10
-      tolerations: {{- toYaml .Values.localmodel.nodeAgent.tolerations | nindent 8 }}
+      tolerations: {{- toYaml (.Values.localmodel.nodeAgent.tolerations | default list) | nindent 8 }}
       volumes:
         - hostPath:
             path: /models

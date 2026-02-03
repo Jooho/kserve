@@ -8,6 +8,12 @@ controller manager and node agent configurations.
 from typing import Dict, Any, Optional
 from .path_extractor import extract_from_manifest
 
+# Special fields that require custom processing logic
+SPECIAL_FIELDS = {'image', 'resources'}
+
+# Special sections to skip during pod-level field extraction
+SPECIAL_SECTIONS = {'containers', 'image', 'resources', 'kind', 'name', 'namespace', 'manifestPath'}
+
 
 class ComponentBuilder:
     """Builds component values (controller + nodeAgent)"""
@@ -113,13 +119,23 @@ class ComponentBuilder:
         # Default to config_key if not specified
         workload_key = config_key
 
-        if 'image' in workload_config and 'repository' in workload_config['image']:
+        # Try to extract workload_key from valuePath
+        # Check both old structure (image at root) and new structure (image in containers)
+        value_path = None
+        if 'containers' in workload_config:
+            # NEW structure: Get valuePath from first container's image
+            first_container = next(iter(workload_config['containers'].values()))
+            if 'image' in first_container and 'repository' in first_container['image']:
+                value_path = first_container['image']['repository'].get('valuePath', '')
+        elif 'image' in workload_config and 'repository' in workload_config['image']:
+            # OLD structure: Get valuePath from root image
             value_path = workload_config['image']['repository'].get('valuePath', '')
-            if value_path:
-                parts = value_path.split('.')
-                if len(parts) >= 2:
-                    # The second part is the workload key (e.g., 'controller', 'nodeAgent')
-                    workload_key = parts[1]
+
+        if value_path:
+            parts = value_path.split('.')
+            if len(parts) >= 2:
+                # The second part is the workload key (e.g., 'controller', 'nodeAgent')
+                workload_key = parts[1]
 
         values[workload_key] = {}
 
@@ -127,45 +143,68 @@ class ComponentBuilder:
         # 'Deployment' -> 'deployment', 'DaemonSet' -> 'daemonset'
         workload_type = workload_kind.lower()
 
-        # Image configuration
-        if 'image' in workload_config and workload_manifest:
-            img_values = self._extract_image_values(
-                workload_config['image'],
+        # Check if new containers section exists
+        if 'containers' in workload_config and workload_manifest:
+            # NEW structure: Use containers section
+            containers_values = self._build_containers_values(
+                workload_config['containers'],
                 workload_manifest,
                 component_name,
                 workload_key,
-                workload_type=workload_type
+                workload_kind
             )
-            values[workload_key].update(img_values)
+            values[workload_key].update(containers_values)
 
-        # Resources configuration
-        if 'resources' in workload_config and workload_manifest:
-            res_config = workload_config['resources']
-            if isinstance(res_config, dict) and 'path' in res_config:
-                try:
-                    resources = extract_from_manifest(workload_manifest, res_config['path'])
-                    if resources:
-                        values[workload_key]['resources'] = resources
-                except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract resources using path '{res_config['path']}': {e}")
-                    # Fallback to hardcoded path
+            # Process pod-level fields (excludes containers section)
+            pod_level_fields = self._extract_pod_level_fields(
+                workload_config,
+                workload_manifest,
+                config_key
+            )
+            values[workload_key].update(pod_level_fields)
+        else:
+            # OLD structure: Backward compatibility
+            # Process container fields at root level
+
+            # Image configuration
+            if 'image' in workload_config and workload_manifest:
+                img_values = self._extract_image_values(
+                    workload_config['image'],
+                    workload_manifest,
+                    component_name,
+                    workload_key,
+                    workload_type=workload_type
+                )
+                values[workload_key].update(img_values)
+
+            # Resources configuration
+            if 'resources' in workload_config and workload_manifest:
+                res_config = workload_config['resources']
+                if isinstance(res_config, dict) and 'path' in res_config:
+                    try:
+                        resources = extract_from_manifest(workload_manifest, res_config['path'])
+                        if resources:
+                            values[workload_key]['resources'] = resources
+                    except (KeyError, IndexError, ValueError) as e:
+                        print(f"Warning: Failed to extract resources using path '{res_config['path']}': {e}")
+                        # Fallback to hardcoded path
+                        actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
+                        if actual_resources:
+                            values[workload_key]['resources'] = actual_resources
+                else:
+                    # No path field - fallback to hardcoded (backward compatibility)
                     actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
                     if actual_resources:
                         values[workload_key]['resources'] = actual_resources
-            else:
-                # No path field - fallback to hardcoded (backward compatibility)
-                actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
-                if actual_resources:
-                    values[workload_key]['resources'] = actual_resources
 
-        # Generic fields (nodeSelector, affinity, tolerations, etc.)
-        # All fields except 'image' and 'resources' are processed generically
-        generic_fields = self._extract_generic_fields(
-            workload_config,
-            workload_manifest,
-            config_key
-        )
-        values[workload_key].update(generic_fields)
+            # Generic fields (nodeSelector, affinity, tolerations, etc.)
+            # All fields except 'image' and 'resources' are processed generically
+            generic_fields = self._extract_generic_fields(
+                workload_config,
+                workload_manifest,
+                config_key
+            )
+            values[workload_key].update(generic_fields)
 
         return values
 
@@ -195,9 +234,6 @@ class ComponentBuilder:
 
         if not manifest:
             return result
-
-        # Special fields that need custom processing logic
-        SPECIAL_FIELDS = {'image', 'resources'}
 
         # Process all fields generically
         for field_name, field_config in config.items():
@@ -377,8 +413,22 @@ class ComponentBuilder:
 
         # Build values structure based on valuePath format
         repo_path = img_config.get('repository', {}).get('valuePath', '')
-        if repo_path and repo_path.count('.') == 2:
-            # Flat structure: kserve.controller.image
+
+        # Determine if flat or nested structure
+        # Flat: kserve.controller.image (2 dots) or llmisvc.controller.containers.manager.image (4 dots with 'containers')
+        # Nested: kserve.controller.image.repository (3+ dots without 'containers')
+        is_flat_structure = False
+        if repo_path:
+            dot_count = repo_path.count('.')
+            if dot_count == 2:
+                # Old structure: kserve.controller.image
+                is_flat_structure = True
+            elif 'containers' in repo_path and dot_count == 4:
+                # New containers structure: llmisvc.controller.containers.manager.image
+                is_flat_structure = True
+
+        if is_flat_structure:
+            # Flat structure: image value is string
             if repository:
                 values['image'] = repository
             if tag:
@@ -386,7 +436,7 @@ class ComponentBuilder:
             if pull_policy:
                 values['imagePullPolicy'] = pull_policy
         else:
-            # Nested structure: kserve.controller.image.repository
+            # Nested structure: image value is dict
             values['image'] = {}
             if repository:
                 values['image']['repository'] = repository
@@ -396,3 +446,479 @@ class ComponentBuilder:
                 values['image']['pullPolicy'] = pull_policy
 
         return values
+
+    def _build_containers_values(
+        self,
+        containers_config: Dict[str, Any],
+        workload_manifest: Dict[str, Any],
+        component_name: str,
+        workload_key: str,
+        workload_kind: str
+    ) -> Dict[str, Any]:
+        """Build values for containers section.
+
+        Args:
+            containers_config: Mapper's containers section (e.g., {manager: {...}, sidecar: {...}})
+            workload_manifest: Deployment/DaemonSet manifest
+            component_name: Component name
+            workload_key: Workload key (e.g., 'controller')
+            workload_kind: 'Deployment' or 'DaemonSet'
+
+        Returns:
+            {'containers': {'manager': {...}, 'sidecar': {...}}}
+        """
+        result = {}
+
+        # Get actual containers from manifest
+        actual_containers = workload_manifest['spec']['template']['spec']['containers']
+
+        # Build mapping: container_name -> container_manifest
+        container_manifests = {c['name']: c for c in actual_containers}
+
+        # Process each configured container
+        for container_name, container_config in containers_config.items():
+            if container_name not in container_manifests:
+                print(f"Warning: Container '{container_name}' not found in manifest")
+                continue
+
+            container_manifest = container_manifests[container_name]
+
+            # Extract values for this container
+            container_values = self._build_single_container_values(
+                container_config,
+                container_manifest,
+                component_name,
+                workload_key,
+                container_name,
+                workload_kind.lower()
+            )
+
+            result[container_name] = container_values
+
+        return {'containers': result}
+
+    def _build_single_container_values(
+        self,
+        container_config: Dict[str, Any],
+        container_manifest: Dict[str, Any],
+        component_name: str,
+        workload_key: str,
+        container_name: str,
+        workload_type: str
+    ) -> Dict[str, Any]:
+        """Build values for a single container.
+
+        Similar to current workload value building, but for container level.
+        Supports both absolute paths (spec.template.spec.containers[0].image) and
+        container-relative paths (image, securityContext.runAsNonRoot).
+
+        Args:
+            container_config: Container configuration from mapper
+            container_manifest: Container manifest dict
+            component_name: Component name
+            workload_key: Workload key (e.g., 'controller')
+            container_name: Container name (e.g., 'manager')
+            workload_type: 'deployment' or 'daemonset'
+
+        Returns:
+            Container values dictionary
+        """
+        values = {}
+
+        # Wrap container manifest in workload structure for absolute path extraction
+        wrapped_manifest = {
+            'spec': {
+                'template': {
+                    'spec': {
+                        'containers': [container_manifest]
+                    }
+                }
+            }
+        }
+
+        # Image configuration
+        if 'image' in container_config:
+            img_config = container_config['image']
+            # For container-relative paths, use _extract_image_values_container
+            # which handles both path types
+            img_values = self._extract_image_values_container(
+                img_config,
+                container_manifest,
+                wrapped_manifest,
+                component_name,
+                f"{workload_key}.containers.{container_name}",
+                workload_type=workload_type
+            )
+            values.update(img_values)
+
+        # Resources configuration
+        if 'resources' in container_config:
+            res_config = container_config['resources']
+            if isinstance(res_config, dict) and 'path' in res_config:
+                # Determine which manifest to use based on path type
+                manifest_to_use = self._select_manifest_for_path(
+                    res_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    resources = extract_from_manifest(manifest_to_use, res_config['path'])
+                    if resources:
+                        values['resources'] = resources
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract resources for container '{container_name}' "
+                          f"using path '{res_config['path']}': {e}")
+                    # Fallback to direct access
+                    actual_resources = container_manifest.get('resources', {})
+                    if actual_resources:
+                        values['resources'] = actual_resources
+            else:
+                # No path field - fallback to direct access
+                actual_resources = container_manifest.get('resources', {})
+                if actual_resources:
+                    values['resources'] = actual_resources
+
+        # Generic fields (securityContext, probes, etc.)
+        # Pass both manifests - _extract_generic_fields will handle path detection
+        generic_fields = self._extract_generic_fields_container(
+            container_config,
+            container_manifest,
+            wrapped_manifest,
+            f"container:{container_name}"
+        )
+        values.update(generic_fields)
+
+        return values
+
+    def _select_manifest_for_path(
+        self,
+        field_config: Dict[str, Any],
+        container_manifest: Dict[str, Any],
+        wrapped_manifest: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Select appropriate manifest based on path type.
+
+        Supports both absolute paths (spec.template.spec.containers[0]...) and
+        container-relative paths (image, securityContext.runAsNonRoot).
+
+        Args:
+            field_config: Field configuration with 'path'
+            container_manifest: Container manifest dict
+            wrapped_manifest: Container wrapped in workload structure
+
+        Returns:
+            Appropriate manifest to use for extraction
+        """
+        # Check if path is container-relative
+        path = field_config.get('path', '')
+
+        if not path:
+            return wrapped_manifest
+
+        # Absolute path starts with spec.template.spec.containers
+        if path.startswith('spec.template.spec.containers'):
+            return wrapped_manifest
+        else:
+            # Container-relative path
+            return container_manifest
+
+    def _extract_generic_fields_container(
+        self,
+        config: Dict[str, Any],
+        container_manifest: Dict[str, Any],
+        wrapped_manifest: Dict[str, Any],
+        manifest_type: str
+    ) -> Dict[str, Any]:
+        """Extract generic fields from container with path type detection.
+
+        Similar to _extract_generic_fields but supports container-relative paths.
+
+        Args:
+            config: Configuration from mapper
+            container_manifest: Container manifest dict
+            wrapped_manifest: Container wrapped in workload structure
+            manifest_type: Type for error messages
+
+        Returns:
+            Dictionary with extracted field values
+        """
+        result = {}
+
+        if not container_manifest:
+            return result
+
+        # Process all fields generically
+        for field_name, field_config in config.items():
+            # Skip special fields - they have their own processing logic
+            if field_name in SPECIAL_FIELDS:
+                continue
+
+            # Check if this is a leaf node with path or nested config
+            if isinstance(field_config, dict) and 'path' in field_config:
+                # Leaf node - extract value directly
+                # Select appropriate manifest based on path type
+                manifest_to_use = self._select_manifest_for_path(
+                    field_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    value = extract_from_manifest(manifest_to_use, field_config['path'])
+                    # Allow None check to include empty dict {} and empty list []
+                    if value is not None:
+                        result[field_name] = value
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract {field_name} for {manifest_type} "
+                          f"using path '{field_config['path']}': {e}")
+
+            elif isinstance(field_config, dict):
+                # Nested config - check if it has sub-fields with path/valuePath
+                nested_values = self._extract_nested_field_values_container(
+                    field_config,
+                    container_manifest,
+                    wrapped_manifest,
+                    manifest_type,
+                    field_name
+                )
+                if nested_values:
+                    result[field_name] = nested_values
+
+        return result
+
+    def _extract_nested_field_values_container(
+        self,
+        nested_config: Dict[str, Any],
+        container_manifest: Dict[str, Any],
+        wrapped_manifest: Dict[str, Any],
+        manifest_type: str,
+        parent_field: str
+    ) -> Dict[str, Any]:
+        """Extract values from nested container config with path type detection.
+
+        Similar to _extract_nested_field_values but supports container-relative paths.
+
+        Args:
+            nested_config: Nested configuration
+            container_manifest: Container manifest dict
+            wrapped_manifest: Container wrapped in workload structure
+            manifest_type: Type of manifest for error messages
+            parent_field: Parent field name for error messages
+
+        Returns:
+            Dictionary with extracted nested values
+        """
+        result = {}
+
+        for key, sub_config in nested_config.items():
+            if isinstance(sub_config, dict) and 'path' in sub_config:
+                # Leaf node with path
+                # Select appropriate manifest based on path type
+                manifest_to_use = self._select_manifest_for_path(
+                    sub_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    value = extract_from_manifest(manifest_to_use, sub_config['path'])
+                    if value is not None:
+                        result[key] = value
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract {parent_field}.{key} for {manifest_type} "
+                          f"using path '{sub_config['path']}': {e}")
+
+            elif isinstance(sub_config, dict):
+                # Deeper nesting - recurse
+                nested_values = self._extract_nested_field_values_container(
+                    sub_config,
+                    container_manifest,
+                    wrapped_manifest,
+                    manifest_type,
+                    f"{parent_field}.{key}"
+                )
+                if nested_values:
+                    result[key] = nested_values
+
+        return result
+
+    def _extract_image_values_container(
+        self,
+        img_config: Dict[str, Any],
+        container_manifest: Dict[str, Any],
+        wrapped_manifest: Dict[str, Any],
+        component_name: str,
+        key_name: str,
+        workload_type: str = 'deployment'
+    ) -> Dict[str, Any]:
+        """Extract image values with support for container-relative paths.
+
+        Similar to _extract_image_values but handles both absolute paths
+        (spec.template.spec.containers[0].image) and container-relative paths (image).
+
+        Args:
+            img_config: Image configuration from mapper
+            container_manifest: Container manifest dict
+            wrapped_manifest: Container wrapped in workload structure
+            component_name: Component name
+            key_name: Key name for valuePath
+            workload_type: 'deployment' or 'daemonset'
+
+        Returns:
+            Dictionary with image, tag, and imagePullPolicy values
+        """
+        values = {}
+
+        # Extract repository
+        repository = None
+        if 'repository' in img_config:
+            repo_config = img_config['repository']
+            if 'path' in repo_config:
+                # Determine which manifest to use
+                manifest_to_use = self._select_manifest_for_path(
+                    repo_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    repository = extract_from_manifest(manifest_to_use, repo_config['path'])
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract repository using path '{repo_config['path']}': {e}")
+                    # Fallback to direct access
+                    actual_image = container_manifest.get('image', '')
+                    repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
+            else:
+                # No path field - fallback to direct access
+                actual_image = container_manifest.get('image', '')
+                repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
+
+        # Extract tag
+        tag = None
+        if 'tag' in img_config:
+            tag_config = img_config['tag']
+            if 'path' in tag_config:
+                # Determine which manifest to use
+                manifest_to_use = self._select_manifest_for_path(
+                    tag_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    tag = extract_from_manifest(manifest_to_use, tag_config['path'])
+
+                    # Replace :latest with version for comparison consistency
+                    chart_version = self.mapping['metadata'].get('appVersion', 'latest')
+                    if chart_version != 'latest' and 'latest' in tag:
+                        tag = tag.replace('latest', chart_version)
+
+                except IndexError:
+                    # No colon in image, use default tag
+                    tag = 'latest'
+                except (KeyError, ValueError) as e:
+                    print(f"Warning: Failed to extract tag using path '{tag_config['path']}': {e}")
+                    # Fallback to direct access
+                    actual_image = container_manifest.get('image', '')
+                    tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
+            else:
+                # No path field - fallback to direct access
+                actual_image = container_manifest.get('image', '')
+                tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
+
+            # Track useVersionAnchor fields for controller tags
+            if tag_config.get('useVersionAnchor', False):
+                # Build the path: component_name.key_name.tag
+                anchor_path = f"{component_name}.{key_name}.tag"
+                self.version_anchor_fields.append(anchor_path)
+
+        # Extract pullPolicy
+        pull_policy = None
+        if 'pullPolicy' in img_config:
+            policy_config = img_config['pullPolicy']
+            if 'path' in policy_config:
+                # Determine which manifest to use
+                manifest_to_use = self._select_manifest_for_path(
+                    policy_config, container_manifest, wrapped_manifest
+                )
+                try:
+                    pull_policy = extract_from_manifest(manifest_to_use, policy_config['path'])
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract pullPolicy using path '{policy_config['path']}': {e}")
+                    # Fallback to direct access
+                    pull_policy = container_manifest.get('imagePullPolicy', 'Always')
+            else:
+                # No path field - fallback to direct access
+                pull_policy = container_manifest.get('imagePullPolicy', 'Always')
+
+        # Build values structure based on valuePath format
+        repo_path = img_config.get('repository', {}).get('valuePath', '')
+
+        # Determine if flat or nested structure
+        # Flat: kserve.controller.image (2 dots) or llmisvc.controller.containers.manager.image (4 dots with 'containers')
+        # Nested: kserve.controller.image.repository (3+ dots without 'containers')
+        is_flat_structure = False
+        if repo_path:
+            dot_count = repo_path.count('.')
+            if dot_count == 2:
+                # Old structure: kserve.controller.image
+                is_flat_structure = True
+            elif 'containers' in repo_path and dot_count == 4:
+                # New containers structure: llmisvc.controller.containers.manager.image
+                is_flat_structure = True
+
+        if is_flat_structure:
+            # Flat structure: image value is string
+            if repository:
+                values['image'] = repository
+            if tag:
+                values['tag'] = tag
+            if pull_policy:
+                values['imagePullPolicy'] = pull_policy
+        else:
+            # Nested structure: image value is dict
+            values['image'] = {}
+            if repository:
+                values['image']['repository'] = repository
+            if tag:
+                values['image']['tag'] = tag
+            if pull_policy:
+                values['image']['pullPolicy'] = pull_policy
+
+        return values
+
+    def _extract_pod_level_fields(
+        self,
+        config: Dict[str, Any],
+        manifest: Optional[Dict[str, Any]],
+        manifest_type: str
+    ) -> Dict[str, Any]:
+        """Extract pod-level fields from manifest.
+
+        Excludes containers section and special fields.
+
+        Args:
+            config: Configuration from mapper
+            manifest: Kubernetes manifest
+            manifest_type: Type of manifest for error messages
+
+        Returns:
+            Dictionary with extracted pod-level field values
+        """
+        result = {}
+
+        if not manifest:
+            return result
+
+        for field_name, field_config in config.items():
+            if field_name in SPECIAL_SECTIONS:
+                continue
+
+            # Extract using generic logic
+            if isinstance(field_config, dict) and 'path' in field_config:
+                try:
+                    value = extract_from_manifest(manifest, field_config['path'])
+                    if value is not None:
+                        result[field_name] = value
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract {field_name} for {manifest_type} "
+                          f"using path '{field_config['path']}': {e}")
+
+            elif isinstance(field_config, dict):
+                # Nested config
+                nested_values = self._extract_nested_field_values(
+                    field_config,
+                    manifest,
+                    manifest_type,
+                    field_name
+                )
+                if nested_values:
+                    result[field_name] = nested_values
+
+        return result

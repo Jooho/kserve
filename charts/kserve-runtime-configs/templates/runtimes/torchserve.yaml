@@ -19,7 +19,7 @@ spec:
     env:
     - name: TS_SERVICE_ENVELOPE
       value: '{{ "{{" }}.Labels.serviceEnvelope{{ "}}" }}'
-    image: {{ .Values.runtimes.torchserve.image.repository }}:{{ .Values.runtimes.torchserve.image.tag }}
+    image: {{ .Values.runtimes.torchserve.image.repository }}:{{ .Values.runtimes.torchserve.image.tag | default .Values.kserve.version }}
     name: kserve-container
     resources: {{- toYaml .Values.runtimes.torchserve.resources | nindent 6 }}
     securityContext:

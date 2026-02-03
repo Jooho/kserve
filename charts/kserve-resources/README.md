@@ -8,13 +8,13 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| certManager.enabled | bool | `true` |  |
+| certManager.enabled | string | `""` |  |
 | inferenceServiceConfig.agent.cpuLimit | string | `"1"` |  |
 | inferenceServiceConfig.agent.cpuRequest | string | `"100m"` |  |
 | inferenceServiceConfig.agent.image | string | `"kserve/agent"` |  |
 | inferenceServiceConfig.agent.memoryLimit | string | `"1Gi"` |  |
 | inferenceServiceConfig.agent.memoryRequest | string | `"100Mi"` |  |
-| inferenceServiceConfig.agent.tag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.agent.tag | string | `""` |  |
 | inferenceServiceConfig.autoscaler.scaleDownStabilizationWindowSeconds | string | `"300"` |  |
 | inferenceServiceConfig.autoscaler.scaleUpStabilizationWindowSeconds | string | `"0"` |  |
 | inferenceServiceConfig.batcher.cpuLimit | string | `"1"` |  |
@@ -24,7 +24,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.batcher.maxLatency | string | `"5000"` |  |
 | inferenceServiceConfig.batcher.memoryLimit | string | `"1Gi"` |  |
 | inferenceServiceConfig.batcher.memoryRequest | string | `"1Gi"` |  |
-| inferenceServiceConfig.batcher.tag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.batcher.tag | string | `""` |  |
 | inferenceServiceConfig.credentials.gcs.gcsCredentialFileName | string | `"gcloud-application-credentials.json"` |  |
 | inferenceServiceConfig.credentials.s3.s3AccessKeyIDName | string | `"AWS_ACCESS_KEY_ID"` |  |
 | inferenceServiceConfig.credentials.s3.s3CABundle | string | `""` |  |
@@ -40,7 +40,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.credentials.storageSecretNameAnnotation | string | `"serving.kserve.io/storageSecretName"` |  |
 | inferenceServiceConfig.credentials.storageSpecSecretName | string | `"storage-config"` |  |
 | inferenceServiceConfig.deploy.defaultDeploymentMode | string | `"Serverless"` |  |
-| inferenceServiceConfig.enabled | bool | `true` |  |
+| inferenceServiceConfig.enabled | string | `""` |  |
 | inferenceServiceConfig.explainers.art.image | string | `"kserve/art-explainer"` |  |
 | inferenceServiceConfig.explainers.art.tag | string | `"latest"` |  |
 | inferenceServiceConfig.inferenceService.resource.cpuLimit | string | `"1"` |  |
@@ -59,7 +59,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.ingress.localGatewayService | string | `"knative-local-gateway.istio-system.svc.cluster.local"` |  |
 | inferenceServiceConfig.ingress.urlScheme | string | `"http"` |  |
 | inferenceServiceConfig.localModel.defaultJobImage | string | `"kserve/storage-initializer"` |  |
-| inferenceServiceConfig.localModel.defaultJobImageTag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.localModel.defaultJobImageTag | string | `""` |  |
 | inferenceServiceConfig.localModel.disableVolumeManagement | bool | `false` |  |
 | inferenceServiceConfig.localModel.enabled | bool | `false` |  |
 | inferenceServiceConfig.localModel.fsGroup | int | `1000` |  |
@@ -72,7 +72,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.logger.image | string | `"kserve/agent"` |  |
 | inferenceServiceConfig.logger.memoryLimit | string | `"1Gi"` |  |
 | inferenceServiceConfig.logger.memoryRequest | string | `"100Mi"` |  |
-| inferenceServiceConfig.logger.tag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.logger.tag | string | `""` |  |
 | inferenceServiceConfig.metricsAggregator.enableMetricAggregation | string | `"false"` |  |
 | inferenceServiceConfig.metricsAggregator.enablePrometheusScraping | string | `"false"` |  |
 | inferenceServiceConfig.opentelemetryCollector.metricReceiverEndpoint | string | `"keda-otel-scaler.keda.svc:4317"` |  |
@@ -88,7 +88,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.router.imagePullPolicy | string | `"IfNotPresent"` |  |
 | inferenceServiceConfig.router.memoryLimit | string | `"1Gi"` |  |
 | inferenceServiceConfig.router.memoryRequest | string | `"100Mi"` |  |
-| inferenceServiceConfig.router.tag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.router.tag | string | `""` |  |
 | inferenceServiceConfig.security.autoMountServiceAccountToken | bool | `true` |  |
 | inferenceServiceConfig.storageInitializer.caBundleConfigMapName | string | `""` |  |
 | inferenceServiceConfig.storageInitializer.caBundleVolumeMountPath | string | `"/etc/ssl/custom-certs"` |  |
@@ -100,14 +100,15 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | inferenceServiceConfig.storageInitializer.memoryLimit | string | `"1Gi"` |  |
 | inferenceServiceConfig.storageInitializer.memoryModelcar | string | `"15Mi"` |  |
 | inferenceServiceConfig.storageInitializer.memoryRequest | string | `"100Mi"` |  |
-| inferenceServiceConfig.storageInitializer.tag | string | `"v0.16.0"` |  |
+| inferenceServiceConfig.storageInitializer.tag | string | `""` |  |
 | inferenceServiceConfig.storageInitializer.uidModelcar | int | `1010` |  |
-| kserve.controller.image | string | `"kserve/kserve-controller"` |  |
-| kserve.controller.imagePullPolicy | string | `"Always"` |  |
-| kserve.controller.resources.limits.cpu | string | `"100m"` |  |
-| kserve.controller.resources.limits.memory | string | `"300Mi"` |  |
-| kserve.controller.resources.requests.cpu | string | `"100m"` |  |
-| kserve.controller.resources.requests.memory | string | `"200Mi"` |  |
-| kserve.controller.tag | string | `"v0.16.0"` |  |
+| kserve.controller.containers.manager.image | string | `"kserve/kserve-controller"` |  |
+| kserve.controller.containers.manager.imagePullPolicy | string | `"Always"` |  |
+| kserve.controller.containers.manager.resources.limits.cpu | string | `"100m"` |  |
+| kserve.controller.containers.manager.resources.limits.memory | string | `"300Mi"` |  |
+| kserve.controller.containers.manager.resources.requests.cpu | string | `"100m"` |  |
+| kserve.controller.containers.manager.resources.requests.memory | string | `"200Mi"` |  |
+| kserve.controller.containers.manager.tag | string | `""` |  |
+| kserve.createSharedResources | bool | `true` |  |
 | kserve.version | string | `"v0.16.0"` |  |
 

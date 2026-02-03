@@ -1,4 +1,4 @@
-{{- if .Values.inferenceServiceConfig.enabled }}
+{{- if .Values.inferenceServiceConfig.enabled | default .Values.kserve.createSharedResources }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

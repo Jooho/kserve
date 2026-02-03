@@ -24,21 +24,15 @@ spec:
     spec:
       containers:
       - name: manager
-        image: "{{ .Values.kserve.controller.image }}:{{ .Values.kserve.version | default .Values.kserve.version | default .Values.kserve.controller.tag }}"
-        imagePullPolicy: {{ .Values.kserve.controller.imagePullPolicy }}
-        command:
-        - /manager
+        image: "{{ .Values.kserve.controller.containers.manager.image }}:{{ .Values.kserve.controller.containers.manager.tag | default .Values.kserve.version }}"
+        imagePullPolicy: {{ .Values.kserve.controller.containers.manager.imagePullPolicy }}
+        resources: {{- toYaml .Values.kserve.controller.containers.manager.resources | nindent 10 }}
         args:
-        - --metrics-addr=127.0.0.1:8080
-        - --leader-elect
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          privileged: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
+          - --metrics-addr=127.0.0.1:8080
+          - --leader-elect
+
+        command:
+          - /manager
 
         env:
           - name: POD_NAMESPACE
@@ -48,11 +42,6 @@ spec:
           - name: SECRET_NAME
             value: kserve-webhook-server-cert
 
-        ports:
-          - containerPort: 9443
-            name: webhook-server
-            protocol: TCP
-
         livenessProbe:
           failureThreshold: 5
           httpGet:
@@ -60,6 +49,11 @@ spec:
             port: 8081
           initialDelaySeconds: 30
           timeoutSeconds: 5
+
+        ports:
+          - containerPort: 9443
+            name: webhook-server
+            protocol: TCP
 
         readinessProbe:
           failureThreshold: 5
@@ -70,19 +64,6 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 5
 
-        resources: {{- toYaml .Values.kserve.controller.resources | nindent 10 }}
-        volumeMounts:
-          - mountPath: /tmp/k8s-webhook-server/serving-certs
-            name: cert
-            readOnly: true
-
-      - name: kube-rbac-proxy
-        image: "quay.io/brancz/kube-rbac-proxy:v0.18.0"
-        args:
-        - --secure-listen-address=0.0.0.0:8443
-        - --upstream=http://127.0.0.1:8080/
-        - --logtostderr=true
-        - --v=10
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -92,10 +73,32 @@ spec:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
 
+        volumeMounts:
+          - mountPath: /tmp/k8s-webhook-server/serving-certs
+            name: cert
+            readOnly: true
+
+      - name: kube-rbac-proxy
+        image: "quay.io/brancz/kube-rbac-proxy:v0.18.0"
+        args:
+          - --secure-listen-address=0.0.0.0:8443
+          - --upstream=http://127.0.0.1:8080/
+          - --logtostderr=true
+          - --v=10
+
         ports:
           - containerPort: 8443
             name: https
             protocol: TCP
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
 
       securityContext:
         runAsNonRoot: true

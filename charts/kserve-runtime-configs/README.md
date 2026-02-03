@@ -8,12 +8,13 @@ KServe Runtime Configurations - ClusterServingRuntimes and LLM Inference Configs
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| kserve.createSharedResources | bool | `true` |  |
 | kserve.version | string | `"v0.16.0"` |  |
 | llmisvcConfigs.enabled | bool | `false` |  |
 | runtimes.enabled | bool | `true` |  |
 | runtimes.huggingface.enabled | bool | `true` |  |
 | runtimes.huggingface.image.repository | string | `"kserve/huggingfaceserver"` |  |
-| runtimes.huggingface.image.tag | string | `"v0.16.0"` |  |
+| runtimes.huggingface.image.tag | string | `""` |  |
 | runtimes.huggingface.resources.limits.cpu | string | `"1"` |  |
 | runtimes.huggingface.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.huggingface.resources.requests.cpu | string | `"1"` |  |
@@ -27,7 +28,7 @@ KServe Runtime Configurations - ClusterServingRuntimes and LLM Inference Configs
 | runtimes.huggingfaceMultinode.resources.requests.memory | string | `"6Gi"` |  |
 | runtimes.lightgbm.enabled | bool | `true` |  |
 | runtimes.lightgbm.image.repository | string | `"kserve/lgbserver"` |  |
-| runtimes.lightgbm.image.tag | string | `"v0.16.0"` |  |
+| runtimes.lightgbm.image.tag | string | `""` |  |
 | runtimes.lightgbm.resources.limits.cpu | string | `"1"` |  |
 | runtimes.lightgbm.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.lightgbm.resources.requests.cpu | string | `"1"` |  |
@@ -41,28 +42,28 @@ KServe Runtime Configurations - ClusterServingRuntimes and LLM Inference Configs
 | runtimes.mlserver.resources.requests.memory | string | `"2Gi"` |  |
 | runtimes.paddle.enabled | bool | `true` |  |
 | runtimes.paddle.image.repository | string | `"kserve/paddleserver"` |  |
-| runtimes.paddle.image.tag | string | `"v0.16.0"` |  |
+| runtimes.paddle.image.tag | string | `""` |  |
 | runtimes.paddle.resources.limits.cpu | string | `"1"` |  |
 | runtimes.paddle.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.paddle.resources.requests.cpu | string | `"1"` |  |
 | runtimes.paddle.resources.requests.memory | string | `"2Gi"` |  |
 | runtimes.pmml.enabled | bool | `true` |  |
 | runtimes.pmml.image.repository | string | `"kserve/pmmlserver"` |  |
-| runtimes.pmml.image.tag | string | `"v0.16.0"` |  |
+| runtimes.pmml.image.tag | string | `""` |  |
 | runtimes.pmml.resources.limits.cpu | string | `"1"` |  |
 | runtimes.pmml.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.pmml.resources.requests.cpu | string | `"1"` |  |
 | runtimes.pmml.resources.requests.memory | string | `"2Gi"` |  |
 | runtimes.predictive.enabled | bool | `true` |  |
 | runtimes.predictive.image.repository | string | `"kserve/predictiveserver"` |  |
-| runtimes.predictive.image.tag | string | `"v0.16.0"` |  |
+| runtimes.predictive.image.tag | string | `""` |  |
 | runtimes.predictive.resources.limits.cpu | string | `"1"` |  |
 | runtimes.predictive.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.predictive.resources.requests.cpu | string | `"1"` |  |
 | runtimes.predictive.resources.requests.memory | string | `"2Gi"` |  |
 | runtimes.sklearn.enabled | bool | `true` |  |
 | runtimes.sklearn.image.repository | string | `"kserve/sklearnserver"` |  |
-| runtimes.sklearn.image.tag | string | `"v0.16.0"` |  |
+| runtimes.sklearn.image.tag | string | `""` |  |
 | runtimes.sklearn.resources.limits.cpu | string | `"1"` |  |
 | runtimes.sklearn.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.sklearn.resources.requests.cpu | string | `"1"` |  |
@@ -90,7 +91,7 @@ KServe Runtime Configurations - ClusterServingRuntimes and LLM Inference Configs
 | runtimes.triton.resources.requests.memory | string | `"2Gi"` |  |
 | runtimes.xgboost.enabled | bool | `true` |  |
 | runtimes.xgboost.image.repository | string | `"kserve/xgbserver"` |  |
-| runtimes.xgboost.image.tag | string | `"v0.16.0"` |  |
+| runtimes.xgboost.image.tag | string | `""` |  |
 | runtimes.xgboost.resources.limits.cpu | string | `"1"` |  |
 | runtimes.xgboost.resources.limits.memory | string | `"2Gi"` |  |
 | runtimes.xgboost.resources.requests.cpu | string | `"1"` |  |
