@@ -181,6 +181,8 @@ class ComponentBuilder:
         the standard path-based extraction pattern. Special fields like 'image'
         and 'resources' that require complex processing are excluded.
 
+        Supports nested mapper configurations for partial configurability.
+
         Args:
             config: Configuration from mapper (e.g., na_config, cm_config)
             manifest: Kubernetes manifest (Deployment or DaemonSet)
@@ -203,8 +205,9 @@ class ComponentBuilder:
             if field_name in SPECIAL_FIELDS:
                 continue
 
-            # Generic extraction for path-based fields
+            # Check if this is a leaf node with path or nested config
             if isinstance(field_config, dict) and 'path' in field_config:
+                # Leaf node - extract value directly
                 try:
                     value = extract_from_manifest(manifest, field_config['path'])
                     # Allow None check to include empty dict {} and empty list []
@@ -213,6 +216,73 @@ class ComponentBuilder:
                 except (KeyError, IndexError, ValueError) as e:
                     print(f"Warning: Failed to extract {field_name} for {manifest_type} "
                           f"using path '{field_config['path']}': {e}")
+
+            elif isinstance(field_config, dict):
+                # Nested config - check if it has sub-fields with path/valuePath
+                nested_values = self._extract_nested_field_values(
+                    field_config,
+                    manifest,
+                    manifest_type,
+                    field_name
+                )
+                if nested_values:
+                    result[field_name] = nested_values
+
+        return result
+
+    def _extract_nested_field_values(
+        self,
+        nested_config: Dict[str, Any],
+        manifest: Dict[str, Any],
+        manifest_type: str,
+        parent_field: str
+    ) -> Dict[str, Any]:
+        """Extract values from nested mapper configuration.
+
+        Recursively processes nested fields to extract values from manifest.
+
+        Args:
+            nested_config: Nested configuration (e.g., securityContext config)
+            manifest: Kubernetes manifest
+            manifest_type: Type of manifest for error messages
+            parent_field: Parent field name for error messages
+
+        Returns:
+            Dictionary with extracted nested values
+
+        Example:
+            nested_config = {
+                'runAsNonRoot': {
+                    'path': 'spec.template.spec.securityContext.runAsNonRoot',
+                    'valuePath': '...'
+                }
+            }
+
+            Returns: {'runAsNonRoot': True}
+        """
+        result = {}
+
+        for key, sub_config in nested_config.items():
+            if isinstance(sub_config, dict) and 'path' in sub_config:
+                # Leaf node with path
+                try:
+                    value = extract_from_manifest(manifest, sub_config['path'])
+                    if value is not None:
+                        result[key] = value
+                except (KeyError, IndexError, ValueError) as e:
+                    print(f"Warning: Failed to extract {parent_field}.{key} for {manifest_type} "
+                          f"using path '{sub_config['path']}': {e}")
+
+            elif isinstance(sub_config, dict):
+                # Deeper nesting - recurse
+                nested_values = self._extract_nested_field_values(
+                    sub_config,
+                    manifest,
+                    manifest_type,
+                    f"{parent_field}.{key}"
+                )
+                if nested_values:
+                    result[key] = nested_values
 
         return result
 

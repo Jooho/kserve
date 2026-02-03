@@ -257,16 +257,48 @@ class WorkloadGenerator:
                     lines.append(container_spec)
             else:
                 # Check mapper for configurability
-                if field_name in component_config and isinstance(component_config[field_name], dict) and 'valuePath' in component_config[field_name]:
-                    # Mapper defined → configurable ({{ .Values.xxx }})
-                    value_path = component_config[field_name]['valuePath']
+                if field_name in component_config:
+                    mapper_config = component_config[field_name]
 
-                    # Special handling for affinity/tolerations to output empty values
-                    # This ensures verification accuracy (empty {} or [] are semantically equivalent to omission)
-                    if field_name in ['affinity', 'tolerations']:
-                        lines.append(f'      {field_name}: {{{{- toYaml .Values.{value_path} | nindent 8 }}}}')
+                    if isinstance(mapper_config, dict) and 'valuePath' in mapper_config:
+                        # Case 1: Entire field configurable (existing logic)
+                        value_path = mapper_config['valuePath']
+
+                        # Special handling for affinity/tolerations to output empty values
+                        # This ensures verification accuracy (empty {} or [] are semantically equivalent to omission)
+                        if field_name in ['affinity', 'tolerations']:
+                            lines.append(f'      {field_name}: {{{{- toYaml .Values.{value_path} | nindent 8 }}}}')
+                        else:
+                            lines.append(renderer.render_field(field_name, mapper_config, default_indent=6))
+
+                    elif isinstance(mapper_config, dict) and isinstance(field_value, dict):
+                        # Case 2: Nested mapper (NEW!)
+                        # Check if it's a nested config (has sub-fields with path/valuePath)
+                        has_nested_config = any(
+                            isinstance(v, dict) and ('path' in v or 'valuePath' in v)
+                            for v in mapper_config.values()
+                        )
+
+                        if has_nested_config:
+                            # Render as mixed nested (configurable + static)
+                            nested_template = self._render_nested_field(
+                                field_name, field_value, mapper_config, indent=6
+                            )
+                            lines.append(nested_template)
+                        else:
+                            # Not nested config, treat as static
+                            lines.append(f'      {field_name}:')
+                            lines.append(yaml_to_string(field_value, indent=8))
+
                     else:
-                        lines.append(renderer.render_field(field_name, component_config[field_name], default_indent=6))
+                        # Case 3: Static
+                        if isinstance(field_value, (dict, list)):
+                            lines.append(f'      {field_name}:')
+                            lines.append(yaml_to_string(field_value, indent=8))
+                        else:
+                            yaml_value = str(field_value).lower() if isinstance(field_value, bool) else field_value
+                            lines.append(f'      {field_name}: {yaml_value}')
+
                 else:
                     # Not in mapper → static (keep manifest value as-is)
                     if isinstance(field_value, (dict, list)):
@@ -432,8 +464,15 @@ class WorkloadGenerator:
         if workload_type == 'deployment':
             for probe_name in ['livenessProbe', 'readinessProbe']:
                 if probe_name in container:
-                    lines.append(f'        {probe_name}:')
-                    lines.append(yaml_to_string(container[probe_name], indent=10))
+                    # Check if probe is configurable in mapper
+                    if is_main_container and probe_name in component_config and isinstance(component_config[probe_name], dict) and 'valuePath' in component_config[probe_name]:
+                        # Configurable probe
+                        probe_path = component_config[probe_name]['valuePath']
+                        lines.append(f'        {probe_name}: {{{{- toYaml .Values.{probe_path} | nindent 10 }}}}')
+                    else:
+                        # Static probe
+                        lines.append(f'        {probe_name}:')
+                        lines.append(yaml_to_string(container[probe_name], indent=10))
 
         # Resources - configurable for main container
         if is_main_container and 'resources' in component_config:
@@ -447,5 +486,100 @@ class WorkloadGenerator:
         if 'volumeMounts' in container:
             lines.append('        volumeMounts:')
             lines.append(yaml_to_string(container['volumeMounts'], indent=10))
+
+        return '\n'.join(lines)
+
+    def _render_nested_field(
+            self,
+            field_name: str,
+            manifest_value: Dict[str, Any],
+            mapper_config: Dict[str, Any],
+            indent: int = 8
+    ) -> str:
+        """
+        Render nested field with mixed configurable/static parts
+
+        This enables partial configurability of complex fields like securityContext,
+        where some sub-fields are configurable while others remain static.
+
+        Args:
+            field_name: Name of the field (e.g., 'securityContext')
+            manifest_value: Actual value from manifest (e.g., {'runAsNonRoot': True, ...})
+            mapper_config: Nested mapper configuration with sub-field mappings
+            indent: Base indentation level (default: 8)
+
+        Returns:
+            Rendered Helm template string with mixed configurable and static parts
+
+        Example:
+            manifest_value = {
+                'runAsNonRoot': True,
+                'seccompProfile': {'type': 'RuntimeDefault'}
+            }
+
+            mapper_config = {
+                'runAsNonRoot': {
+                    'path': 'spec.template.spec.securityContext.runAsNonRoot',
+                    'valuePath': 'llmisvc.controller.securityContext.runAsNonRoot'
+                }
+                # seccompProfile not in mapper -> stays static
+            }
+
+            Returns:
+                securityContext:
+                  runAsNonRoot: {{ .Values.llmisvc.controller.securityContext.runAsNonRoot }}
+                  seccompProfile:
+                    type: RuntimeDefault
+        """
+        lines = []
+        lines.append(f"{' ' * (indent - 2)}{field_name}:")
+
+        for key, value in manifest_value.items():
+            if key in mapper_config:
+                sub_config = mapper_config[key]
+
+                if isinstance(sub_config, dict) and 'valuePath' in sub_config:
+                    # Leaf configurable node
+                    value_path = sub_config['valuePath']
+
+                    # Check if value is dict or list - use toYaml for complex types
+                    if isinstance(value, (dict, list)):
+                        lines.append(f"{' ' * indent}{key}: {{{{- toYaml .Values.{value_path} | nindent {indent + 2} }}}}")
+                    else:
+                        # Scalar value - direct substitution
+                        lines.append(f"{' ' * indent}{key}: {{{{ .Values.{value_path} }}}}")
+
+                elif isinstance(value, dict) and isinstance(sub_config, dict):
+                    # Recursive nested - check if sub_config has nested mappings
+                    has_nested_mappings = any(
+                        isinstance(v, dict) and ('path' in v or 'valuePath' in v)
+                        for v in sub_config.values()
+                    )
+
+                    if has_nested_mappings:
+                        # Recurse deeper
+                        nested = self._render_nested_field(key, value, sub_config, indent + 2)
+                        lines.append(nested)
+                    else:
+                        # No nested mappings, treat as static
+                        lines.append(f"{' ' * indent}{key}:")
+                        lines.append(yaml_to_string(value, indent + 2))
+
+                else:
+                    # Static leaf with unexpected type
+                    lines.append(f"{' ' * indent}{key}:")
+                    lines.append(yaml_to_string(value, indent + 2))
+            else:
+                # Key not in mapper -> static
+                if isinstance(value, dict):
+                    lines.append(f"{' ' * indent}{key}:")
+                    lines.append(yaml_to_string(value, indent + 2))
+                elif isinstance(value, list):
+                    lines.append(f"{' ' * indent}{key}:")
+                    lines.append(yaml_to_string(value, indent + 2))
+                else:
+                    # Scalar value
+                    yaml_value = str(value).lower() if isinstance(value, bool) else value
+                    lines.append(f"{' ' * indent}{key}: {yaml_value}")
 
         return '\n'.join(lines)

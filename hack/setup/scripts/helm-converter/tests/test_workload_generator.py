@@ -343,6 +343,104 @@ class TestWorkloadGenerator:
         assert 'hostNetwork: true' in content
         assert 'dnsPolicy: ClusterFirstWithHostNet' in content
 
+    def test_nested_field_configuration(self, tmp_path, mapping):
+        """Test nested field configuration (partial configurable)"""
+        deployment_manifest = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': 'test-deployment',
+                'namespace': 'test',
+                'labels': {
+                    'app': 'test-controller'
+                }
+            },
+            'spec': {
+                'selector': {
+                    'matchLabels': {
+                        'app': 'test-controller'
+                    }
+                },
+                'template': {
+                    'metadata': {
+                        'labels': {
+                            'app': 'test-controller'
+                        }
+                    },
+                    'spec': {
+                        'securityContext': {
+                            'runAsNonRoot': True,
+                            'seccompProfile': {
+                                'type': 'RuntimeDefault'
+                            }
+                        },
+                        'serviceAccountName': 'test-sa',
+                        'containers': [{
+                            'name': 'manager',
+                            'image': 'test/controller:v1.0.0',
+                            'imagePullPolicy': 'Always',
+                            'resources': {
+                                'limits': {
+                                    'cpu': '100m',
+                                    'memory': '128Mi'
+                                }
+                            }
+                        }]
+                    }
+                }
+            }
+        }
+
+        component_data = {
+            'config': {
+                'controllerManager': {
+                    'image': {
+                        'repository': {
+                            'valuePath': 'test.controller.image'
+                        },
+                        'tag': {
+                            'valuePath': 'test.controller.tag'
+                        }
+                    },
+                    'resources': {
+                        'valuePath': 'test.controller.resources'
+                    },
+                    # Nested securityContext - only runAsNonRoot is configurable
+                    'securityContext': {
+                        'runAsNonRoot': {
+                            'path': 'spec.template.spec.securityContext.runAsNonRoot',
+                            'valuePath': 'test.controller.securityContext.runAsNonRoot'
+                        }
+                        # seccompProfile not in mapper -> stays static
+                    }
+                }
+            },
+            'manifests': {
+                'controllerManager': deployment_manifest
+            }
+        }
+
+        generator = WorkloadGenerator(mapping)
+        templates_dir = tmp_path / 'templates'
+        templates_dir.mkdir()
+
+        generator.generate_deployment(templates_dir, 'test', component_data, 'controllerManager')
+
+        deployment_file = templates_dir / 'deployment.yaml'
+        with open(deployment_file, 'r') as f:
+            content = f.read()
+
+        # Verify nested field is rendered correctly
+        # runAsNonRoot should be configurable
+        assert 'runAsNonRoot: {{ .Values.test.controller.securityContext.runAsNonRoot }}' in content
+
+        # seccompProfile should be static
+        assert 'seccompProfile:' in content
+        assert 'type: RuntimeDefault' in content
+
+        # Verify it's under securityContext parent
+        assert 'securityContext:' in content
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
