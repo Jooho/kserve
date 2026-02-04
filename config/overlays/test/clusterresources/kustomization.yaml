@@ -8,22 +8,22 @@ resources:
 
 images:
 - name: kserve/sklearnserver
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/xgbserver
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/pmmlserver
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/paddleserver
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/lgbserver
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/storage-initializer
-  newTag: latest
+  newTag: kkkk
 
 - name: kserve/huggingfaceserver
-  newTag: latest
+  newTag: kkkk

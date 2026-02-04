@@ -562,6 +562,7 @@ TARGET_DEPLOYMENT_NAMES=()
 INSTALL_RUNTIMES="${INSTALL_RUNTIMES:-${ENABLE_KSERVE:-false}}"
 INSTALL_LLMISVC_CONFIGS="${INSTALL_LLMISVC_CONFIGS:-${ENABLE_LLMISVC:-false}}"
 RUNTIME_CHARTS_DIR="oci://ghcr.io/kserve/charts"
+RUNTIME_CONIFIG_CHART_NAME="kserve-runtime-configs"
 
 #================================================
 # Component Functions
@@ -1006,7 +1007,24 @@ install_opentelemetry() {
 # ----------------------------------------
 
 uninstall_kserve() {
-    # Build list of charts to uninstall for logging
+
+    if [ "${INSTALL_RUNTIMES}" = "true" ] && [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
+        if helm list -n "${KSERVE_NAMESPACE}" 2>/dev/null | grep -q "${RUNTIME_CONIFIG_CHART_NAME}"; then
+            helm uninstall "${RUNTIME_CONIFIG_CHART_NAME}" -n "${KSERVE_NAMESPACE}"
+            log_success "Successfully uninstalled Runtimes/LLMISVC configs"
+        fi
+    else
+        log_info "Installing Runtimes(${INSTALL_RUNTIMES}) and LLMISVC configs(${INSTALL_LLMISVC_CONFIGS})..."
+        helm upgrade -i ${RUNTIME_CONIFIG_CHART_NAME} \
+            ${RUNTIME_CHARTS_DIR}/${RUNTIME_CONIFIG_CHART_NAME} \
+            --namespace "${KSERVE_NAMESPACE}" \
+            --create-namespace \
+            --wait \
+            --set runtimes.enabled=${INSTALL_RUNTIMES} \
+            --set llmisvcConfigs.enabled=${INSTALL_LLMISVC_CONFIGS}
+        log_success "Successfully updated Runtimes/LLMISVC configs"
+    fi
+
     local all_charts=("${RESOURCE_CHARTS[@]}" "${CRD_CHARTS[@]}")
     if [ ${#all_charts[@]} -gt 0 ]; then
         log_info "Uninstalling charts: ${all_charts[*]}"
@@ -1025,8 +1043,6 @@ uninstall_kserve() {
             exit 1
         fi
     else
-        # Development/Helm mode - Uninstall all charts
-        # Uninstall resource charts first (reverse order)
         for ((i=${#RESOURCE_CHARTS[@]}-1; i>=0; i--)); do
             local chart="${RESOURCE_CHARTS[$i]}"
             log_info "Uninstalling ${chart}..."
@@ -1045,8 +1061,6 @@ uninstall_kserve() {
 }
 
 install_kserve() {
-    # Build helm --set arguments for KServe/LLMIsvc configuration
-    # This replaces post-install ConfigMap patching
     build_helm_config_args() {
         local config_args=""
 
@@ -1075,26 +1089,27 @@ install_kserve() {
         echo "${config_args}"
     }
 
-    # Check if any charts are selected for installation
     if [ ${#RESOURCE_CHARTS[@]} -eq 0 ] && [ ${#CRD_CHARTS[@]} -eq 0 ]; then
         log_error "No charts selected for installation. Please enable at least one component (ENABLE_KSERVE, ENABLE_LLMISVC, or ENABLE_LOCALMODEL)."
         exit 1
     fi
 
-    # Check if main resource chart is already installed
     if [ ${#RESOURCE_CHARTS[@]} -gt 0 ]; then
         local main_chart="${RESOURCE_CHARTS[0]}"
         if helm list -n "${KSERVE_NAMESPACE}" 2>/dev/null | grep -q "${main_chart}"; then
             if [ "$REINSTALL" = false ]; then
-                log_info "KServe is already installed. Use --reinstall to reinstall."
-                return 0
+                if [ "$UPDATE" = true ]; then
+                    log_info "Updating KServe..."
+                else
+                    log_info "KServe is already installed. Use --reinstall to reinstall."
+                    return 0
+                fi
             else
                 log_info "Reinstalling KServe..."
                 uninstall_kserve
             fi
         fi
     fi
-
     # EMBED_MANIFESTS: use embedded manifests from generated script
     if [ "$EMBED_MANIFESTS" = "true" ]; then
         log_info "Installing KServe using embedded manifests ..."
@@ -1224,8 +1239,8 @@ install_kserve() {
     log_success "KServe is ready!"
     if [ ${INSTALL_RUNTIMES} = "true" ] || [ ${INSTALL_LLMISVC_CONFIGS} = "true" ]; then
         log_info "Installing Runtimes(${INSTALL_RUNTIMES}) and LLMISVC configs(${INSTALL_LLMISVC_CONFIGS})..."
-        helm upgrade -i kserve-runtime-configs \
-            "${RUNTIME_CHARTS_DIR}/kserve-runtime-configs" \
+        helm upgrade -i ${RUNTIME_CONIFIG_CHART_NAME} \
+            ${RUNTIME_CHARTS_DIR}/${RUNTIME_CONIFIG_CHART_NAME} \
             --namespace "${KSERVE_NAMESPACE}" \
             --create-namespace \
             --wait \
@@ -1278,6 +1293,8 @@ main() {
     install_keda_otel_addon
     install_opentelemetry
     (
+        determine_shared_resources_config
+        
         # Build chart arrays based on ENABLE_* flags
         if [ "${ENABLE_KSERVE}" = "true" ]; then
             log_info "KServe is enabled"
