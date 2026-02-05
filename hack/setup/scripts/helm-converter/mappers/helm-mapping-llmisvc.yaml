@@ -46,7 +46,7 @@ llmisvc:
           tag:
             path: image+(:,1)
             valuePath: llmisvc.controller.containers.manager.tag
-            useVersionAnchor: true
+            value: ""
           pullPolicy:
             path: imagePullPolicy
             valuePath: llmisvc.controller.containers.manager.imagePullPolicy

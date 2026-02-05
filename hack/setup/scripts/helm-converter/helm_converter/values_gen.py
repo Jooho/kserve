@@ -13,6 +13,7 @@ from .values_generator.configmap_builder import ConfigMapBuilder
 from .values_generator.component_builder import ComponentBuilder
 from .values_generator.runtime_builder import RuntimeBuilder
 from .values_generator.anchor_processor import apply_version_anchors
+from .values_generator.path_extractor import process_field_with_priority
 
 
 class ValuesGenerator:
@@ -36,11 +37,8 @@ class ValuesGenerator:
         # Get version from Chart metadata for version anchor
         version = self.mapping['metadata'].get('appVersion', 'latest')
 
-        # Collect all version anchor fields from builders
+        # version_anchor_fields no longer used - tags use value: "" in mapping instead
         version_anchor_fields = []
-        version_anchor_fields.extend(self.configmap_builder.version_anchor_fields)
-        version_anchor_fields.extend(self.component_builder.version_anchor_fields)
-        version_anchor_fields.extend(self.runtime_builder.version_anchor_fields)
 
         with open(values_file, 'w') as f:
             # Add header comment
@@ -56,7 +54,7 @@ class ValuesGenerator:
                                      allow_unicode=True)
 
             # Apply version anchors for centralized version management
-            yaml_content = apply_version_anchors(yaml_content, version, version_anchor_fields)
+            yaml_content = apply_version_anchors(yaml_content, version, version_anchor_fields, chart_name)
 
             # Write final content
             f.write(yaml_content)
@@ -91,25 +89,48 @@ class ValuesGenerator:
         # Add certManager values
         if 'certManager' in self.mapping:
             if 'enabled' in self.mapping['certManager']:
-                # cert-manager is typically enabled by default (most installations need it)
-                values['certManager'] = {
-                    'enabled': True
-                }
+                # Extract enabled value using priority logic
+                has_value, enabled_value = process_field_with_priority(
+                    self.mapping['certManager']['enabled'],
+                    None,
+                    None
+                )
+
+                if has_value:
+                    values['certManager'] = {'enabled': enabled_value}
+                else:
+                    # Fallback: cert-manager is typically enabled by default
+                    values['certManager'] = {'enabled': True}
 
         # Add llmisvcConfigs values if present (even if not main chart)
         if 'llmisvcConfigs' in self.mapping and chart_name != 'llmisvc':
             # For llmisvc configs component, just add enabled flag
-            # LLM configs are optional, default to False
             if 'enabled' in self.mapping['llmisvcConfigs']:
-                values['llmisvcConfigs'] = {
-                    'enabled': False
-                }
+                has_value, enabled_value = process_field_with_priority(
+                    self.mapping['llmisvcConfigs']['enabled'],
+                    None,
+                    None
+                )
+
+                if has_value:
+                    values['llmisvcConfigs'] = {'enabled': enabled_value}
+                else:
+                    # Fallback: LLM configs are optional, default to False
+                    values['llmisvcConfigs'] = {'enabled': False}
         # Also support old 'llmisvc' key for backward compatibility
         elif 'llmisvc' in self.mapping and chart_name != 'llmisvc':
             if 'enabled' in self.mapping['llmisvc']:
-                values['llmisvcConfigs'] = {
-                    'enabled': False
-                }
+                has_value, enabled_value = process_field_with_priority(
+                    self.mapping['llmisvc']['enabled'],
+                    None,
+                    None
+                )
+
+                if has_value:
+                    values['llmisvcConfigs'] = {'enabled': enabled_value}
+                else:
+                    # Fallback: LLM configs are optional, default to False
+                    values['llmisvcConfigs'] = {'enabled': False}
 
         # Add localmodel values if present
         if 'localmodel' in self.mapping:

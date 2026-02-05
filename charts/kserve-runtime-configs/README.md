@@ -8,7 +8,6 @@ KServe Runtime Configurations - ClusterServingRuntimes and LLM Inference Configs
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| kserve.createSharedResources | bool | `true` |  |
 | kserve.version | string | `"v0.16.0"` |  |
 | llmisvcConfigs.enabled | bool | `false` |  |
 | runtimes.enabled | bool | `true` |  |

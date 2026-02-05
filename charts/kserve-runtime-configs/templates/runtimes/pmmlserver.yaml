@@ -1,5 +1,4 @@
 {{- if .Values.runtimes.enabled }}
-{{- if .Values.runtimes.pmml.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -37,5 +36,4 @@ spec:
     name: pmml
     priority: 1
     version: "4"
-{{- end }}
 {{- end }}

@@ -1,5 +1,4 @@
 {{- if .Values.runtimes.enabled }}
-{{- if .Values.runtimes.huggingfaceMultinode.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -137,5 +136,4 @@ spec:
         medium: Memory
         sizeLimit: 3Gi
       name: shm
-{{- end }}
 {{- end }}

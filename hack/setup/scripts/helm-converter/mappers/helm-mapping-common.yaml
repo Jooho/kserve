@@ -14,6 +14,7 @@
 certManager:
   enabled:
     valuePath: certManager.enabled
+    value: ""
     description: "Enable cert-manager self-signed Issuer creation"
 
   issuer:
@@ -29,6 +30,7 @@ certManager:
 inferenceServiceConfig:
   enabled:
     valuePath: inferenceServiceConfig.enabled
+    value: ""
     description: "Enable inferenceservice-config ConfigMap installation"
 
   configMap:
@@ -60,7 +62,7 @@ inferenceServiceConfig:
         tag:
           path: data.storageInitializer.image+(:,1)
           valuePath: inferenceServiceConfig.storageInitializer.tag
-          useVersionAnchor: true
+          value: ""
         memoryRequest:
           path: data.storageInitializer.memoryRequest
           valuePath: inferenceServiceConfig.storageInitializer.memoryRequest
@@ -102,7 +104,7 @@ inferenceServiceConfig:
         tag:
           path: data.agent.image+(:,1)
           valuePath: inferenceServiceConfig.agent.tag
-          useVersionAnchor: true
+          value: ""
         memoryRequest:
           path: data.agent.memoryRequest
           valuePath: inferenceServiceConfig.agent.memoryRequest
@@ -124,7 +126,7 @@ inferenceServiceConfig:
         tag:
           path: data.logger.image+(:,1)
           valuePath: inferenceServiceConfig.logger.tag
-          useVersionAnchor: true
+          value: ""
         memoryRequest:
           path: data.logger.memoryRequest
           valuePath: inferenceServiceConfig.logger.memoryRequest
@@ -149,7 +151,7 @@ inferenceServiceConfig:
         tag:
           path: data.batcher.image+(:,1)
           valuePath: inferenceServiceConfig.batcher.tag
-          useVersionAnchor: true
+          value: ""
         memoryRequest:
           path: data.batcher.memoryRequest
           valuePath: inferenceServiceConfig.batcher.memoryRequest
@@ -177,7 +179,7 @@ inferenceServiceConfig:
         tag:
           path: data.router.image+(:,1)
           valuePath: inferenceServiceConfig.router.tag
-          useVersionAnchor: true
+          value: ""
         memoryRequest:
           path: data.router.memoryRequest
           valuePath: inferenceServiceConfig.router.memoryRequest
@@ -234,7 +236,7 @@ inferenceServiceConfig:
         defaultJobImageTag:
           path: data.localModel.defaultJobImage+(:,1)
           valuePath: inferenceServiceConfig.localModel.defaultJobImageTag
-          useVersionAnchor: true
+          value: ""
         fsGroup:
           path: data.localModel.fsGroup
           valuePath: inferenceServiceConfig.localModel.fsGroup

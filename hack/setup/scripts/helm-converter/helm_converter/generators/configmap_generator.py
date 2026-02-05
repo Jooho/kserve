@@ -136,10 +136,10 @@ class ConfigMapGenerator:
 
         # Add image field if specified
         if image_field_name:
-            img_template = f'{{{{ .Values.{parent_path}.image }}}}:{{{{ .Values.{parent_path}.tag }}}}'
+            img_template = f'{{{{ .Values.{parent_path}.image }}}}:{{{{ .Values.{parent_path}.tag | default .Values.kserve.version }}}}'
             if image_field_name == 'defaultJobImage':
                 # LocalModel uses defaultJobImageTag
-                img_template = f'{{{{ .Values.{parent_path}.defaultJobImage }}}}:{{{{ .Values.{parent_path}.defaultJobImageTag }}}}'
+                img_template = f'{{{{ .Values.{parent_path}.defaultJobImage }}}}:{{{{ .Values.{parent_path}.defaultJobImageTag | default .Values.kserve.version }}}}'
             json_lines.append(f'        "{image_field_name}" : "{img_template}"')
 
         # Add other fields from config

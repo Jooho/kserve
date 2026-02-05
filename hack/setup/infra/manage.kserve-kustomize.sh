@@ -127,9 +127,6 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
         TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
         TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
     fi
-    INSTALL_RUNTIMES="${INSTALL_RUNTIMES:-false}"
-    INSTALL_LLMISVC_CONFIGS="${INSTALL_LLMISVC_CONFIGS:-false}"
-
 else
     if [ "${ENABLE_KSERVE}" = "true" ]; then
         TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
@@ -173,8 +170,27 @@ uninstall() {
             exit 1
         fi
     else
-        kubectl kustomize "${KSERVE_CONFIG_DIR}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
-        for crd_dir in "${TARGET_CRD_DIRS[@]}"; do
+        # Uninstall Runtimes and LLMISVC configs first
+        if [ "${INSTALL_RUNTIMES}" = "true" ]; then
+            log_info "Uninstalling ClusterServingRuntimes..."
+            kubectl delete -k config/runtimes --force --grace-period=0 2>/dev/null || true
+        fi
+        if [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
+            log_info "Uninstalling LLMISVC configs..."
+            kubectl delete -k config/llmisvcconfig --force --grace-period=0 2>/dev/null || true
+        fi
+
+        # Uninstall overlay resources in reverse order
+        for ((i=${#TARGET_OVERLAY_DIRS[@]}-1; i>=0; i--)); do
+            overlay_dir="${TARGET_OVERLAY_DIRS[$i]}"
+            log_info "Uninstalling resources from ${overlay_dir}..."
+            kubectl kustomize "${overlay_dir}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
+        done
+
+        # Uninstall CRDs in reverse order
+        for ((i=${#TARGET_CRD_DIRS[@]}-1; i>=0; i--)); do
+            crd_dir="${TARGET_CRD_DIRS[$i]}"
+            log_info "Uninstalling CRDs from ${crd_dir}..."
             kubectl kustomize "${crd_dir}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
         done
     fi

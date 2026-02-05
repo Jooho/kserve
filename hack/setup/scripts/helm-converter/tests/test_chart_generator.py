@@ -186,8 +186,8 @@ class TestChartGenerator:
         with open(issuer_file, 'r') as f:
             content = f.read()
 
-        # Check for certManager conditional only
-        assert '{{- if .Values.certManager.enabled }}' in content
+        # Check for certManager conditional with default fallback
+        assert '{{- if .Values.certManager.enabled | default .Values.kserve.createSharedResources }}' in content
         # Check for namespace templating
         assert '{{ .Release.Namespace }}' in content
         # Check for labels include
@@ -248,8 +248,8 @@ class TestChartGenerator:
         with open(configmap_file, 'r') as f:
             content = f.read()
 
-        # Check for conditional
-        assert '{{- if .Values.inferenceServiceConfig.enabled }}' in content
+        # Check for conditional with default fallback
+        assert '{{- if .Values.inferenceServiceConfig.enabled | default .Values.kserve.createSharedResources }}' in content
         # Check for namespace templating
         assert '{{ .Release.Namespace }}' in content
         # Check for data field templating with literal block scalar and nindent

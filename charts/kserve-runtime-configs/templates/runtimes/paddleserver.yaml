@@ -1,5 +1,4 @@
 {{- if .Values.runtimes.enabled }}
-{{- if .Values.runtimes.paddle.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -33,5 +32,4 @@ spec:
     name: paddle
     priority: 1
     version: "2"
-{{- end }}
 {{- end }}

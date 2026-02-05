@@ -6,7 +6,7 @@ controller manager and node agent configurations.
 """
 
 from typing import Dict, Any, Optional
-from .path_extractor import extract_from_manifest
+from .path_extractor import extract_from_manifest, process_field_with_priority
 
 # Special fields that require custom processing logic
 SPECIAL_FIELDS = {'image', 'resources'}
@@ -20,7 +20,6 @@ class ComponentBuilder:
 
     def __init__(self, mapping: Dict[str, Any]):
         self.mapping = mapping
-        self.version_anchor_fields = []
 
     def build_component_values(
         self,
@@ -52,15 +51,7 @@ class ComponentBuilder:
             # localmodel is optional, default to False
             values['enabled'] = False
 
-        # Add version field if specified in mapping (for anchor reference)
-        if 'version' in component_config:
-            version_config = component_config['version']
-            if version_config.get('useVersionAnchor', False):
-                # Track version field for anchor reference
-                # Don't add actual version value here - it will be added as anchor by anchor_processor
-                # But track the path for anchor_processor
-                anchor_path = f"{component_name}.version"
-                self.version_anchor_fields.append(anchor_path)
+        # Version field handling removed - now use value: "" in mapping for version anchors
 
         # Get the component manifest
         # Generic workload configuration (Deployment, DaemonSet, etc.)
@@ -348,17 +339,16 @@ class ComponentBuilder:
         repository = None
         if 'repository' in img_config:
             repo_config = img_config['repository']
-            if 'path' in repo_config:
-                # Use path field to extract repository
-                try:
-                    repository = extract_from_manifest(manifest, repo_config['path'])
-                except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract repository using path '{repo_config['path']}': {e}")
-                    # Fallback to hardcoded path
-                    actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
-                    repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
-            else:
-                # No path field - fallback to hardcoded (backward compatibility)
+
+            # Use priority-based extraction: value > path > fallback
+            has_value, repository = process_field_with_priority(
+                repo_config,
+                manifest,
+                extract_from_manifest
+            )
+
+            if not has_value:
+                # No 'value' or 'path' field - fallback to hardcoded (backward compatibility)
                 actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
 
@@ -366,34 +356,26 @@ class ComponentBuilder:
         tag = None
         if 'tag' in img_config:
             tag_config = img_config['tag']
-            if 'path' in tag_config:
-                # Use path field to extract tag
-                try:
-                    tag = extract_from_manifest(manifest, tag_config['path'])
 
+            # Use priority-based extraction: value > path > fallback
+            has_value, tag = process_field_with_priority(
+                tag_config,
+                manifest,
+                extract_from_manifest
+            )
+
+            if has_value:
+                # Tag extracted from 'value' or 'path' field
+                if tag and tag != '':
                     # Replace :latest with version for comparison consistency
                     chart_version = self.mapping['metadata'].get('appVersion', 'latest')
                     if chart_version != 'latest' and 'latest' in tag:
                         tag = tag.replace('latest', chart_version)
-
-                except IndexError:
-                    # No colon in image, use default tag
-                    tag = 'latest'
-                except (KeyError, ValueError) as e:
-                    print(f"Warning: Failed to extract tag using path '{tag_config['path']}': {e}")
-                    # Fallback to hardcoded path
-                    actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
-                    tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
+                # If tag is empty string from value: "", keep it as is
             else:
-                # No path field - fallback to hardcoded (backward compatibility)
+                # No 'value' or 'path' field - fallback to hardcoded (backward compatibility)
                 actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
                 tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
-
-            # Track useVersionAnchor fields for controller tags
-            if tag_config.get('useVersionAnchor', False):
-                # Build the path: component_name.key_name.tag
-                anchor_path = f"{component_name}.{key_name}.tag"
-                self.version_anchor_fields.append(anchor_path)
 
         # Extract pullPolicy
         pull_policy = None
@@ -429,20 +411,20 @@ class ComponentBuilder:
 
         if is_flat_structure:
             # Flat structure: image value is string
-            if repository:
+            if repository is not None:
                 values['image'] = repository
-            if tag:
+            if tag is not None:
                 values['tag'] = tag
-            if pull_policy:
+            if pull_policy is not None:
                 values['imagePullPolicy'] = pull_policy
         else:
             # Nested structure: image value is dict
             values['image'] = {}
-            if repository:
+            if repository is not None:
                 values['image']['repository'] = repository
-            if tag:
+            if tag is not None:
                 values['image']['tag'] = tag
-            if pull_policy:
+            if pull_policy is not None:
                 values['image']['pullPolicy'] = pull_policy
 
         return values
@@ -765,8 +747,13 @@ class ComponentBuilder:
         repository = None
         if 'repository' in img_config:
             repo_config = img_config['repository']
-            if 'path' in repo_config:
-                # Determine which manifest to use
+
+            # Check for 'value' field first (priority: value > path > fallback)
+            if 'value' in repo_config:
+                # Use value directly
+                repository = repo_config['value']
+            elif 'path' in repo_config:
+                # Extract from manifest using path
                 manifest_to_use = self._select_manifest_for_path(
                     repo_config, container_manifest, wrapped_manifest
                 )
@@ -778,7 +765,7 @@ class ComponentBuilder:
                     actual_image = container_manifest.get('image', '')
                     repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
             else:
-                # No path field - fallback to direct access
+                # No 'value' or 'path' field - fallback to direct access
                 actual_image = container_manifest.get('image', '')
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
 
@@ -786,8 +773,13 @@ class ComponentBuilder:
         tag = None
         if 'tag' in img_config:
             tag_config = img_config['tag']
-            if 'path' in tag_config:
-                # Determine which manifest to use
+
+            # Check for 'value' field first (priority: value > path > fallback)
+            if 'value' in tag_config:
+                # Use value directly
+                tag = tag_config['value']
+            elif 'path' in tag_config:
+                # Extract from manifest using path
                 manifest_to_use = self._select_manifest_for_path(
                     tag_config, container_manifest, wrapped_manifest
                 )
@@ -795,9 +787,10 @@ class ComponentBuilder:
                     tag = extract_from_manifest(manifest_to_use, tag_config['path'])
 
                     # Replace :latest with version for comparison consistency
-                    chart_version = self.mapping['metadata'].get('appVersion', 'latest')
-                    if chart_version != 'latest' and 'latest' in tag:
-                        tag = tag.replace('latest', chart_version)
+                    if tag and tag != '':
+                        chart_version = self.mapping['metadata'].get('appVersion', 'latest')
+                        if chart_version != 'latest' and 'latest' in tag:
+                            tag = tag.replace('latest', chart_version)
 
                 except IndexError:
                     # No colon in image, use default tag
@@ -808,15 +801,9 @@ class ComponentBuilder:
                     actual_image = container_manifest.get('image', '')
                     tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
             else:
-                # No path field - fallback to direct access
+                # No 'value' or 'path' field - fallback to direct access
                 actual_image = container_manifest.get('image', '')
                 tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
-
-            # Track useVersionAnchor fields for controller tags
-            if tag_config.get('useVersionAnchor', False):
-                # Build the path: component_name.key_name.tag
-                anchor_path = f"{component_name}.{key_name}.tag"
-                self.version_anchor_fields.append(anchor_path)
 
         # Extract pullPolicy
         pull_policy = None
@@ -855,20 +842,20 @@ class ComponentBuilder:
 
         if is_flat_structure:
             # Flat structure: image value is string
-            if repository:
+            if repository is not None:
                 values['image'] = repository
-            if tag:
+            if tag is not None:
                 values['tag'] = tag
-            if pull_policy:
+            if pull_policy is not None:
                 values['imagePullPolicy'] = pull_policy
         else:
             # Nested structure: image value is dict
             values['image'] = {}
-            if repository:
+            if repository is not None:
                 values['image']['repository'] = repository
-            if tag:
+            if tag is not None:
                 values['image']['tag'] = tag
-            if pull_policy:
+            if pull_policy is not None:
                 values['image']['pullPolicy'] = pull_policy
 
         return values

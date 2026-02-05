@@ -18,7 +18,7 @@ metadata:
 clusterServingRuntimes:
   enabled:
     valuePath: runtimes.enabled
-    defaultValue: true
+    value: true
     description: "Enable installation of ClusterServingRuntimes"
 
   runtimes:
@@ -26,8 +26,9 @@ clusterServingRuntimes:
     - name: kserve-sklearnserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-sklearnserver.yaml
-      enabledPath: runtimes.sklearn.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.sklearn.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -35,7 +36,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.sklearn.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.sklearn.resources
@@ -44,8 +45,9 @@ clusterServingRuntimes:
     - name: kserve-xgbserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-xgbserver.yaml
-      enabledPath: runtimes.xgboost.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.xgboost.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -53,7 +55,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.xgboost.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.xgboost.resources
@@ -62,8 +64,9 @@ clusterServingRuntimes:
     - name: kserve-tensorflow-serving
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-tensorflow-serving.yaml
-      enabledPath: runtimes.tensorflow.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.tensorflow.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -79,8 +82,9 @@ clusterServingRuntimes:
     - name: kserve-tritonserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-tritonserver.yaml
-      enabledPath: runtimes.triton.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.triton.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -96,8 +100,9 @@ clusterServingRuntimes:
     - name: kserve-mlserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-mlserver.yaml
-      enabledPath: runtimes.mlserver.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.mlserver.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -113,8 +118,9 @@ clusterServingRuntimes:
     - name: kserve-pmmlserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-pmmlserver.yaml
-      enabledPath: runtimes.pmml.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.pmml.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -122,7 +128,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.pmml.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.pmml.resources
@@ -131,8 +137,9 @@ clusterServingRuntimes:
     - name: kserve-lgbserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-lgbserver.yaml
-      enabledPath: runtimes.lightgbm.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.lightgbm.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -140,7 +147,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.lightgbm.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.lightgbm.resources
@@ -149,8 +156,9 @@ clusterServingRuntimes:
     - name: kserve-paddleserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-paddleserver.yaml
-      enabledPath: runtimes.paddle.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.paddle.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -158,7 +166,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.paddle.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.paddle.resources
@@ -167,8 +175,9 @@ clusterServingRuntimes:
     - name: kserve-torchserve
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-torchserve.yaml
-      enabledPath: runtimes.torchserve.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.torchserve.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -184,8 +193,9 @@ clusterServingRuntimes:
     - name: kserve-huggingfaceserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-huggingfaceserver.yaml
-      enabledPath: runtimes.huggingface.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.huggingface.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -193,7 +203,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.huggingface.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.huggingface.resources
@@ -203,8 +213,9 @@ clusterServingRuntimes:
     - name: kserve-huggingfaceserver-multinode
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-huggingfaceserver-multinode.yaml
-      enabledPath: runtimes.huggingfaceMultinode.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.huggingfaceMultinode.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -220,8 +231,9 @@ clusterServingRuntimes:
     - name: kserve-predictiveserver
       kind: ClusterServingRuntime
       manifestPath: config/runtimes/kserve-predictiveserver.yaml
-      enabledPath: runtimes.predictive.enabled
-      defaultEnabled: true
+      enabled:
+        valuePath: runtimes.predictive.enabled
+        value: true
       image:
         repository:
           path: spec.containers[0].image+(:,0)
@@ -229,7 +241,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.predictive.image.tag
-          useVersionAnchor: true
+          value: ""
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.predictive.resources
@@ -244,7 +256,7 @@ clusterServingRuntimes:
 llmisvcConfigs:
   enabled:
     valuePath: llmisvcConfigs.enabled
-    defaultValue: false
+    value: false
     description: "Enable installation of LLMInferenceServiceConfigs"
 
   manifestPath: config/llmisvcconfig

@@ -1,5 +1,4 @@
 {{- if .Values.runtimes.enabled }}
-{{- if .Values.runtimes.torchserve.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -39,5 +38,4 @@ spec:
     name: pytorch
     priority: 2
     version: "1"
-{{- end }}
 {{- end }}

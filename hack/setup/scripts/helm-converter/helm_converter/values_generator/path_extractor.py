@@ -258,3 +258,68 @@ def extract_from_configmap(
         value = apply_split(value, delimiter, split_index)
 
     return value
+
+
+def process_field_with_priority(
+    field_config: Any,
+    manifest: Optional[Dict[str, Any]],
+    extractor_func: callable,
+    path_spec_key: str = 'path'
+) -> Tuple[bool, Any]:
+    """Process a field configuration with priority: value > path > None.
+
+    Priority order:
+    1. 'value' field (highest priority) - use this value directly
+    2. 'path' field - extract from manifest using extractor function
+    3. None - field should be processed recursively or skipped
+
+    Args:
+        field_config: Field configuration (can be dict, string, or any type)
+        manifest: Manifest to extract from (can be None if not needed)
+        extractor_func: Function to extract value from manifest
+                       Should have signature: (manifest, path_spec) -> Any
+                       Can be None if manifest is None
+        path_spec_key: Key name for path specification (default: 'path')
+
+    Returns:
+        Tuple of (has_value, value):
+        - (True, value) if 'value' or 'path' field found
+        - (False, None) if neither found (caller should handle recursively)
+
+    Examples:
+        >>> # Case 1: 'value' field present
+        >>> config = {'value': True, 'path': 'data.enabled'}
+        >>> has_value, result = process_field_with_priority(config, manifest, extract_from_manifest)
+        >>> assert has_value is True and result is True  # Uses 'value', ignores 'path'
+
+        >>> # Case 2: Only 'path' field present
+        >>> config = {'path': 'data.enabled'}
+        >>> has_value, result = process_field_with_priority(config, manifest, extract_from_manifest)
+        >>> assert has_value is True and result == <extracted_value>
+
+        >>> # Case 3: Neither field present (recursive processing)
+        >>> config = {'nested': {'field': 'value'}}
+        >>> has_value, result = process_field_with_priority(config, manifest, extract_from_manifest)
+        >>> assert has_value is False  # Caller should recurse
+    """
+    # If not a dict, no special processing needed
+    if not isinstance(field_config, dict):
+        return False, None
+
+    # Priority 1: Check for 'value' field (highest priority)
+    if 'value' in field_config:
+        return True, field_config['value']
+
+    # Priority 2: Check for 'path' field
+    if path_spec_key in field_config:
+        path_spec = field_config[path_spec_key]
+        try:
+            value = extractor_func(manifest, path_spec)
+            return True, value
+        except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
+            # Log warning and return None if path extraction fails
+            print(f"Warning: Failed to extract value from path '{path_spec}': {e}")
+            return True, None
+
+    # No 'value' or 'path' - caller should handle recursively
+    return False, None

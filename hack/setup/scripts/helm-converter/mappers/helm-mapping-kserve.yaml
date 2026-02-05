@@ -46,7 +46,7 @@ kserve:
           tag:
             path: image+(:,1)
             valuePath: kserve.controller.containers.manager.tag
-            useVersionAnchor: true
+            value: ""
           pullPolicy:
             path: imagePullPolicy
             valuePath: kserve.controller.containers.manager.imagePullPolicy

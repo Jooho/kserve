@@ -9,14 +9,13 @@
 
 kserve:
   version: v0.16.0
-  createSharedResources: true
 
 localmodel:
   controller:
     containers:
       manager:
         image: kserve/kserve-localmodel-controller
-        tag: ""
+        tag: ''
         imagePullPolicy: Always
         resources:
           limits:
@@ -29,7 +28,7 @@ localmodel:
     containers:
       manager:
         image: kserve/kserve-localmodelnode-agent
-        tag: ""
+        tag: ''
         imagePullPolicy: Always
         resources:
           limits:

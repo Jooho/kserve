@@ -25,11 +25,11 @@ set -o pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd 2>/dev/null)"
 source "${SCRIPT_DIR}/../../../hack/setup/common.sh"
 
-export DEPLOYMENT_MODE="${1:-'Knative'}"
-export NETWORK_LAYER="${2:-'istio'}"
+export DEPLOYMENT_MODE="${1:-Knative}"
+export NETWORK_LAYER="${2:-istio}"
 export GATEWAY_NETWORK_LAYER="false"
-export ENABLE_LLMISVC="${ENABLE_LLMISVC:-'false'}"
-export INSTALL_METHOD="${INSTALL_METHOD:-'kustomize'}"
+export ENABLE_LLMISVC="${ENABLE_LLMISVC:-false}"
+export INSTALL_METHOD="${INSTALL_METHOD:-kustomize}"
 
 # Extract gateway class name from NETWORK_LAYER (e.g., "envoy-gatewayapi" -> "envoy")
 # If NETWORK_LAYER contains "-", extract the first part; otherwise, use "false"
@@ -39,8 +39,8 @@ fi
 
 echo "Installing KServe using ${INSTALL_METHOD^}..."
 
-echo "Creating a namespace kserve-ci-test ..."
-kubectl create namespace kserve-ci-e2e-test
+echo "Creating a namespace kserve-ci-e2e-test ..."
+kubectl get namespace kserve-ci-e2e-test || kubectl create namespace kserve-ci-e2e-test
 
 echo "Installing KServe Python SDK ..."
 pushd python/kserve >/dev/null
@@ -76,7 +76,7 @@ else
   if [[ $INSTALL_METHOD == "helm" ]]; then
     SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ENABLE_KSERVE=false LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent" ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
-    INSTALL_LLMISVC_CONFIGS=true KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi
 fi
 

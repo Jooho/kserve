@@ -5,6 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kserve-localmodel-resources.labels" . | nindent 4 }}
+    app.kubernetes.io/component: localmodel
     control-plane: "kserve-localmodelnode-agent"
     controller-tools.k8s.io: "1.0"
 spec:

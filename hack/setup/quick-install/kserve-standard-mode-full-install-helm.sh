@@ -1236,22 +1236,10 @@ install_lws_operator() {
 # ----------------------------------------
 
 uninstall_kserve() {
-
-    if [ "${INSTALL_RUNTIMES}" = "true" ] && [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
-        if helm list -n "${KSERVE_NAMESPACE}" 2>/dev/null | grep -q "${RUNTIME_CONIFIG_CHART_NAME}"; then
-            helm uninstall "${RUNTIME_CONIFIG_CHART_NAME}" -n "${KSERVE_NAMESPACE}"
-            log_success "Successfully uninstalled Runtimes/LLMISVC configs"
-        fi
-    else
-        log_info "Installing Runtimes(${INSTALL_RUNTIMES}) and LLMISVC configs(${INSTALL_LLMISVC_CONFIGS})..."
-        helm upgrade -i ${RUNTIME_CONIFIG_CHART_NAME} \
-            ${RUNTIME_CHARTS_DIR}/${RUNTIME_CONIFIG_CHART_NAME} \
-            --namespace "${KSERVE_NAMESPACE}" \
-            --create-namespace \
-            --wait \
-            --set runtimes.enabled=${INSTALL_RUNTIMES} \
-            --set llmisvcConfigs.enabled=${INSTALL_LLMISVC_CONFIGS}
-        log_success "Successfully updated Runtimes/LLMISVC configs"
+    log_info "Uninstalling KServe..."
+    if helm list -n "${KSERVE_NAMESPACE}" 2>/dev/null | grep -q "${RUNTIME_CONIFIG_CHART_NAME}"; then
+        helm uninstall "${RUNTIME_CONIFIG_CHART_NAME}" -n "${KSERVE_NAMESPACE}"
+        log_success "Successfully uninstalled Runtimes/LLMISVC configs"
     fi
 
     local all_charts=("${RESOURCE_CHARTS[@]}" "${CRD_CHARTS[@]}")

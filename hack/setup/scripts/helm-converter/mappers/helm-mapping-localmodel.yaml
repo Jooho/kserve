@@ -13,7 +13,7 @@ metadata:
   appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
 
 # =============================================================================
-# LOCALMODEL COMPONENT (Controller)
+# LOCALMODEL COMPONENT (Controller + Agent)
 # =============================================================================
 localmodel:
   manifestPath: config/localmodels
@@ -34,7 +34,7 @@ localmodel:
           tag:
             path: image+(:,1)
             valuePath: localmodel.controller.containers.manager.tag
-            useVersionAnchor: true
+            value: ""
           pullPolicy:
             path: imagePullPolicy
             valuePath: localmodel.controller.containers.manager.imagePullPolicy
@@ -42,12 +42,6 @@ localmodel:
         resources:
           path: resources
           valuePath: localmodel.controller.containers.manager.resources
-
-# =============================================================================
-# LOCALMODELNODE COMPONENT (Agent)
-# =============================================================================
-localmodelnode:
-  manifestPath: config/localmodelnodes
 
   # LocalModelNode Agent DaemonSet
   nodeAgent:
@@ -65,7 +59,7 @@ localmodelnode:
           tag:
             path: image+(:,1)
             valuePath: localmodel.nodeAgent.containers.manager.tag
-            useVersionAnchor: true
+            value: ""
           pullPolicy:
             path: imagePullPolicy
             valuePath: localmodel.nodeAgent.containers.manager.imagePullPolicy

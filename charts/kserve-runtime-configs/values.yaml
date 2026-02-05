@@ -9,7 +9,6 @@
 
 kserve:
   version: v0.16.0
-  createSharedResources: true
 
 llmisvcConfigs:
   enabled: false
@@ -19,7 +18,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/sklearnserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -31,7 +30,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/xgbserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -79,7 +78,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/pmmlserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -91,7 +90,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/lgbserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -103,7 +102,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/paddleserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -127,7 +126,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/huggingfaceserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'
@@ -151,7 +150,7 @@ runtimes:
     enabled: true
     image:
       repository: kserve/predictiveserver
-      tag: ""
+      tag: ''
     resources:
       limits:
         cpu: '1'

@@ -14,7 +14,7 @@ kserve:
     containers:
       manager:
         image: kserve/kserve-controller
-        tag: ""
+        tag: ''
         imagePullPolicy: Always
         resources:
           limits:
@@ -24,14 +24,14 @@ kserve:
             cpu: 100m
             memory: 200Mi
 inferenceServiceConfig:
-  enabled: ""
+  enabled: ''
   explainers:
     art:
       image: kserve/art-explainer
       tag: latest
   storageInitializer:
     image: kserve/storage-initializer
-    tag: ""
+    tag: ''
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -44,14 +44,14 @@ inferenceServiceConfig:
     uidModelcar: 1010
   agent:
     image: kserve/agent
-    tag: ""
+    tag: ''
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
     cpuLimit: '1'
   logger:
     image: kserve/agent
-    tag: ""
+    tag: ''
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -59,7 +59,7 @@ inferenceServiceConfig:
     defaultUrl: http://default-broker
   batcher:
     image: kserve/agent
-    tag: ""
+    tag: ''
     memoryRequest: 1Gi
     memoryLimit: 1Gi
     cpuRequest: '1'
@@ -68,7 +68,7 @@ inferenceServiceConfig:
     maxLatency: '5000'
   router:
     image: kserve/router
-    tag: ""
+    tag: ''
     memoryRequest: 100Mi
     memoryLimit: 1Gi
     cpuRequest: 100m
@@ -112,7 +112,7 @@ inferenceServiceConfig:
     enabled: false
     jobNamespace: kserve-localmodel-jobs
     defaultJobImage: kserve/storage-initializer
-    defaultJobImageTag: ""
+    defaultJobImageTag: ''
     fsGroup: 1000
     jobTTLSecondsAfterFinished: 3600
     reconcilationFrequencyInSecs: 60
@@ -138,4 +138,4 @@ inferenceServiceConfig:
     scaleUpStabilizationWindowSeconds: '0'
     scaleDownStabilizationWindowSeconds: '300'
 certManager:
-  enabled: ""
+  enabled: ''

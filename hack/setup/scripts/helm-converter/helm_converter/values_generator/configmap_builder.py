@@ -5,19 +5,18 @@ Builds inferenceServiceConfig values section from ConfigMap manifests.
 """
 
 from typing import Dict, Any
-import json
 
-from .path_extractor import extract_from_configmap
+from .path_extractor import extract_from_configmap, process_field_with_priority
 
 # Metadata fields that should be skipped during recursive processing
-METADATA_FIELDS = {'valuePath', 'description', 'useVersionAnchor', 'path'}
+METADATA_FIELDS = {'valuePath', 'description', 'path', 'value', 'type'}
 
 
 class ConfigMapBuilder:
     """Builds ConfigMap-based values (inferenceServiceConfig)"""
 
     def __init__(self):
-        self.version_anchor_fields = []
+        pass
 
     def build_inference_service_config_values(
         self,
@@ -39,9 +38,18 @@ class ConfigMapBuilder:
         isvc_config = mapping['inferenceServiceConfig']
         values = {}
 
-        # Enabled flag - use True as default if not specified (inferenceServiceConfig is required)
+        # Enabled flag - extract using generic priority logic
         if 'enabled' in isvc_config:
-            values['enabled'] = True
+            has_value, enabled_value = process_field_with_priority(
+                isvc_config['enabled'],
+                None,
+                extract_from_configmap
+            )
+            if has_value:
+                values['enabled'] = enabled_value
+            else:
+                # Fallback: inferenceServiceConfig is required, default to True
+                values['enabled'] = True
 
         # Find the ConfigMap manifest
         configmap_manifest = None
@@ -87,25 +95,16 @@ class ConfigMapBuilder:
         if not isinstance(field_config, dict):
             return field_config
 
-        # Check if this field has a 'path' - if yes, extract value from ConfigMap
-        if 'path' in field_config:
-            path_spec = field_config['path']
+        # Check for 'value' or 'path' field with priority handling
+        has_value, extracted_value = process_field_with_priority(
+            field_config,
+            configmap_manifest,
+            extract_from_configmap,
+            path_spec_key='path'
+        )
 
-            try:
-                # Extract value using path (handles JSON parsing internally)
-                value = extract_from_configmap(configmap_manifest, path_spec)
-
-                # Track useVersionAnchor fields
-                if field_config.get('useVersionAnchor'):
-                    value_path = field_config.get('valuePath', '')
-                    if value_path:
-                        self.version_anchor_fields.append(value_path)
-
-                return value
-            except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
-                # Log warning and return None if path extraction fails
-                print(f"Warning: Failed to extract value from path '{path_spec}': {e}")
-                return None
+        if has_value:
+            return extracted_value
 
         # No 'path' field - this is a nested structure, recurse into it
         result = {}

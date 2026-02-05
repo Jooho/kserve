@@ -8,7 +8,6 @@ KServe LocalModel - Local Model Storage and Caching for Edge and On-Premise Depl
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| kserve.createSharedResources | bool | `true` |  |
 | kserve.version | string | `"v0.16.0"` |  |
 | localmodel.controller.containers.manager.image | string | `"kserve/kserve-localmodel-controller"` |  |
 | localmodel.controller.containers.manager.imagePullPolicy | string | `"Always"` |  |

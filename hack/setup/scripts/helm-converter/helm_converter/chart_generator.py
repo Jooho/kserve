@@ -83,9 +83,14 @@ class ChartGenerator:
     def _generate_component_templates(self):
         """Generate templates for components (kserve, llmisvc, localmodel, localmodelnode)"""
         for component_name, component_data in self.manifests.get('components', {}).items():
-            # All components use subfolder structure
-            component_dir = self.templates_dir / component_name
-            component_dir.mkdir(exist_ok=True)
+            # LocalModel chart uses flat structure (no subdirectory)
+            chart_name = self.mapping['metadata']['name']
+            if chart_name == 'kserve-localmodel-resources':
+                component_dir = self.templates_dir
+            else:
+                # All other components use subfolder structure
+                component_dir = self.templates_dir / component_name
+                component_dir.mkdir(exist_ok=True)
 
             # Generate workload templates based on kind (with values templating)
             if 'manifests' in component_data:

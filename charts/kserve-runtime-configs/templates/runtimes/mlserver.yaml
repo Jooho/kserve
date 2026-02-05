@@ -1,5 +1,4 @@
 {{- if .Values.runtimes.enabled }}
-{{- if .Values.runtimes.mlserver.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -65,5 +64,4 @@ spec:
     name: mlflow
     priority: 1
     version: "2"
-{{- end }}
 {{- end }}

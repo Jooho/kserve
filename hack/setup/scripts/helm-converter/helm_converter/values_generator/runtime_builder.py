@@ -5,7 +5,7 @@ Builds runtime values for ClusterServingRuntimes.
 """
 
 from typing import Dict, Any
-from .path_extractor import extract_from_manifest
+from .path_extractor import extract_from_manifest, process_field_with_priority
 
 
 class RuntimeBuilder:
@@ -13,7 +13,6 @@ class RuntimeBuilder:
 
     def __init__(self, mapping: Dict[str, Any]):
         self.mapping = mapping
-        self.version_anchor_fields = []
 
     def build_runtime_values(
         self,
@@ -35,13 +34,30 @@ class RuntimeBuilder:
         runtimes_config = self.mapping[runtime_key]
         values = {}
 
-        # Global enabled flag - runtimes are typically enabled
+        # Global enabled flag - extract using priority logic
         if 'enabled' in runtimes_config:
-            values['enabled'] = True
+            has_value, enabled_value = process_field_with_priority(
+                runtimes_config['enabled'],
+                None,
+                None
+            )
+
+            if has_value:
+                values['enabled'] = enabled_value
+            else:
+                # Fallback: runtimes are typically enabled by default
+                values['enabled'] = True
 
         # Individual runtime configurations
         for runtime_config in runtimes_config.get('runtimes', []):
-            runtime_key_name = self._extract_runtime_key(runtime_config['enabledPath'])
+            # Extract runtime key name from enabled.valuePath or enabledPath (backward compat)
+            if 'enabled' in runtime_config and isinstance(runtime_config['enabled'], dict):
+                enabled_value_path = runtime_config['enabled'].get('valuePath', '')
+            else:
+                # Backward compatibility: old format with enabledPath
+                enabled_value_path = runtime_config.get('enabledPath', '')
+
+            runtime_key_name = self._extract_runtime_key(enabled_value_path)
             runtime_name = runtime_config['name']
 
             # Find the corresponding manifest
@@ -56,7 +72,23 @@ class RuntimeBuilder:
                 continue
 
             values[runtime_key_name] = {}
-            values[runtime_key_name]['enabled'] = True  # Individual runtimes are enabled by default
+
+            # Individual runtime enabled flag - extract using priority logic
+            if 'enabled' in runtime_config:
+                has_value, enabled_value = process_field_with_priority(
+                    runtime_config['enabled'],
+                    None,
+                    None
+                )
+
+                if has_value:
+                    values[runtime_key_name]['enabled'] = enabled_value
+                else:
+                    # Fallback: individual runtimes are enabled by default
+                    values[runtime_key_name]['enabled'] = True
+            else:
+                # No enabled config - use default
+                values[runtime_key_name]['enabled'] = True
 
             # Image configuration - use path field if available
             if 'image' in runtime_config:
@@ -110,57 +142,43 @@ class RuntimeBuilder:
         """
         img_values = {}
 
-        # Extract repository
+        # Extract repository using priority logic
         if 'repository' in img_config:
             repo_config = img_config['repository']
-            if 'path' in repo_config:
-                try:
-                    repository = extract_from_manifest(runtime_manifest, repo_config['path'])
-                    img_values['repository'] = repository
-                except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract repository for {runtime_name}: {e}")
-                    # Fallback to hardcoded
-                    actual_image = runtime_manifest['spec']['containers'][0]['image']
-                    repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
-                    img_values['repository'] = repository
+            has_value, repository = process_field_with_priority(
+                repo_config,
+                runtime_manifest,
+                extract_from_manifest
+            )
+
+            if has_value:
+                img_values['repository'] = repository
             else:
-                # No path field - fallback to hardcoded (backward compatibility)
+                # Fallback to hardcoded (backward compatibility)
                 actual_image = runtime_manifest['spec']['containers'][0]['image']
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
                 img_values['repository'] = repository
 
-        # Extract tag
+        # Extract tag using priority logic
         if 'tag' in img_config:
             tag_config = img_config['tag']
-            if 'path' in tag_config:
-                try:
-                    tag = extract_from_manifest(runtime_manifest, tag_config['path'])
+            has_value, tag = process_field_with_priority(
+                tag_config,
+                runtime_manifest,
+                extract_from_manifest
+            )
 
-                    # Replace :latest with version for comparison consistency
-                    # compare_manifests.py does the same replacement on kustomize output
-                    # Get version from Chart metadata
+            if has_value:
+                # Replace :latest with version for comparison consistency
+                # Only apply if tag is not already empty string
+                if tag and tag != '':
                     chart_version = self.mapping['metadata'].get('appVersion', 'latest')
                     if chart_version != 'latest' and 'latest' in tag:
                         tag = tag.replace('latest', chart_version)
 
-                    img_values['tag'] = tag
-
-                    # Track useVersionAnchor fields for runtimes
-                    if tag_config.get('useVersionAnchor'):
-                        value_path = tag_config.get('valuePath', '')
-                        if value_path:
-                            self.version_anchor_fields.append(value_path)
-                except IndexError:
-                    # No colon in image, use default tag
-                    img_values['tag'] = 'latest'
-                except (KeyError, ValueError) as e:
-                    print(f"Warning: Failed to extract tag for {runtime_name}: {e}")
-                    # Fallback to hardcoded
-                    actual_image = runtime_manifest['spec']['containers'][0]['image']
-                    tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
-                    img_values['tag'] = tag
+                img_values['tag'] = tag
             else:
-                # No path field - fallback to hardcoded (backward compatibility)
+                # Fallback to hardcoded (backward compatibility)
                 actual_image = runtime_manifest['spec']['containers'][0]['image']
                 tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
                 img_values['tag'] = tag
