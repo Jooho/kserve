@@ -48,7 +48,7 @@ pushd python/kserve >/dev/null
 popd
 
 
-if [[ $LLMISVC == "false" ]]; then
+if [[ $ENABLE_LLMISVC == "false" ]]; then
   #TODO: Refactor this to use the same logic for both kustomize and helm
   if [[ $INSTALL_METHOD == "helm" ]]; then
     KSERVE_EXTRA_ARGS="--set kserve.controller.containers.manager.imagePullPolicy=IfNotPresent" \

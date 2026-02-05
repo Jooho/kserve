@@ -24,7 +24,7 @@ env:
   TAG: ${{ github.sha }}
   DOCKER_IMAGES_PATH: "/mnt/docker-images"
   KO_DOCKER_REPO: "kserve"
-  LLMISVC: "true"
+  ENABLE_LLMISVC: "true"
 
 jobs:
   

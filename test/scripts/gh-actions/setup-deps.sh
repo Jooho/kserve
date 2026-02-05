@@ -61,7 +61,7 @@ ${REPO_ROOT}/hack/setup/cli/install-yq.sh
 ${REPO_ROOT}/hack/setup/cli/install-helm.sh
 ${REPO_ROOT}/hack/setup/infra/manage.cert-manager-helm.sh
 
-if [[ $LLMISVC == "false" ]]; then
+if [[ $ENABLE_LLMISVC == "false" ]]; then
   # Install Gateway API CRDs if needed
   if [[ $USES_GATEWAY_API == true ]]; then
     ${REPO_ROOT}/hack/setup/infra/gateway-api/manage.gateway-api-crd.sh
