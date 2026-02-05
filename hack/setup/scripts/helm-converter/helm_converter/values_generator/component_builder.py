@@ -7,6 +7,7 @@ controller manager and node agent configurations.
 
 from typing import Dict, Any, Optional
 from .path_extractor import extract_from_manifest, process_field_with_priority
+from .utils import get_container_field
 
 # Special fields that require custom processing logic
 SPECIAL_FIELDS = {'image', 'resources'}
@@ -178,13 +179,13 @@ class ComponentBuilder:
                             values[workload_key]['resources'] = resources
                     except (KeyError, IndexError, ValueError) as e:
                         print(f"Warning: Failed to extract resources using path '{res_config['path']}': {e}")
-                        # Fallback to hardcoded path
-                        actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
+                        # Fallback to first container
+                        actual_resources = get_container_field(workload_manifest, 'resources', default={})
                         if actual_resources:
                             values[workload_key]['resources'] = actual_resources
                 else:
-                    # No path field - fallback to hardcoded (backward compatibility)
-                    actual_resources = workload_manifest['spec']['template']['spec']['containers'][0].get('resources', {})
+                    # No path field - fallback to first container (backward compatibility)
+                    actual_resources = get_container_field(workload_manifest, 'resources', default={})
                     if actual_resources:
                         values[workload_key]['resources'] = actual_resources
 
@@ -348,8 +349,8 @@ class ComponentBuilder:
             )
 
             if not has_value:
-                # No 'value' or 'path' field - fallback to hardcoded (backward compatibility)
-                actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
+                # No 'value' or 'path' field - fallback to first container (backward compatibility)
+                actual_image = get_container_field(manifest, 'image', default='')
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
 
         # Extract tag
@@ -373,8 +374,8 @@ class ComponentBuilder:
                         tag = tag.replace('latest', chart_version)
                 # If tag is empty string from value: "", keep it as is
             else:
-                # No 'value' or 'path' field - fallback to hardcoded (backward compatibility)
-                actual_image = manifest['spec']['template']['spec']['containers'][0]['image']
+                # No 'value' or 'path' field - fallback to first container (backward compatibility)
+                actual_image = get_container_field(manifest, 'image', default='')
                 tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
 
         # Extract pullPolicy
@@ -387,11 +388,11 @@ class ComponentBuilder:
                     pull_policy = extract_from_manifest(manifest, policy_config['path'])
                 except (KeyError, IndexError, ValueError) as e:
                     print(f"Warning: Failed to extract pullPolicy using path '{policy_config['path']}': {e}")
-                    # Fallback to hardcoded path
-                    pull_policy = manifest['spec']['template']['spec']['containers'][0].get('imagePullPolicy', 'Always')
+                    # Fallback to first container
+                    pull_policy = get_container_field(manifest, 'imagePullPolicy', default='Always')
             else:
-                # No path field - fallback to hardcoded (backward compatibility)
-                pull_policy = manifest['spec']['template']['spec']['containers'][0].get('imagePullPolicy', 'Always')
+                # No path field - fallback to first container (backward compatibility)
+                pull_policy = get_container_field(manifest, 'imagePullPolicy', default='Always')
 
         # Build values structure based on valuePath format
         repo_path = img_config.get('repository', {}).get('valuePath', '')

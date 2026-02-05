@@ -6,6 +6,16 @@ Centralized location for hardcoded values to improve maintainability.
 # Main component names that are always enabled (no conditional wrapping needed)
 MAIN_COMPONENTS = ['kserve', 'llmisvc', 'localmodel', 'localmodelnode']
 
+# Kubernetes manifest paths
+# Path to pod template spec in Deployment/DaemonSet/Job
+POD_TEMPLATE_SPEC_PATH = ['spec', 'template', 'spec']
+# Path to containers array in pod spec (for Deployment/DaemonSet/Job)
+CONTAINERS_PATH = POD_TEMPLATE_SPEC_PATH + ['containers']
+# Path to containers array in ClusterServingRuntime/ServingRuntime
+RUNTIME_CONTAINERS_PATH = ['spec', 'containers']
+# Index of first container (default container to process)
+FIRST_CONTAINER_INDEX = 0
+
 # KServe core CRDs managed by kserve-crd chart
 # These CRDs should be skipped when generating component templates
 KSERVE_CORE_CRDS = {

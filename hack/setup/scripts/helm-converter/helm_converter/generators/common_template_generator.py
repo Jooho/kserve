@@ -7,15 +7,16 @@ Generates Helm templates for common/base resources (inferenceServiceConfig and c
 from pathlib import Path
 from typing import Dict, Any
 
+from .base_generator import BaseGenerator
 from .utils import yaml_to_string
 from .configmap_generator import ConfigMapGenerator
 
 
-class CommonTemplateGenerator:
+class CommonTemplateGenerator(BaseGenerator):
     """Generates templates for common/base resources"""
 
     def __init__(self, mapping: Dict[str, Any]):
-        self.mapping = mapping
+        super().__init__(mapping)
         self.configmap_gen = ConfigMapGenerator()
 
     def generate_common_templates(self, templates_dir: Path, manifests: Dict[str, Any]):
@@ -29,12 +30,7 @@ class CommonTemplateGenerator:
             return
 
         common_dir = templates_dir / 'common'
-
-        # Ensure directory exists before writing files
-        try:
-            common_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            raise OSError(f"Failed to create common templates directory '{common_dir}': {e}")
+        self._ensure_directory(common_dir)
 
         # Generate ConfigMap template if inferenceServiceConfig is enabled
         if 'inferenceservice-config' in manifests['common'] and 'inferenceServiceConfig' in self.mapping:
@@ -65,10 +61,7 @@ class CommonTemplateGenerator:
         except KeyError:
             raise ValueError("ConfigMap config missing required field 'dataFields'")
 
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError:
-            raise ValueError("Mapping missing required 'metadata.name' for chart labels")
+        chart_name = self._get_chart_name()
 
         # Get enabled configuration from mapper for conditional wrapping
         enabled_config = self.mapping.get('inferenceServiceConfig', {}).get('enabled', {})
@@ -111,11 +104,7 @@ data:
 
         # Use consistent {kind}_{name}.yaml pattern (same as chart_generator.py:203)
         output_file = output_dir / f'configmap_{name}.yaml'
-        try:
-            with open(output_file, 'w') as f:
-                f.write(template)
-        except IOError as e:
-            raise IOError(f"Failed to write ConfigMap template to '{output_file}': {e}")
+        self._write_file(output_file, template)
 
     def _generate_issuer_template(self, output_dir: Path, issuer_manifest: Dict[str, Any]):
         """Generate cert-manager Issuer template
@@ -135,11 +124,7 @@ data:
                 f"Issuer manifest must have: apiVersion, kind, metadata.name, spec"
             )
 
-        # Get chart name for labels template
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError:
-            raise ValueError("Mapping missing required 'metadata.name' for chart labels")
+        chart_name = self._get_chart_name()
 
         # Get enabled configuration from mapper for conditional wrapping
         enabled_config = self.mapping.get('certManager', {}).get('enabled', {})
@@ -169,12 +154,7 @@ spec:
 
         template += '{{- end }}\n'
 
-        # Write template file with error handling
         # Use consistent {kind}_{name}.yaml pattern (same as chart_generator.py:203)
         output_file = output_dir / f'{kind.lower()}_{name}.yaml'
-        try:
-            with open(output_file, 'w') as f:
-                f.write(template)
-        except IOError as e:
-            raise IOError(f"Failed to write Issuer template to '{output_file}': {e}")
+        self._write_file(output_file, template)
 

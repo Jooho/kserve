@@ -10,6 +10,7 @@ from typing import Dict, Any
 import yaml
 import copy
 
+from .base_generator import BaseGenerator
 from .utils import (
     CustomDumper,
     quote_numeric_strings_in_labels,
@@ -18,11 +19,8 @@ from .utils import (
 )
 
 
-class GenericPlaceholderGenerator:
+class GenericPlaceholderGenerator(BaseGenerator):
     """Generates templates for simple resource types using placeholder substitution"""
-
-    def __init__(self, mapping: Dict[str, Any]):
-        self.mapping = mapping
 
     def generate_templates(self, templates_dir: Path, resource_list: list, subdir_name: str):
         """Generate templates for a list of resources
@@ -36,12 +34,7 @@ class GenericPlaceholderGenerator:
             return
 
         output_dir = templates_dir / subdir_name
-
-        # Ensure directory exists with error handling
-        try:
-            output_dir.mkdir(exist_ok=True)
-        except OSError as e:
-            raise OSError(f"Failed to create output directory '{output_dir}': {e}")
+        self._ensure_directory(output_dir)
 
         for resource_data in resource_list:
             self._generate_single_template(output_dir, resource_data, subdir_name)
@@ -192,14 +185,7 @@ class GenericPlaceholderGenerator:
         manifest_yaml = quote_numeric_strings_in_labels(manifest_yaml)
 
         # Step 5: Replace placeholders with Helm templates
-        # Validate mapping has metadata.name
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError as e:
-            raise ValueError(
-                f"Mapping missing required field - {e}\n"
-                f"Required path: mapping['metadata']['name']"
-            )
+        chart_name = self._get_chart_name()
 
         manifest_yaml = manifest_yaml.replace(
             'labels: __HELM_LABELS_PLACEHOLDER__',
@@ -239,13 +225,7 @@ class GenericPlaceholderGenerator:
         # Step 7: Write template file
         filename = self._get_output_filename(resource_name, resource_data)
         output_file = output_dir / filename
-
-        # Write template file with error handling
-        try:
-            with open(output_file, 'w') as f:
-                f.write(template)
-        except IOError as e:
-            raise IOError(f"Failed to write resource template to '{output_file}': {e}")
+        self._write_file(output_file, template)
 
     def _wrap_with_conditionals(self, manifest_yaml: str, config: Dict[str, Any], subdir_name: str) -> str:
         """Wrap manifest YAML with Helm conditional blocks

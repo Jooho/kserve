@@ -7,14 +7,12 @@ Generates Helm templates for LLMInferenceServiceConfigs.
 from pathlib import Path
 from typing import Dict, Any
 
+from .base_generator import BaseGenerator
 from .utils import yaml_to_string
 
 
-class LLMIsvcConfigGenerator:
+class LLMIsvcConfigGenerator(BaseGenerator):
     """Generates templates for LLMInferenceServiceConfigs"""
-
-    def __init__(self, mapping: Dict[str, Any]):
-        self.mapping = mapping
 
     def generate_llmisvc_configs_templates(self, templates_dir: Path, manifests: Dict[str, Any]):
         """Generate templates for all LLMInferenceServiceConfigs
@@ -27,12 +25,7 @@ class LLMIsvcConfigGenerator:
             return
 
         configs_dir = templates_dir / 'llmisvcconfigs'
-
-        # Ensure directory exists with error handling
-        try:
-            configs_dir.mkdir(exist_ok=True)
-        except OSError as e:
-            raise OSError(f"Failed to create llmisvc configs directory '{configs_dir}': {e}")
+        self._ensure_directory(configs_dir)
 
         for config_data in manifests['llmisvcConfigs']:
             self._generate_llmisvc_config_template(configs_dir, config_data)
@@ -75,14 +68,7 @@ class LLMIsvcConfigGenerator:
                     f"Manifest must have: apiVersion, kind, metadata.name"
                 )
 
-            # Validate mapping has metadata.name
-            try:
-                chart_name = self.mapping['metadata']['name']
-            except KeyError as e:
-                raise ValueError(
-                    f"Mapping missing required field - {e}\n"
-                    f"Required path: mapping['metadata']['name']"
-                )
+            chart_name = self._get_chart_name()
 
             # Parse the original YAML to extract just the spec section
             # We'll recreate the template with our conditional and labels
@@ -125,14 +111,7 @@ metadata:
                     f"Manifest must have: apiVersion, kind, metadata.name"
                 )
 
-            # Validate mapping has metadata.name
-            try:
-                chart_name = self.mapping['metadata']['name']
-            except KeyError as e:
-                raise ValueError(
-                    f"Mapping missing required field - {e}\n"
-                    f"Required path: mapping['metadata']['name']"
-                )
+            chart_name = self._get_chart_name()
 
             # Fallback to normal processing
             template = f'''{{{{- if .Values.llmisvcConfigs.enabled }}}}
@@ -157,10 +136,4 @@ metadata:
             filename = config_name.replace('kserve-config-', '').replace('kserve-', '') + '.yaml'
 
         output_file = output_dir / filename
-
-        # Write template file with error handling
-        try:
-            with open(output_file, 'w') as f:
-                f.write(template)
-        except IOError as e:
-            raise IOError(f"Failed to write LLMIsvc config template to '{output_file}': {e}")
+        self._write_file(output_file, template)

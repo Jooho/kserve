@@ -6,6 +6,7 @@ Builds runtime values for ClusterServingRuntimes.
 
 from typing import Dict, Any
 from .path_extractor import extract_from_manifest, process_field_with_priority
+from .utils import get_runtime_container_field
 
 
 class RuntimeBuilder:
@@ -110,13 +111,13 @@ class RuntimeBuilder:
                             values[runtime_key_name]['resources'] = resources
                     except (KeyError, IndexError, ValueError) as e:
                         print(f"Warning: Failed to extract resources for {runtime_name}: {e}")
-                        # Fallback to hardcoded
-                        actual_resources = runtime_manifest['spec']['containers'][0].get('resources', {})
+                        # Fallback to first container
+                        actual_resources = get_runtime_container_field(runtime_manifest, 'resources', default={})
                         if actual_resources:
                             values[runtime_key_name]['resources'] = actual_resources
                 else:
-                    # No path field - fallback to hardcoded (backward compatibility)
-                    actual_resources = runtime_manifest['spec']['containers'][0].get('resources', {})
+                    # No path field - fallback to first container (backward compatibility)
+                    actual_resources = get_runtime_container_field(runtime_manifest, 'resources', default={})
                     if actual_resources:
                         values[runtime_key_name]['resources'] = actual_resources
 
@@ -154,8 +155,8 @@ class RuntimeBuilder:
             if has_value:
                 img_values['repository'] = repository
             else:
-                # Fallback to hardcoded (backward compatibility)
-                actual_image = runtime_manifest['spec']['containers'][0]['image']
+                # Fallback to first container (backward compatibility)
+                actual_image = get_runtime_container_field(runtime_manifest, 'image', default='')
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
                 img_values['repository'] = repository
 
@@ -178,8 +179,8 @@ class RuntimeBuilder:
 
                 img_values['tag'] = tag
             else:
-                # Fallback to hardcoded (backward compatibility)
-                actual_image = runtime_manifest['spec']['containers'][0]['image']
+                # Fallback to first container (backward compatibility)
+                actual_image = get_runtime_container_field(runtime_manifest, 'image', default='')
                 tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
                 img_values['tag'] = tag
 

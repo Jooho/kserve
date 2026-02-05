@@ -4,6 +4,7 @@ Handles generation of Deployment and DaemonSet templates
 """
 from typing import Dict, Any, Optional
 from pathlib import Path
+from .base_generator import BaseGenerator
 from .utils import (
     add_kustomize_labels,
     quote_label_value_if_needed,
@@ -14,16 +15,8 @@ from .utils import (
 from ..constants import MAIN_COMPONENTS
 
 
-class WorkloadGenerator:
+class WorkloadGenerator(BaseGenerator):
     """Generator for Deployment and DaemonSet templates"""
-
-    def __init__(self, mapping: Dict[str, Any]):
-        """Initialize WorkloadGenerator
-
-        Args:
-            mapping: Chart mapping configuration
-        """
-        self.mapping = mapping
 
     def generate_deployment(
             self, output_dir: Path, component_name: str,
@@ -109,15 +102,7 @@ class WorkloadGenerator:
         Returns:
             Tuple of (is_main_component, enabled_path)
         """
-        # Validate mapping has metadata.name
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError as e:
-            raise ValueError(
-                f"Mapping missing required field - {e}\n"
-                f"Required path: mapping['metadata']['name']"
-            )
-
+        chart_name = self._get_chart_name()
         is_main = component_name in [chart_name] + MAIN_COMPONENTS
         enabled_path = None if is_main else component_data['config'].get('enabled', {}).get('valuePath')
         return is_main, enabled_path
@@ -356,19 +341,8 @@ class WorkloadGenerator:
         # Write file
         filename = self._get_output_filename(workload_type, workload_name)
         output_file = output_dir / filename
-
-        # Ensure directory exists with error handling
-        try:
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            raise OSError(f"Failed to create workload directory '{output_file.parent}': {e}")
-
-        # Write template file with error handling
-        try:
-            with open(output_file, 'w') as f:
-                f.write(template)
-        except IOError as e:
-            raise IOError(f"Failed to write workload template to '{output_file}': {e}")
+        self._ensure_directory(output_file.parent)
+        self._write_file(output_file, template)
 
     def _generate_workload_header(
             self, workload: Dict[str, Any], is_main_component: bool,
@@ -383,14 +357,7 @@ class WorkloadGenerator:
         Returns:
             YAML template string with header, metadata, and labels
         """
-        # Validate mapping has metadata.name
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError as e:
-            raise ValueError(
-                f"Mapping missing required field - {e}\n"
-                f"Required path: mapping['metadata']['name']"
-            )
+        chart_name = self._get_chart_name()
 
         # Validate workload manifest structure
         try:

@@ -5,9 +5,10 @@ Handles generation of Chart.yaml, _helpers.tpl, and NOTES.txt
 from typing import Dict, Any
 from pathlib import Path
 from ..constants import MAIN_COMPONENTS
+from .base_generator import BaseGenerator
 
 
-class MetadataGenerator:
+class MetadataGenerator(BaseGenerator):
     """Generator for chart metadata files"""
 
     def __init__(self, mapping: Dict[str, Any], templates_dir: Path):
@@ -17,7 +18,7 @@ class MetadataGenerator:
             mapping: Chart mapping configuration
             templates_dir: Templates directory path
         """
-        self.mapping = mapping
+        super().__init__(mapping)
         self.templates_dir = templates_dir
 
     def generate_chart_yaml(self, chart_dir: Path) -> None:
@@ -46,23 +47,11 @@ version: {metadata.get('version', '0.1.0')}
 appVersion: {metadata.get('appVersion', '1.0.0')}
 '''
         chart_file = chart_dir / 'Chart.yaml'
-
-        # Write Chart.yaml with error handling
-        try:
-            with open(chart_file, 'w') as f:
-                f.write(chart_yaml)
-        except IOError as e:
-            raise IOError(f"Failed to write Chart.yaml to '{chart_file}': {e}")
+        self._write_file(chart_file, chart_yaml)
 
     def generate_helpers(self) -> None:
         """Generate _helpers.tpl file"""
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError as e:
-            raise ValueError(
-                f"Mapping missing required field - {e}\n"
-                f"Required path: mapping['metadata']['name']"
-            )
+        chart_name = self._get_chart_name()
 
         # Check if we need to generate deploymentName helper
         # This is needed when the deployment name differs from chart name
@@ -145,24 +134,11 @@ Create the deployment name
 '''
 
         helpers_file = self.templates_dir / '_helpers.tpl'
-
-        # Write helpers file with error handling
-        try:
-            with open(helpers_file, 'w') as f:
-                f.write(helpers)
-        except IOError as e:
-            raise IOError(f"Failed to write _helpers.tpl to '{helpers_file}': {e}")
+        self._write_file(helpers_file, helpers)
 
     def generate_notes(self) -> None:
         """Generate NOTES.txt file"""
-        # Validate mapping has metadata.name
-        try:
-            chart_name = self.mapping['metadata']['name']
-        except KeyError as e:
-            raise ValueError(
-                f"Mapping missing required field - {e}\n"
-                f"Required path: mapping['metadata']['name']"
-            )
+        chart_name = self._get_chart_name()
 
         notes = '''Thank you for installing {{ .Chart.Name }}.
 
@@ -234,10 +210,4 @@ To learn more about the release, try:
 '''
 
         notes_file = self.templates_dir / 'NOTES.txt'
-
-        # Write notes file with error handling
-        try:
-            with open(notes_file, 'w') as f:
-                f.write(notes)
-        except IOError as e:
-            raise IOError(f"Failed to write NOTES.txt to '{notes_file}': {e}")
+        self._write_file(notes_file, notes)
