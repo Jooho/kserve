@@ -501,5 +501,5 @@ determine_shared_resources_kustomize() {
     export KSERVE_INSTALLED
     export LLMISVC_INSTALLED
 
-    log_info "[Kustomize] Installation status: KSERVE=${KSERVE_INSTALLED}, LLMISVC=${LLMISVC_INSTALLED}"
+    log_info "[Kustomize] Installation status(0: not installed, 1: installed): KSERVE=${KSERVE_INSTALLED}, LLMISVC=${LLMISVC_INSTALLED}"
 }

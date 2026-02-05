@@ -28,7 +28,7 @@ source "${SCRIPT_DIR}/../../../hack/setup/common.sh"
 export DEPLOYMENT_MODE="${1:-'Knative'}"
 export NETWORK_LAYER="${2:-'istio'}"
 export GATEWAY_NETWORK_LAYER="false"
-export LLMISVC="${LLMISVC:-'false'}"
+export ENABLE_LLMISVC="${ENABLE_LLMISVC:-'false'}"
 export INSTALL_METHOD="${INSTALL_METHOD:-'kustomize'}"
 
 # Extract gateway class name from NETWORK_LAYER (e.g., "envoy-gatewayapi" -> "envoy")
