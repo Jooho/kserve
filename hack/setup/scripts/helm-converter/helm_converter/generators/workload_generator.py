@@ -11,6 +11,7 @@ from .utils import (
     replace_cert_manager_namespace,
     build_template_with_fallback
 )
+from ..constants import MAIN_COMPONENTS
 
 
 class WorkloadGenerator:
@@ -117,7 +118,7 @@ class WorkloadGenerator:
                 f"Required path: mapping['metadata']['name']"
             )
 
-        is_main = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel', 'localmodelnode']
+        is_main = component_name in [chart_name] + MAIN_COMPONENTS
         enabled_path = None if is_main else component_data['config'].get('enabled', {}).get('valuePath')
         return is_main, enabled_path
 

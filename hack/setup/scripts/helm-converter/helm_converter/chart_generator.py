@@ -20,6 +20,7 @@ from .generators import (
     escape_go_templates_in_resource,
     replace_cert_manager_namespace
 )
+from .constants import MAIN_COMPONENTS, KSERVE_CORE_CRDS, COMPONENT_SPECIFIC_CRDS
 
 
 class ChartGenerator:
@@ -148,28 +149,7 @@ class ChartGenerator:
             copy_as_is: If True, copy resources as-is without escaping Go templates (for resources that already use Go templates)
         """
         chart_name = self.mapping['metadata']['name']
-        is_main_component = component_name in [chart_name, 'kserve', 'llmisvc', 'localmodel', 'localmodelnode']
-
-        # KServe Core CRD names (managed by kserve-crd chart via Makefile - always skip)
-        kserve_core_crds = {
-            'clusterservingruntimes.serving.kserve.io',
-            'inferencegraphs.serving.kserve.io',
-            'inferenceservices.serving.kserve.io',
-            'servingruntimes.serving.kserve.io',
-            'trainedmodels.serving.kserve.io',
-            'clustertrainedmodels.serving.kserve.io'
-        }
-
-        # Component-specific CRDs (these should go to crds/ directory)
-        # NOTE: localmodel CRDs are managed separately by user (kserve-localmodel-crd chart)
-        component_crds = {
-            'llmisvc': {
-                'inferenceobjectives.inference.networking.x-k8s.io',
-                'inferencepoolimports.inference.networking.x-k8s.io',
-                'inferencepools.inference.networking.k8s.io',
-                'inferencepools.inference.networking.x-k8s.io'
-            }
-        }
+        is_main_component = component_name in [chart_name] + MAIN_COMPONENTS
 
         # Collect component-specific CRDs for crds/ directory
         crds_for_crds_dir = []
@@ -193,10 +173,10 @@ class ChartGenerator:
 
             # Handle CustomResourceDefinitions
             if kind == 'CustomResourceDefinition':
-                if name in kserve_core_crds:
+                if name in KSERVE_CORE_CRDS:
                     continue
 
-                if component_name in component_crds and name in component_crds[component_name]:
+                if component_name in COMPONENT_SPECIFIC_CRDS and name in COMPONENT_SPECIFIC_CRDS[component_name]:
                     crds_for_crds_dir.append((name, resource))
                     continue
 

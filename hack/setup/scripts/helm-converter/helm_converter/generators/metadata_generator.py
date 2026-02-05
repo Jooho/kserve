@@ -4,6 +4,7 @@ Handles generation of Chart.yaml, _helpers.tpl, and NOTES.txt
 """
 from typing import Dict, Any
 from pathlib import Path
+from ..constants import MAIN_COMPONENTS
 
 
 class MetadataGenerator:
@@ -190,8 +191,8 @@ To learn more about the release, try:
 
 '''
 
-        # Add main component status (kserve, llmisvc)
-        if chart_name in ['kserve', 'llmisvc']:
+        # Add main component status (always enabled components)
+        if chart_name in MAIN_COMPONENTS:
             notes += f'''  ✓ {chart_name.upper()} controller: Always Enabled
 
 '''
