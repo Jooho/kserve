@@ -76,7 +76,7 @@ else
   if [[ $INSTALL_METHOD == "helm" ]]; then
     SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ENABLE_KSERVE=false LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent" ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
-    KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    INSTALL_LLMISVC_CONFIGS=true KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi
 fi
 

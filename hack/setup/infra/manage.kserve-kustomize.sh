@@ -127,6 +127,9 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
         TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
         TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
     fi
+    INSTALL_RUNTIMES="${INSTALL_RUNTIMES:-false}"
+    INSTALL_LLMISVC_CONFIGS="${INSTALL_LLMISVC_CONFIGS:-false}"
+
 else
     if [ "${ENABLE_KSERVE}" = "true" ]; then
         TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
