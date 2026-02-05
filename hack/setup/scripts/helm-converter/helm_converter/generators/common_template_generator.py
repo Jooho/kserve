@@ -44,6 +44,10 @@ class CommonTemplateGenerator:
         if 'certManager-issuer' in manifests['common'] and 'certManager' in self.mapping:
             self._generate_issuer_template(common_dir, manifests['common']['certManager-issuer'])
 
+        # Generate ClusterStorageContainer template if storageContainer is enabled
+        if 'storageContainer-default' in manifests['common'] and 'storageContainer' in self.mapping:
+            self._generate_storage_container_template(common_dir, manifests['common']['storageContainer-default'])
+
     def _generate_configmap_template(self, output_dir: Path):
         """Generate inferenceservice-config ConfigMap template
 
@@ -158,3 +162,57 @@ spec:
                 f.write(template)
         except IOError as e:
             raise IOError(f"Failed to write Issuer template to '{output_file}': {e}")
+
+    def _generate_storage_container_template(self, output_dir: Path, storage_container_manifest: Dict[str, Any]):
+        """Generate ClusterStorageContainer template
+
+        Args:
+            output_dir: Output directory for the template
+            storage_container_manifest: ClusterStorageContainer manifest from kustomize build
+        """
+        # Validate storage container manifest structure (required fields)
+        try:
+            api_version = storage_container_manifest['apiVersion']
+            kind = storage_container_manifest['kind']
+            name = storage_container_manifest['metadata']['name']
+            spec = storage_container_manifest['spec']
+        except KeyError as e:
+            raise ValueError(
+                f"ClusterStorageContainer template generation failed: missing required field - {e}\n"
+                f"ClusterStorageContainer manifest must have: apiVersion, kind, metadata.name, spec"
+            )
+
+        # Get chart name for labels template
+        try:
+            chart_name = self.mapping['metadata']['name']
+        except KeyError:
+            raise ValueError("Mapping missing required 'metadata.name' for chart labels")
+
+        # ClusterStorageContainer controlled by storageContainer.enabled
+        template = f'''{{{{- if .Values.storageContainer.enabled | default .Values.kserve.createSharedResources }}}}
+apiVersion: {api_version}
+kind: {kind}
+metadata:
+  name: {name}
+  labels:
+    {{{{- include "{chart_name}.labels" . | nindent 4 }}}}
+spec:
+  container:
+    name: {{{{ .Values.storageContainer.container.name | default "storage-initializer" }}}}
+    image: {{{{ .Values.storageContainer.container.image }}}}:{{{{ .Values.storageContainer.container.tag }}}}
+    imagePullPolicy: {{{{ .Values.storageContainer.container.imagePullPolicy }}}}
+    resources:
+      {{{{- toYaml .Values.storageContainer.container.resources | nindent 6 }}}}
+  supportedUriFormats:
+    {{{{- toYaml .Values.storageContainer.supportedUriFormats | nindent 4 }}}}
+  workloadType: {{{{ .Values.storageContainer.workloadType | default "initContainer" }}}}
+{{{{- end }}}}
+'''
+
+        # Write template file with error handling
+        output_file = output_dir / 'cluster-storage-container.yaml'
+        try:
+            with open(output_file, 'w') as f:
+                f.write(template)
+        except IOError as e:
+            raise IOError(f"Failed to write ClusterStorageContainer template to '{output_file}': {e}")

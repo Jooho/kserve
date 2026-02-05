@@ -1,0 +1,18 @@
+{{- if .Values.storageContainer.enabled | default .Values.kserve.createSharedResources }}
+apiVersion: serving.kserve.io/v1alpha1
+kind: ClusterStorageContainer
+metadata:
+  name: default
+  labels:
+    {{- include "kserve.labels" . | nindent 4 }}
+spec:
+  container:
+    name: {{ .Values.storageContainer.container.name | default "storage-initializer" }}
+    image: {{ .Values.storageContainer.container.image }}:{{ .Values.storageContainer.container.tag }}
+    imagePullPolicy: {{ .Values.storageContainer.container.imagePullPolicy }}
+    resources:
+      {{- toYaml .Values.storageContainer.container.resources | nindent 6 }}
+  supportedUriFormats:
+    {{- toYaml .Values.storageContainer.supportedUriFormats | nindent 4 }}
+  workloadType: {{ .Values.storageContainer.workloadType | default "initContainer" }}
+{{- end }}

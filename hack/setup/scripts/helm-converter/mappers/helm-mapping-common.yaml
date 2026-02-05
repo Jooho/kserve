@@ -291,3 +291,52 @@ inferenceServiceConfig:
 # 2. Install controller: helm install kserve-localmodel charts/kserve-localmodel-resources
 #
 # Or add as a dependency in kserve-resources/Chart.yaml for backward compatibility
+
+# =============================================================================
+# STORAGE CONTAINER
+# ClusterStorageContainer CR for storage initialization
+# Defines the default storage initializer container configuration
+# =============================================================================
+storageContainer:
+  enabled:
+    valuePath: storageContainer.enabled
+    value: ""
+    description: "Enable ClusterStorageContainer installation"
+
+  clusterStorageContainer:
+    kind: ClusterStorageContainer
+    name: default
+    manifestPath: config/storagecontainers/default.yaml
+
+    # Container configuration
+    container:
+      image:
+        path: spec.container.image+(:,0)
+        valuePath: storageContainer.container.image
+      tag:
+        path: spec.container.image+(:,1)
+        valuePath: storageContainer.container.tag
+        value: ""
+      imagePullPolicy:
+        path: spec.container.imagePullPolicy
+        valuePath: storageContainer.container.imagePullPolicy
+      resources:
+        requests:
+          memory:
+            path: spec.container.resources.requests.memory
+            valuePath: storageContainer.container.resources.requests.memory
+          cpu:
+            path: spec.container.resources.requests.cpu
+            valuePath: storageContainer.container.resources.requests.cpu
+        limits:
+          memory:
+            path: spec.container.resources.limits.memory
+            valuePath: storageContainer.container.resources.limits.memory
+          cpu:
+            path: spec.container.resources.limits.cpu
+            valuePath: storageContainer.container.resources.limits.cpu
+
+    # Supported URI formats (keep as JSON for array structure)
+    supportedUriFormats:
+      path: spec.supportedUriFormats
+      valuePath: storageContainer.supportedUriFormats

@@ -173,6 +173,16 @@ class ManifestReader:
             if issuer_path.exists():
                 resources['certManager-issuer'] = self._read_yaml_file(issuer_path)
 
+        # Read ClusterStorageContainer from storageContainer
+        if 'storageContainer' in common_config and 'clusterStorageContainer' in common_config['storageContainer']:
+            # Use kustomize build to get the storage container with image transformations applied
+            storage_container_dir = self.repo_root / 'config' / 'storagecontainers'
+            if storage_container_dir.exists():
+                storage_containers = self._read_kustomize_build(storage_container_dir)
+                # Look for ClusterStorageContainer/default in the resources dictionary
+                if 'ClusterStorageContainer/default' in storage_containers:
+                    resources['storageContainer-default'] = storage_containers['ClusterStorageContainer/default']
+
         return resources
 
     def _read_component(self, component_config: Dict[str, Any]) -> Dict[str, Any]:

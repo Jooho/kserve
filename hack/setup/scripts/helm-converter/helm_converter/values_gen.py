@@ -102,6 +102,57 @@ class ValuesGenerator:
                     # Fallback: cert-manager is typically enabled by default
                     values['certManager'] = {'enabled': True}
 
+        # Add storageContainer values
+        if 'storageContainer' in self.mapping and 'storageContainer-default' in self.manifests.get('common', {}):
+            storage_manifest = self.manifests['common']['storageContainer-default']
+            storage_config = self.mapping['storageContainer']
+
+            # Build storageContainer values from manifest
+            storage_values = {}
+
+            # Extract enabled value using priority logic (same pattern as certManager)
+            if 'enabled' in storage_config:
+                has_value, enabled_value = process_field_with_priority(
+                    storage_config['enabled'],
+                    None,
+                    None
+                )
+                if has_value:
+                    storage_values['enabled'] = enabled_value
+
+            # Extract container configuration
+            if 'spec' in storage_manifest and 'container' in storage_manifest['spec']:
+                container_spec = storage_manifest['spec']['container']
+                storage_values['container'] = {}
+
+                # Extract container name
+                if 'name' in container_spec:
+                    storage_values['container']['name'] = container_spec['name']
+
+                # Extract image (split image:tag)
+                if 'image' in container_spec:
+                    image_parts = container_spec['image'].rsplit(':', 1)
+                    storage_values['container']['image'] = image_parts[0]
+                    storage_values['container']['tag'] = image_parts[1] if len(image_parts) > 1 else 'latest'
+
+                # Extract imagePullPolicy
+                if 'imagePullPolicy' in container_spec:
+                    storage_values['container']['imagePullPolicy'] = container_spec['imagePullPolicy']
+
+                # Extract resources
+                if 'resources' in container_spec:
+                    storage_values['container']['resources'] = container_spec['resources']
+
+            # Extract supportedUriFormats
+            if 'spec' in storage_manifest and 'supportedUriFormats' in storage_manifest['spec']:
+                storage_values['supportedUriFormats'] = storage_manifest['spec']['supportedUriFormats']
+
+            # Extract workloadType
+            if 'spec' in storage_manifest and 'workloadType' in storage_manifest['spec']:
+                storage_values['workloadType'] = storage_manifest['spec']['workloadType']
+
+            values['storageContainer'] = storage_values
+
         # Add llmisvcConfigs values if present (even if not main chart)
         if 'llmisvcConfigs' in self.mapping and chart_name != 'llmisvc':
             # For llmisvc configs component, just add enabled flag
