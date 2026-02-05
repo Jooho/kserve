@@ -6,6 +6,29 @@
 #   - helm-mapping-llmisvc.yaml
 
 # =============================================================================
+# GLOBALS (shared across kserve and llmisvc charts)
+# =============================================================================
+globals:
+  version:
+    valuePath: kserve.version
+    kserve-deps: KSERVE_VERSION
+
+  chartVersion:
+    valuePath: metadata.version
+    kserve-deps: KSERVE_VERSION
+    description: "Chart version from kserve-deps.env"
+
+  chartAppVersion:
+    valuePath: metadata.appVersion
+    kserve-deps: KSERVE_VERSION
+    description: "Chart appVersion from kserve-deps.env"
+    
+  createSharedResources:
+    valuePath: kserve.createSharedResources
+    value: true
+    description: "Enable creation of shared resources (ConfigMap, Issuer, StorageContainer)"
+
+# =============================================================================
 # CERT-MANAGER RESOURCES
 # Optional cert-manager Issuer for certificate management
 # Set certManager.enabled=false if you already have a cert-manager Issuer
@@ -14,6 +37,7 @@
 certManager:
   enabled:
     valuePath: certManager.enabled
+    fallback: kserve.createSharedResources
     value: ""
     description: "Enable cert-manager self-signed Issuer creation"
 
@@ -30,6 +54,7 @@ certManager:
 inferenceServiceConfig:
   enabled:
     valuePath: inferenceServiceConfig.enabled
+    fallback: kserve.createSharedResources
     value: ""
     description: "Enable inferenceservice-config ConfigMap installation"
 
@@ -63,6 +88,7 @@ inferenceServiceConfig:
           path: data.storageInitializer.image+(:,1)
           valuePath: inferenceServiceConfig.storageInitializer.tag
           value: ""
+          fallback: kserve.version
         memoryRequest:
           path: data.storageInitializer.memoryRequest
           valuePath: inferenceServiceConfig.storageInitializer.memoryRequest
@@ -105,6 +131,7 @@ inferenceServiceConfig:
           path: data.agent.image+(:,1)
           valuePath: inferenceServiceConfig.agent.tag
           value: ""
+          fallback: kserve.version
         memoryRequest:
           path: data.agent.memoryRequest
           valuePath: inferenceServiceConfig.agent.memoryRequest
@@ -127,6 +154,7 @@ inferenceServiceConfig:
           path: data.logger.image+(:,1)
           valuePath: inferenceServiceConfig.logger.tag
           value: ""
+          fallback: kserve.version
         memoryRequest:
           path: data.logger.memoryRequest
           valuePath: inferenceServiceConfig.logger.memoryRequest
@@ -152,6 +180,7 @@ inferenceServiceConfig:
           path: data.batcher.image+(:,1)
           valuePath: inferenceServiceConfig.batcher.tag
           value: ""
+          fallback: kserve.version
         memoryRequest:
           path: data.batcher.memoryRequest
           valuePath: inferenceServiceConfig.batcher.memoryRequest
@@ -180,6 +209,7 @@ inferenceServiceConfig:
           path: data.router.image+(:,1)
           valuePath: inferenceServiceConfig.router.tag
           value: ""
+          fallback: kserve.version
         memoryRequest:
           path: data.router.memoryRequest
           valuePath: inferenceServiceConfig.router.memoryRequest
@@ -237,6 +267,7 @@ inferenceServiceConfig:
           path: data.localModel.defaultJobImage+(:,1)
           valuePath: inferenceServiceConfig.localModel.defaultJobImageTag
           value: ""
+          fallback: kserve.version
         fsGroup:
           path: data.localModel.fsGroup
           valuePath: inferenceServiceConfig.localModel.fsGroup
@@ -300,6 +331,7 @@ inferenceServiceConfig:
 storageContainer:
   enabled:
     valuePath: storageContainer.enabled
+    fallback: kserve.createSharedResources
     value: ""
     description: "Enable ClusterStorageContainer installation"
 
@@ -310,33 +342,31 @@ storageContainer:
 
     # Container configuration
     container:
+      name:
+        path: spec.container.name
+        valuePath: storageContainer.container.name
       image:
-        path: spec.container.image+(:,0)
-        valuePath: storageContainer.container.image
-      tag:
-        path: spec.container.image+(:,1)
-        valuePath: storageContainer.container.tag
-        value: ""
+        repository:
+          path: spec.container.image+(:,0)
+          valuePath: storageContainer.container.image
+        tag:
+          path: spec.container.image+(:,1)
+          valuePath: storageContainer.container.tag
+          value: ""
+          fallback: kserve.version
       imagePullPolicy:
         path: spec.container.imagePullPolicy
         valuePath: storageContainer.container.imagePullPolicy
       resources:
-        requests:
-          memory:
-            path: spec.container.resources.requests.memory
-            valuePath: storageContainer.container.resources.requests.memory
-          cpu:
-            path: spec.container.resources.requests.cpu
-            valuePath: storageContainer.container.resources.requests.cpu
-        limits:
-          memory:
-            path: spec.container.resources.limits.memory
-            valuePath: storageContainer.container.resources.limits.memory
-          cpu:
-            path: spec.container.resources.limits.cpu
-            valuePath: storageContainer.container.resources.limits.cpu
+        path: spec.container.resources
+        valuePath: storageContainer.container.resources
 
     # Supported URI formats (keep as JSON for array structure)
     supportedUriFormats:
       path: spec.supportedUriFormats
       valuePath: storageContainer.supportedUriFormats
+
+    # Workload type
+    workloadType:
+      path: spec.workloadType
+      valuePath: storageContainer.workloadType

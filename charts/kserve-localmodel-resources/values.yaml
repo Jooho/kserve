@@ -9,7 +9,6 @@
 
 kserve:
   version: v0.16.0
-
 localmodel:
   controller:
     containers:

@@ -10,7 +10,6 @@
 kserve:
   version: v0.16.0
   createSharedResources: true
-
 llmisvc:
   controller:
     containers:

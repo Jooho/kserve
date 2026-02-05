@@ -50,6 +50,24 @@ class ChartGenerator:
 
         # Generate templates
         self.common_gen.generate_common_templates(self.templates_dir, self.manifests)
+
+        # Generate ClusterStorageContainer using GenericPlaceholderGenerator (reuse existing logic)
+        if 'common' in self.manifests and 'storageContainer-default' in self.manifests['common']:
+            # Get clusterStorageContainer config and add enabled settings for conditional wrapping
+            storage_config = self.mapping.get('storageContainer', {}).get('clusterStorageContainer', {}).copy()
+            enabled_config = self.mapping.get('storageContainer', {}).get('enabled', {})
+            if 'valuePath' in enabled_config:
+                storage_config['enabledPath'] = enabled_config['valuePath']
+            if 'fallback' in enabled_config:
+                storage_config['enabledFallback'] = enabled_config['fallback']
+
+            storage_resource_list = [{
+                'config': storage_config,
+                'manifest': self.manifests['common']['storageContainer-default'],
+                'copyAsIs': False
+            }]
+            self.generic_gen.generate_templates(self.templates_dir, storage_resource_list, 'common')
+
         self._generate_component_templates()
         self.generic_gen.generate_templates(self.templates_dir, self.manifests.get('runtimes', []), 'runtimes')
         self.llmisvc_config_gen.generate_llmisvc_configs_templates(self.templates_dir, self.manifests)

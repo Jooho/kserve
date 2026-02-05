@@ -12,8 +12,8 @@ from .values_generator.utils import OrderedDumper, generate_header, print_keys
 from .values_generator.configmap_builder import ConfigMapBuilder
 from .values_generator.component_builder import ComponentBuilder
 from .values_generator.runtime_builder import RuntimeBuilder
-from .values_generator.anchor_processor import apply_version_anchors
 from .values_generator.path_extractor import process_field_with_priority
+from .generators.utils import load_kserve_deps_env, get_field_value, set_nested_value
 
 
 class ValuesGenerator:
@@ -29,16 +29,27 @@ class ValuesGenerator:
         self.component_builder = ComponentBuilder(mapping)
         self.runtime_builder = RuntimeBuilder(mapping)
 
+    def process_globals(self):
+        """Process globals section to update mapping metadata
+
+        This must be called before ChartGenerator to ensure metadata fields
+        (e.g., metadata.version, metadata.appVersion) are updated from kserve-deps.env
+        """
+        if 'globals' not in self.mapping:
+            return
+
+        env_vars = load_kserve_deps_env()
+        for key, config in self.mapping['globals'].items():
+            value_path = config['valuePath']
+            value = get_field_value(config, None, env_vars)
+            if value is not None and value_path.startswith('metadata.'):
+                # Update mapping metadata for Chart.yaml generation
+                set_nested_value(self.mapping, value_path, value)
+
     def generate(self):
-        """Generate values.yaml file with version anchors"""
+        """Generate values.yaml file"""
         values = self._build_values()
         values_file = self.output_dir / 'values.yaml'
-
-        # Get version from Chart metadata for version anchor
-        version = self.mapping['metadata'].get('appVersion', 'latest')
-
-        # version_anchor_fields no longer used - tags use value: "" in mapping instead
-        version_anchor_fields = []
 
         with open(values_file, 'w') as f:
             # Add header comment
@@ -53,9 +64,6 @@ class ValuesGenerator:
                                      width=120,
                                      allow_unicode=True)
 
-            # Apply version anchors for centralized version management
-            yaml_content = apply_version_anchors(yaml_content, version, version_anchor_fields, chart_name)
-
             # Write final content
             f.write(yaml_content)
 
@@ -69,15 +77,37 @@ class ValuesGenerator:
         """Build the complete values dictionary"""
         values = {}
 
-        # IMPORTANT: Add component-specific values FIRST (especially kserve)
-        # This ensures kserve.version anchor is defined before any references to it
+        # Load environment variables from kserve-deps.env
+        env_vars = load_kserve_deps_env()
+
+        # Process globals first (from kserve-deps.env)
+        # This ensures global values like kserve.version are available before component processing
+        # Also supports updating metadata fields for Chart.yaml
+        if 'globals' in self.mapping:
+            for key, config in self.mapping['globals'].items():
+                value_path = config['valuePath']
+                # For globals, manifest is None (values come from env_vars)
+                value = get_field_value(config, None, env_vars)
+                if value is not None:
+                    if value_path.startswith('metadata.'):
+                        # Chart.yaml metadata fields: update mapping itself
+                        set_nested_value(self.mapping, value_path, value)
+                    else:
+                        # values.yaml fields: update values dict
+                        set_nested_value(values, value_path, value)
+
+        # Add component-specific values (merge with globals, don't overwrite)
         chart_name = self.mapping['metadata']['name']
         if chart_name in self.mapping:
-            values[chart_name] = self.component_builder.build_component_values(
+            component_values = self.component_builder.build_component_values(
                 chart_name,
                 self.mapping[chart_name],
                 self.manifests
             )
+            # Merge component values with existing values (from globals)
+            if chart_name not in values:
+                values[chart_name] = {}
+            values[chart_name].update(component_values)
 
         # Add inferenceServiceConfig values (may reference kserve.version anchor)
         if 'inferenceServiceConfig' in self.mapping:

@@ -14,7 +14,6 @@ from .utils import OrderedDumper, generate_header, print_keys
 from .configmap_builder import ConfigMapBuilder
 from .component_builder import ComponentBuilder
 from .runtime_builder import RuntimeBuilder
-from .anchor_processor import apply_version_anchors
 
 __all__ = [
     # Path extraction
@@ -30,6 +29,4 @@ __all__ = [
     'ConfigMapBuilder',
     'ComponentBuilder',
     'RuntimeBuilder',
-    # Anchor processing
-    'apply_version_anchors',
 ]

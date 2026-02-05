@@ -12,6 +12,21 @@ metadata:
   version: "0.1.0"  # Overridden by KSERVE_VERSION from kserve-deps.env
   appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
 
+globals:
+  version:
+    valuePath: kserve.version
+    kserve-deps: KSERVE_VERSION
+
+  chartVersion:
+    valuePath: metadata.version
+    kserve-deps: KSERVE_VERSION
+    description: "Chart version from kserve-deps.env"
+
+  chartAppVersion:
+    valuePath: metadata.appVersion
+    kserve-deps: KSERVE_VERSION
+    description: "Chart appVersion from kserve-deps.env"
+    
 # =============================================================================
 # CLUSTER SERVING RUNTIMES
 # =============================================================================
@@ -36,6 +51,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.sklearn.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -55,6 +71,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.xgboost.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -74,6 +91,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.tensorflow.image.tag
+          fallback: kserve.version
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.tensorflow.resources
@@ -92,6 +110,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.triton.image.tag
+          fallback: kserve.version
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.triton.resources
@@ -110,6 +129,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.mlserver.image.tag
+          fallback: kserve.version
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.mlserver.resources
@@ -128,6 +148,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.pmml.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -147,6 +168,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.lightgbm.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -166,6 +188,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.paddle.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -185,6 +208,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.torchserve.image.tag
+          fallback: kserve.version
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.torchserve.resources
@@ -203,6 +227,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.huggingface.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources
@@ -223,6 +248,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.huggingfaceMultinode.image.tag
+          fallback: kserve.version
       resources:
         path: spec.containers[0].resources
         valuePath: runtimes.huggingfaceMultinode.resources
@@ -241,6 +267,7 @@ clusterServingRuntimes:
         tag:
           path: spec.containers[0].image+(:,1)
           valuePath: runtimes.predictive.image.tag
+          fallback: kserve.version
           value: ""
       resources:
         path: spec.containers[0].resources

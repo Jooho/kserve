@@ -10,7 +10,12 @@ from typing import Dict, Any
 import yaml
 import copy
 
-from .utils import CustomDumper, quote_numeric_strings_in_labels, escape_go_templates_in_resource
+from .utils import (
+    CustomDumper,
+    quote_numeric_strings_in_labels,
+    escape_go_templates_in_resource,
+    build_template_with_fallback
+)
 
 
 class GenericPlaceholderGenerator:
@@ -81,14 +86,18 @@ class GenericPlaceholderGenerator:
         # Handle image field (repository + tag)
         if 'image' in config:
             img_repo_path = config['image']['repository']['valuePath']
-            img_tag_path = config['image']['tag']['valuePath']
+            img_tag_config = config['image'].get('tag', {})
+            img_tag_path = img_tag_config.get('valuePath', '')
+            fallback = img_tag_config.get('fallback', '')
             placeholder_key = f'__IMAGE_PLACEHOLDER_{img_repo_path}_{img_tag_path}__'
 
             # Set placeholder in manifest
             # Note: Assuming spec.containers[0].image for most resources
             if 'spec' in manifest and 'containers' in manifest['spec']:
                 manifest['spec']['containers'][0]['image'] = placeholder_key
-                placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} | default .Values.kserve.version }}}}'
+                # Use build_template_with_fallback to handle optional fallback from mapper
+                tag_template = build_template_with_fallback(img_tag_path, fallback)
+                placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{tag_template}'
 
         # Handle resources field
         if 'resources' in config:
@@ -99,6 +108,73 @@ class GenericPlaceholderGenerator:
             if 'spec' in manifest and 'containers' in manifest['spec']:
                 manifest['spec']['containers'][0]['resources'] = placeholder_key
                 placeholders[placeholder_key] = f'{{{{- toYaml .Values.{resources_path} | nindent 6 }}}}'
+
+        # Handle container-level fields for ClusterStorageContainer
+        if 'container' in config:
+            container_config = config['container']
+
+            # Handle container name
+            if 'name' in container_config:
+                name_config = container_config['name']
+                if 'valuePath' in name_config:
+                    name_path = name_config['valuePath']
+                    placeholder_key = f'__CONTAINER_NAME_PLACEHOLDER_{name_path}__'
+                    if 'spec' in manifest and 'container' in manifest['spec']:
+                        manifest['spec']['container']['name'] = placeholder_key
+                        # manifest value is the default (no hardcoded default needed)
+                        placeholders[placeholder_key] = f'{{{{ .Values.{name_path} }}}}'
+
+            # Handle imagePullPolicy
+            if 'imagePullPolicy' in container_config:
+                policy_config = container_config['imagePullPolicy']
+                if 'valuePath' in policy_config:
+                    policy_path = policy_config['valuePath']
+                    placeholder_key = f'__IMAGE_PULL_POLICY_PLACEHOLDER_{policy_path}__'
+                    if 'spec' in manifest and 'container' in manifest['spec']:
+                        manifest['spec']['container']['imagePullPolicy'] = placeholder_key
+                        placeholders[placeholder_key] = f'{{{{ .Values.{policy_path} }}}}'
+
+            # Handle image for container (ClusterStorageContainer uses spec.container.image)
+            if 'image' in container_config:
+                img_config = container_config['image']
+                if 'repository' in img_config and 'tag' in img_config:
+                    img_repo_path = img_config['repository']['valuePath']
+                    img_tag_path = img_config['tag']['valuePath']
+                    placeholder_key = f'__CONTAINER_IMAGE_PLACEHOLDER_{img_repo_path}_{img_tag_path}__'
+                    if 'spec' in manifest and 'container' in manifest['spec']:
+                        manifest['spec']['container']['image'] = placeholder_key
+                        placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} }}}}'
+
+            # Handle resources for container
+            if 'resources' in container_config:
+                resources_config = container_config['resources']
+                if 'valuePath' in resources_config:
+                    resources_path = resources_config['valuePath']
+                    placeholder_key = f'__CONTAINER_RESOURCES_PLACEHOLDER_{resources_path}__'
+                    if 'spec' in manifest and 'container' in manifest['spec']:
+                        manifest['spec']['container']['resources'] = placeholder_key
+                        placeholders[placeholder_key] = f'{{{{- toYaml .Values.{resources_path} | nindent 6 }}}}'
+
+        # Handle supportedUriFormats
+        if 'supportedUriFormats' in config:
+            formats_config = config['supportedUriFormats']
+            if 'valuePath' in formats_config:
+                formats_path = formats_config['valuePath']
+                placeholder_key = f'__SUPPORTED_URI_FORMATS_PLACEHOLDER_{formats_path}__'
+                if 'spec' in manifest and 'supportedUriFormats' in manifest['spec']:
+                    manifest['spec']['supportedUriFormats'] = placeholder_key
+                    placeholders[placeholder_key] = f'{{{{- toYaml .Values.{formats_path} | nindent 4 }}}}'
+
+        # Handle workloadType
+        if 'workloadType' in config:
+            workload_config = config['workloadType']
+            if 'valuePath' in workload_config:
+                workload_path = workload_config['valuePath']
+                placeholder_key = f'__WORKLOAD_TYPE_PLACEHOLDER_{workload_path}__'
+                if 'spec' in manifest and 'workloadType' in manifest['spec']:
+                    manifest['spec']['workloadType'] = placeholder_key
+                    # manifest value is the default (no hardcoded default needed)
+                    placeholders[placeholder_key] = f'{{{{ .Values.{workload_path} }}}}'
 
         # Step 3: Add Helm labels to metadata
         if 'metadata' not in manifest:
@@ -137,10 +213,22 @@ class GenericPlaceholderGenerator:
             )
 
         for placeholder_key, helm_template in placeholders.items():
-            if placeholder_key.startswith('__IMAGE_'):
+            if placeholder_key.startswith('__IMAGE_PLACEHOLDER_'):
                 manifest_yaml = manifest_yaml.replace(f'image: {placeholder_key}', f'image: {helm_template}')
-            elif placeholder_key.startswith('__RESOURCES_'):
+            elif placeholder_key.startswith('__CONTAINER_IMAGE_'):
+                manifest_yaml = manifest_yaml.replace(f'image: {placeholder_key}', f'image: {helm_template}')
+            elif placeholder_key.startswith('__RESOURCES_PLACEHOLDER_'):
                 manifest_yaml = manifest_yaml.replace(f'resources: {placeholder_key}', f'resources: {helm_template}')
+            elif placeholder_key.startswith('__CONTAINER_RESOURCES_'):
+                manifest_yaml = manifest_yaml.replace(f'resources: {placeholder_key}', f'resources: {helm_template}')
+            elif placeholder_key.startswith('__CONTAINER_NAME_'):
+                manifest_yaml = manifest_yaml.replace(f'name: {placeholder_key}', f'name: {helm_template}')
+            elif placeholder_key.startswith('__IMAGE_PULL_POLICY_'):
+                manifest_yaml = manifest_yaml.replace(f'imagePullPolicy: {placeholder_key}', f'imagePullPolicy: {helm_template}')
+            elif placeholder_key.startswith('__SUPPORTED_URI_FORMATS_'):
+                manifest_yaml = manifest_yaml.replace(f'supportedUriFormats: {placeholder_key}', f'supportedUriFormats: {helm_template}')
+            elif placeholder_key.startswith('__WORKLOAD_TYPE_'):
+                manifest_yaml = manifest_yaml.replace(f'workloadType: {placeholder_key}', f'workloadType: {helm_template}')
 
         # Step 6: Wrap with conditional blocks
         template = self._wrap_with_conditionals(manifest_yaml, config, subdir_name)
@@ -187,6 +275,19 @@ class GenericPlaceholderGenerator:
 {manifest_yaml}{{{{- end }}}}
 '''
 
+        # For common resources (ClusterStorageContainer): conditional with optional fallback from mapper
+        elif subdir_name == 'common':
+            enabled_path = config.get('enabledPath', 'storageContainer.enabled')
+            fallback = config.get('enabledFallback', '')
+            if fallback:
+                return f'''{{{{- if .Values.{enabled_path} | default .Values.{fallback} }}}}
+{manifest_yaml}{{{{- end }}}}
+'''
+            else:
+                return f'''{{{{- if .Values.{enabled_path} }}}}
+{manifest_yaml}{{{{- end }}}}
+'''
+
         # Default: no conditional
         return manifest_yaml
 
@@ -200,13 +301,15 @@ class GenericPlaceholderGenerator:
         Returns:
             Output filename
         """
-        copy_as_is = resource_data.get('copyAsIs', False)
+        # Use original filename if specified
         original_filename = resource_data.get('original_filename')
-
-        # Use original filename if copyAsIs is True
-        if copy_as_is and original_filename:
+        if original_filename:
             return original_filename
 
-        # Otherwise, sanitize resource name
-        filename = resource_name.replace('kserve-config-', '').replace('kserve-', '') + '.yaml'
+        # Use consistent {kind}_{name}.yaml pattern (same as chart_generator.py:203)
+        manifest = resource_data.get('manifest', {})
+        kind = manifest.get('kind', 'unknown')
+        name = manifest.get('metadata', {}).get('name', resource_name)
+
+        filename = f"{kind.lower()}_{name}.yaml"
         return filename

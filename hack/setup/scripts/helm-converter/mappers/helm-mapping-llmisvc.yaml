@@ -20,6 +20,24 @@ metadata:
   appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
 
 # =============================================================================
+# GLOBALS (from kserve-deps.env)
+# =============================================================================
+globals:
+  version:
+    valuePath: kserve.version
+    kserve-deps: KSERVE_VERSION
+
+  chartVersion:
+    valuePath: metadata.version
+    kserve-deps: KSERVE_VERSION
+    description: "Chart version from kserve-deps.env"
+
+  chartAppVersion:
+    valuePath: metadata.appVersion
+    kserve-deps: KSERVE_VERSION
+    description: "Chart appVersion from kserve-deps.env"
+
+# =============================================================================
 # LLMISVC COMPONENT (main component for this chart)
 # =============================================================================
 llmisvc:
@@ -47,6 +65,7 @@ llmisvc:
             path: image+(:,1)
             valuePath: llmisvc.controller.containers.manager.tag
             value: ""
+            fallback: kserve.version
           pullPolicy:
             path: imagePullPolicy
             valuePath: llmisvc.controller.containers.manager.imagePullPolicy

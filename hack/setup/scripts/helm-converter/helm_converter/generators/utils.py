@@ -242,3 +242,211 @@ def replace_cert_manager_namespace(annotations: Dict[str, str]) -> Dict[str, str
                     result[key] = f'{{{{ .Release.Namespace }}}}/{resource_name}'
 
     return result
+
+
+# ============================================================================
+# Mapper-based Helper Functions (Phase 1)
+# ============================================================================
+
+def get_field_value(field_config: dict, manifest: Dict[str, Any], env_vars: dict) -> Any:
+    """Extract field value from config based on priority rules
+
+    Priority: value > path > kserve-deps
+
+    This function implements the core value extraction logic for the mapper-based
+    architecture. It supports multiple value sources with a defined priority order,
+    allowing for flexible configuration while maintaining predictable behavior.
+
+    Args:
+        field_config: Mapper field configuration dictionary containing one or more of:
+            - 'value': Explicit override value (highest priority)
+            - 'path': Path to extract from manifest (middle priority)
+            - 'kserve-deps': Environment variable key from kserve-deps.env (lowest priority)
+        manifest: Kustomize manifest dictionary to extract values from (can be None for globals)
+        env_vars: Dictionary of environment variables loaded from kserve-deps.env
+
+    Returns:
+        Extracted field value, or None if no valid source is found
+
+    Examples:
+        >>> # Priority 1: value overrides everything
+        >>> config = {'value': '', 'path': 'image+(:,1)', 'valuePath': 'kserve.tag'}
+        >>> get_field_value(config, manifest, env_vars)
+        ''
+
+        >>> # Priority 2: path extraction when no value
+        >>> config = {'path': 'spec.template.spec.containers[0].image', 'valuePath': 'kserve.image'}
+        >>> get_field_value(config, manifest, env_vars)
+        'kserve/kserve-controller:v0.16.0'
+
+        >>> # Priority 3: env file when no value or path
+        >>> config = {'kserve-deps': 'KSERVE_VERSION', 'valuePath': 'kserve.version'}
+        >>> get_field_value(config, {'KSERVE_VERSION': 'v0.16.0'}, env_vars)
+        'v0.16.0'
+    """
+    # Priority 1: value (explicit override, even if empty string)
+    if 'value' in field_config:
+        return field_config['value']
+
+    # Priority 2: path (extract from manifest)
+    if 'path' in field_config:
+        # Import here to avoid circular dependency
+        from helm_converter.values_generator.path_extractor import extract_from_manifest
+        return extract_from_manifest(manifest, field_config['path'])
+
+    # Priority 3: kserve-deps (environment variable from kserve-deps.env)
+    if 'kserve-deps' in field_config:
+        env_key = field_config['kserve-deps']
+        return env_vars.get(env_key, '')
+
+    return None
+
+
+def build_template_with_fallback(value_path: str, fallback: str = '') -> str:
+    """Build Helm template string with optional fallback
+
+    This function generates Helm template syntax for accessing values.yaml fields,
+    with support for fallback values using the Helm 'default' function.
+
+    Args:
+        value_path: Dot-notation path to the value in values.yaml
+            Example: 'kserve.controller.tag'
+        fallback: Optional dot-notation path to fallback value
+            Example: 'kserve.version'
+
+    Returns:
+        Helm template string ready for insertion into template files
+
+    Examples:
+        >>> # Simple value reference without fallback
+        >>> build_template_with_fallback('kserve.controller.image')
+        '{{ .Values.kserve.controller.image }}'
+
+        >>> # Value reference with fallback
+        >>> build_template_with_fallback('kserve.controller.tag', 'kserve.version')
+        '{{ .Values.kserve.controller.tag | default .Values.kserve.version }}'
+
+    Note:
+        - This is Template-only (not for Values generation)
+        - Fallback creates a Helm template that evaluates at deployment time
+        - The fallback value must also be a path in values.yaml, not a literal string
+    """
+    if fallback:
+        return f'{{{{ .Values.{value_path} | default .Values.{fallback} }}}}'
+    else:
+        return f'{{{{ .Values.{value_path} }}}}'
+
+
+def load_kserve_deps_env(env_file: str = 'kserve-deps.env') -> dict:
+    """Load environment variables from kserve-deps.env file
+
+    This function reads the kserve-deps.env file which contains version information
+    and other configuration values that are used across the project. The file format
+    is standard shell environment variable format (KEY=VALUE).
+
+    The function tries multiple locations to find the file:
+    1. The exact path provided as argument
+    2. Current working directory
+    3. Parent directories up to 5 levels (searching for project root)
+
+    Args:
+        env_file: Path to the kserve-deps.env file (relative or absolute)
+                 Defaults to 'kserve-deps.env' in the current directory
+
+    Returns:
+        Dictionary mapping variable names to their values
+        Example: {'KSERVE_VERSION': 'v0.16.0', 'ISTIO_VERSION': '1.27.1'}
+
+    Examples:
+        >>> # Load from default location
+        >>> env_vars = load_kserve_deps_env()
+        >>> env_vars['KSERVE_VERSION']
+        'v0.16.0'
+
+        >>> # Load from custom location
+        >>> env_vars = load_kserve_deps_env('/path/to/custom-deps.env')
+
+    Note:
+        - Lines starting with '#' are treated as comments and ignored
+        - Empty lines are ignored
+        - Lines without '=' are ignored
+        - Leading/trailing whitespace is stripped from keys and values
+        - Returns empty dict if file not found (optional dependency)
+    """
+    import os
+    from pathlib import Path
+
+    env_vars = {}
+
+    # Try multiple locations to find the file
+    search_paths = [env_file]  # Start with the provided path
+
+    # If it's a relative path (default case), also search parent directories
+    if not os.path.isabs(env_file):
+        cwd = Path.cwd()
+        # Search current directory and up to 5 parent directories
+        for i in range(6):
+            search_paths.append(cwd / env_file)
+            cwd = cwd.parent
+
+    # Try each path until we find the file
+    for path in search_paths:
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key.strip()] = value.strip()
+                # Successfully loaded - return
+                return env_vars
+        except FileNotFoundError:
+            # Try next path
+            continue
+        except Exception:
+            # For any other error, continue trying other paths
+            continue
+
+    # If we get here, file was not found in any location
+    # Return empty dict (file is optional)
+    return env_vars
+
+
+def set_nested_value(target_dict: Dict[str, Any], path: str, value: Any) -> None:
+    """Set a value in a nested dictionary using dot-notation path
+
+    This function creates intermediate dictionaries as needed when setting
+    values in a nested structure. It modifies the target dictionary in-place.
+
+    Args:
+        target_dict: Dictionary to modify (modified in-place)
+        path: Dot-notation path to the value (e.g., 'kserve.controller.tag')
+        value: Value to set at the path
+
+    Examples:
+        >>> values = {}
+        >>> set_nested_value(values, 'kserve.version', 'v0.16.0')
+        >>> values
+        {'kserve': {'version': 'v0.16.0'}}
+
+        >>> set_nested_value(values, 'kserve.controller.tag', 'latest')
+        >>> values
+        {'kserve': {'version': 'v0.16.0', 'controller': {'tag': 'latest'}}}
+
+    Note:
+        - Intermediate dictionaries are created automatically
+        - Existing values are overwritten
+        - The function does not return anything (modifies in-place)
+    """
+    keys = path.split('.')
+    current = target_dict
+
+    # Navigate/create nested structure
+    for key in keys[:-1]:
+        if key not in current:
+            current[key] = {}
+        current = current[key]
+
+    # Set the final value
+    current[keys[-1]] = value

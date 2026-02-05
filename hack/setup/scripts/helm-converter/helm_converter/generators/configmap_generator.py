@@ -34,13 +34,15 @@ class ConfigMapGenerator:
             value_path = field_config['valuePath']
             return f'  {field_name}: |-\n    {{{{- toJson .Values.{value_path} | nindent 4 }}}}\n'
 
-        # Special case: explainers uses defaultImageVersion instead of tag
-        if field_name == 'explainers':
-            return self._generate_explainers_field(field_config)
-
-        # Check if this is localModel (has defaultJobImage)
-        if field_name == 'localModel':
+        # Check if this is localModel pattern (has defaultJobImage field)
+        # Structure-based detection instead of field name hardcoding
+        if 'defaultJobImage' in field_config:
             return self._generate_localmodel_field(field_name, field_config)
+
+        # Check if this is explainers pattern (nested dict where each child has image config)
+        # Structure-based detection: if all dict values have 'image' and 'tag' fields
+        if self._is_explainers_pattern(field_config):
+            return self._generate_explainers_field(field_config)
 
         # Check if this field has image/tag structure
         has_image = 'image' in field_config and 'tag' in field_config
@@ -210,6 +212,46 @@ class ConfigMapGenerator:
             Formatted ConfigMap field
         """
         return f'  {field_name}: |-\n    {{{{- toJson .Values.inferenceServiceConfig.{field_name} | nindent 4 }}}}\n'
+
+    def _is_explainers_pattern(self, field_config: dict) -> bool:
+        """Check if field config matches explainers pattern
+
+        Explainers pattern:
+        - Nested dict structure where each child is a dict
+        - Each child has 'image' and 'tag' fields with valuePath
+
+        Args:
+            field_config: Field configuration from mapper
+
+        Returns:
+            True if this is explainers pattern, False otherwise
+
+        Example:
+            {
+                'art': {'image': {'valuePath': '...'}, 'tag': {'valuePath': '...'}},
+                'alibi': {'image': {'valuePath': '...'}, 'tag': {'valuePath': '...'}}
+            }
+        """
+        if not isinstance(field_config, dict):
+            return False
+
+        # Check if all values are dicts
+        dict_values = [v for v in field_config.values() if isinstance(v, dict)]
+        if not dict_values or len(dict_values) != len(field_config):
+            return False
+
+        # Check if all dict values have 'image' and 'tag' with valuePath
+        for child_config in dict_values:
+            if not isinstance(child_config, dict):
+                return False
+            if 'image' not in child_config or 'tag' not in child_config:
+                return False
+            if not isinstance(child_config['image'], dict) or 'valuePath' not in child_config['image']:
+                return False
+            if not isinstance(child_config['tag'], dict) or 'valuePath' not in child_config['tag']:
+                return False
+
+        return True
 
     def _generate_localmodel_field(self, field_name: str, field_config: dict) -> str:
         """Generate ConfigMap field for localModel with defaultJobImage/defaultJobImageTag

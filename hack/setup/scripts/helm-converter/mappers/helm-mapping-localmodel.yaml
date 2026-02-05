@@ -12,6 +12,21 @@ metadata:
   version: "0.1.0"  # Overridden by KSERVE_VERSION from kserve-deps.env
   appVersion: "latest"  # Overridden by KSERVE_VERSION from kserve-deps.env
 
+globals:
+  version:
+    valuePath: kserve.version
+    kserve-deps: KSERVE_VERSION
+
+  chartVersion:
+    valuePath: metadata.version
+    kserve-deps: KSERVE_VERSION
+    description: "Chart version from kserve-deps.env"
+
+  chartAppVersion:
+    valuePath: metadata.appVersion
+    kserve-deps: KSERVE_VERSION
+    description: "Chart appVersion from kserve-deps.env"
+
 # =============================================================================
 # LOCALMODEL COMPONENT (Controller + Agent)
 # =============================================================================

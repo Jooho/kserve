@@ -143,6 +143,7 @@ class TestChartGenerator:
             'certManager': {
                 'enabled': {
                     'valuePath': 'certManager.enabled',
+                    'fallback': 'kserve.createSharedResources',
                     'defaultValue': True
                 },
                 'issuer': {
@@ -180,7 +181,8 @@ class TestChartGenerator:
 
         generator.common_gen._generate_issuer_template(common_dir, manifests['common']['certManager-issuer'])
 
-        issuer_file = common_dir / 'cert-manager-issuer.yaml'
+        # File name follows {kind}_{name}.yaml pattern (issuer_selfsigned-issuer.yaml)
+        issuer_file = common_dir / 'issuer_selfsigned-issuer.yaml'
         assert issuer_file.exists()
 
         with open(issuer_file, 'r') as f:
@@ -200,6 +202,10 @@ class TestChartGenerator:
                 'name': 'test-chart'
             },
             'inferenceServiceConfig': {
+                'enabled': {
+                    'valuePath': 'inferenceServiceConfig.enabled',
+                    'fallback': 'kserve.createSharedResources'
+                },
                 'configMap': {
                     'kind': 'ConfigMap',
                     'name': 'inferenceservice-config',
@@ -242,7 +248,8 @@ class TestChartGenerator:
 
         generator.common_gen._generate_configmap_template(common_dir)
 
-        configmap_file = common_dir / 'inferenceservice-config.yaml'
+        # File name follows {kind}_{name}.yaml pattern (configmap_inferenceservice-config.yaml)
+        configmap_file = common_dir / 'configmap_inferenceservice-config.yaml'
         assert configmap_file.exists()
 
         with open(configmap_file, 'r') as f:

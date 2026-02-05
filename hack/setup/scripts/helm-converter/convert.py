@@ -121,11 +121,10 @@ def main():
         mapping = reader.load_mapping()
         print(f"  ✓ Loaded mapping for chart: {mapping['metadata']['name']}")
 
-        # Override version from kserve-deps.env
+        # Version is now managed via globals in mapper (not hardcoded here)
+        # Check if KSERVE_VERSION is available (for user feedback only)
         kserve_version = _read_kserve_version(repo_root)
         if kserve_version:
-            mapping['metadata']['version'] = kserve_version
-            mapping['metadata']['appVersion'] = kserve_version
             print(f"  ✓ Using KSERVE_VERSION from kserve-deps.env: {kserve_version}")
         else:
             print("  ⚠ Could not read KSERVE_VERSION, using mapper defaults")
@@ -137,6 +136,11 @@ def main():
         manifests = reader.read_manifests(mapping)
         print(f"  ✓ Read {len(manifests)} manifest files")
         print()
+
+        # Step 2.5: Process globals to update metadata (must be before ChartGenerator)
+        # This updates mapping['metadata'] fields from kserve-deps.env via globals
+        values_gen = ValuesGenerator(mapping, manifests, output_dir)
+        values_gen.process_globals()
 
         # Step 3: Generate Helm templates
         print("[3/4] Generating Helm templates...")
@@ -150,9 +154,8 @@ def main():
             print(f"  ✓ Generated Helm templates in {output_dir}/templates/")
         print()
 
-        # Step 4: Generate values.yaml
+        # Step 4: Generate values.yaml (reuse values_gen from Step 2.5)
         print("[4/4] Generating values.yaml...")
-        values_gen = ValuesGenerator(mapping, manifests, output_dir)
 
         if args.dry_run:
             print("  (Dry run mode - not creating files)")
