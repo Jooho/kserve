@@ -212,6 +212,9 @@ class GenericPlaceholderGenerator:
                 'namespace: {{ .Release.Namespace }}'
             )
 
+        # Replace placeholders with Helm templates
+        # Two placeholder types: standard resources (ClusterServingRuntime) use IMAGE/RESOURCES,
+        # ClusterStorageContainer uses CONTAINER_IMAGE/CONTAINER_RESOURCES for spec.container fields
         for placeholder_key, helm_template in placeholders.items():
             if placeholder_key.startswith('__IMAGE_PLACEHOLDER_'):
                 manifest_yaml = manifest_yaml.replace(f'image: {placeholder_key}', f'image: {helm_template}')

@@ -8,7 +8,8 @@ from .utils import (
     add_kustomize_labels,
     quote_label_value_if_needed,
     yaml_to_string,
-    replace_cert_manager_namespace
+    replace_cert_manager_namespace,
+    build_template_with_fallback
 )
 
 
@@ -212,13 +213,10 @@ class WorkloadGenerator:
                 for container in pod_spec['containers']:
                     container_name = container['name']
 
-                    # Determine if container is configured in mapper
                     if container_name in containers_config:
-                        # Configured container (in mapper) - configurable
                         container_specific_config = containers_config[container_name]
                         is_configured = True
                     else:
-                        # Unconfigured container (not in mapper) - all static
                         container_specific_config = {}
                         is_configured = False
 
@@ -228,10 +226,8 @@ class WorkloadGenerator:
                     )
                     lines.append(container_spec)
             else:
-                # Check mapper for configurability
                 if field_name in component_config:
                     mapper_config = component_config[field_name]
-                    # Use generic field rendering
                     template = self._render_field_generic(
                         field_name, field_value, mapper_config, base_indent=6
                     )
@@ -239,7 +235,6 @@ class WorkloadGenerator:
                 else:
                     # Not in mapper → static (keep manifest value as-is)
                     if isinstance(field_value, (dict, list)):
-                        # Complex value (dict or list)
                         lines.append(f'      {field_name}:')
                         lines.append(yaml_to_string(field_value, indent=8))
                     else:
@@ -256,37 +251,7 @@ class WorkloadGenerator:
             mapper_config: Dict[str, Any],
             base_indent: int
     ) -> str:
-        """Render a field generically based on mapper configuration.
-
-        This method provides unified rendering logic for both pod-level and container-level fields.
-        It supports three modes:
-        1. Entire field configurable (valuePath in mapper)
-        2. Nested field configuration (partial configurability)
-        3. Static field (no mapper or no valuePath)
-
-        Args:
-            field_name: Name of the field (e.g., 'nodeSelector', 'command', 'securityContext')
-            field_value: Actual value from manifest
-            mapper_config: Mapper configuration for this field
-            base_indent: Base indentation level (6 for pod-level, 8 for container-level)
-
-        Returns:
-            Rendered Helm template string
-
-        Example:
-            # Pod-level configurable field
-            _render_field_generic('nodeSelector', {...}, {'valuePath': 'kserve.controller.nodeSelector'}, 6)
-            # Returns:
-            #       {{- with .Values.kserve.controller.nodeSelector }}
-            #       nodeSelector:
-            #         {{- toYaml . | nindent 8 }}
-            #       {{- end }}
-
-            # Container-level nested field
-            _render_field_generic('securityContext', {'runAsUser': 1000, ...},
-                                 {'runAsUser': {'valuePath': '...'}}, 8)
-            # Returns partially configurable template
-        """
+        """Render a field with three modes: configurable (valuePath), nested, or static."""
         lines = []
         content_indent = base_indent + 2
         indent_str = ' ' * base_indent
@@ -493,9 +458,13 @@ class WorkloadGenerator:
         if 'image' in container:
             if is_configured and 'image' in component_config:
                 img_repo_path = component_config['image']['repository']['valuePath']
-                img_tag_path = component_config['image']['tag']['valuePath']
-                # Use tag path with fallback to kserve.version for flexibility
-                lines.append(f'        image: "{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} | default .Values.kserve.version }}}}"')
+                img_tag_config = component_config['image'].get('tag', {})
+                img_tag_path = img_tag_config.get('valuePath', '')
+                fallback = img_tag_config.get('fallback', '')
+
+                # Use build_template_with_fallback (same as GenericPlaceholderGenerator)
+                tag_template = build_template_with_fallback(img_tag_path, fallback)
+                lines.append(f'        image: "{{{{ .Values.{img_repo_path} }}}}:{tag_template}"')
             else:
                 lines.append(f'        image: "{container["image"]}"')
             processed_fields.add('image')

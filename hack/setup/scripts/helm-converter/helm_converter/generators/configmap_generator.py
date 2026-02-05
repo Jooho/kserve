@@ -136,24 +136,22 @@ class ConfigMapGenerator:
         lines = [f'  {field_name}: |-', '    {']
         json_lines = []
 
-        # Add image field if specified
+        # Step 1: Add image field if specified (combines image:tag into single field)
+        # Most components use 'image'/'tag', but LocalModel uses 'defaultJobImage'/'defaultJobImageTag'
         if image_field_name:
             img_template = f'{{{{ .Values.{parent_path}.image }}}}:{{{{ .Values.{parent_path}.tag | default .Values.kserve.version }}}}'
             if image_field_name == 'defaultJobImage':
-                # LocalModel uses defaultJobImageTag
                 img_template = f'{{{{ .Values.{parent_path}.defaultJobImage }}}}:{{{{ .Values.{parent_path}.defaultJobImageTag | default .Values.kserve.version }}}}'
             json_lines.append(f'        "{image_field_name}" : "{img_template}"')
 
-        # Add other fields from config
+        # Step 2: Add other fields from config (skip image-related keys already handled above)
         for key, value in field_config.items():
-            # Skip image-related keys
             if key in ['image', 'tag', 'defaultJobImage', 'defaultJobImageTag']:
                 continue
 
             if not isinstance(value, dict) or 'valuePath' not in value:
                 continue
 
-            # Extract field name and type
             try:
                 value_path = value['valuePath']
             except KeyError:
@@ -165,7 +163,7 @@ class ConfigMapGenerator:
             field_key = value_path.split('.')[-1]
             field_type = value.get('type', 'string')
 
-            # Build JSON line with proper type handling
+            # Build JSON line with proper type handling (string vs non-string)
             json_lines.append(self._build_json_field_line(parent_path, field_key, field_type))
 
         # Join with commas

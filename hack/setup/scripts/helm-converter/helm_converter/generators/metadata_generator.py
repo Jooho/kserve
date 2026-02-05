@@ -55,7 +55,6 @@ appVersion: {metadata.get('appVersion', '1.0.0')}
 
     def generate_helpers(self) -> None:
         """Generate _helpers.tpl file"""
-        # Validate mapping has metadata.name
         try:
             chart_name = self.mapping['metadata']['name']
         except KeyError as e:

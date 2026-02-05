@@ -41,19 +41,14 @@ class ChartGenerator:
 
     def generate(self):
         """Generate all Helm chart files"""
-        # Create output directories
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.templates_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate Chart.yaml
         self.metadata_gen.generate_chart_yaml(self.output_dir)
-
-        # Generate templates
         self.common_gen.generate_common_templates(self.templates_dir, self.manifests)
 
-        # Generate ClusterStorageContainer using GenericPlaceholderGenerator (reuse existing logic)
+        # ClusterStorageContainer generation
         if 'common' in self.manifests and 'storageContainer-default' in self.manifests['common']:
-            # Get clusterStorageContainer config and add enabled settings for conditional wrapping
             storage_config = self.mapping.get('storageContainer', {}).get('clusterStorageContainer', {}).copy()
             enabled_config = self.mapping.get('storageContainer', {}).get('enabled', {})
             if 'valuePath' in enabled_config:
@@ -72,10 +67,7 @@ class ChartGenerator:
         self.generic_gen.generate_templates(self.templates_dir, self.manifests.get('runtimes', []), 'runtimes')
         self.llmisvc_config_gen.generate_llmisvc_configs_templates(self.templates_dir, self.manifests)
 
-        # Generate helpers
         self.metadata_gen.generate_helpers()
-
-        # Generate NOTES.txt
         self.metadata_gen.generate_notes()
 
     def show_plan(self):
@@ -96,8 +88,6 @@ class ChartGenerator:
         if self.manifests.get('llmisvcConfigs'):
             print(f"  Would generate templates/llmisvcconfigs/ ({len(self.manifests['llmisvcConfigs'])} configs)")
 
-        # Note: CRDs are managed in separate kserve-crd chart
-
     def _generate_component_templates(self):
         """Generate templates for components (kserve, llmisvc, localmodel, localmodelnode)"""
         for component_name, component_data in self.manifests.get('components', {}).items():
@@ -106,11 +96,9 @@ class ChartGenerator:
             if chart_name == 'kserve-localmodel-resources':
                 component_dir = self.templates_dir
             else:
-                # All other components use subfolder structure
                 component_dir = self.templates_dir / component_name
                 component_dir.mkdir(exist_ok=True)
 
-            # Generate workload templates based on kind (with values templating)
             if 'manifests' in component_data:
                 for manifest_key, manifest in component_data['manifests'].items():
                     # Skip 'resources' - handled separately
@@ -205,25 +193,20 @@ class ChartGenerator:
 
             # Handle CustomResourceDefinitions
             if kind == 'CustomResourceDefinition':
-                # Skip KServe Core CRDs (managed by kserve-crd chart via Makefile)
                 if name in kserve_core_crds:
                     continue
 
-                # Component-specific CRDs go to crds/ directory
                 if component_name in component_crds and name in component_crds[component_name]:
                     crds_for_crds_dir.append((name, resource))
                     continue
 
-                # Skip any other CRDs
                 continue
 
-            # Create sanitized filename
             filename = f"{kind.lower()}_{name}.yaml"
 
             # For copyAsIs resources (e.g., LLMInferenceServiceConfig with Go templates),
             # don't escape Go templates - just copy as-is with namespace replacement
             if not copy_as_is:
-                # Escape Go template expressions for resources that need it
                 resource = escape_go_templates_in_resource(resource)
 
             # Replace namespace with placeholder (will be replaced after yaml.dump)
@@ -244,26 +227,19 @@ class ChartGenerator:
                             webhook['clientConfig']['service']['namespace'] = '__NAMESPACE_PLACEHOLDER__'
 
             # Main component resources are always installed, localmodel needs enabled check
-            # Use CustomDumper to handle LiteralString properly (for multiline args)
-            # Use very large width to prevent YAML from breaking Helm template expressions across lines
             if is_main_component:
                 template = yaml.dump(resource, Dumper=CustomDumper, default_flow_style=False, sort_keys=False, width=float('inf'))
-                # Quote numeric strings in labels
                 template = quote_numeric_strings_in_labels(template)
-                # Replace namespace placeholder with Helm template
                 template = template.replace('namespace: __NAMESPACE_PLACEHOLDER__', 'namespace: {{ .Release.Namespace }}')
             else:
                 enabled_path = f"{component_name}.enabled"
                 template = f'{{{{- if .Values.{enabled_path} }}}}\n'
                 resource_yaml = yaml.dump(resource, Dumper=CustomDumper, default_flow_style=False, sort_keys=False, width=float('inf'))
-                # Quote numeric strings in labels
                 resource_yaml = quote_numeric_strings_in_labels(resource_yaml)
-                # Replace namespace placeholder with Helm template
                 resource_yaml = resource_yaml.replace('namespace: __NAMESPACE_PLACEHOLDER__', 'namespace: {{ .Release.Namespace }}')
                 template += resource_yaml
                 template += '{{- end }}\n'
 
-            # Write template file
             output_file = output_dir / filename
             with open(output_file, 'w') as f:
                 f.write(template)
@@ -284,7 +260,6 @@ class ChartGenerator:
                         crd_resource['metadata']['annotations']
                     )
 
-                # CRDs don't need templating - write as-is
                 filename = f"{crd_name}.yaml"
                 crd_yaml = yaml.dump(crd_resource, Dumper=CustomDumper, default_flow_style=False, sort_keys=False, width=float('inf'))
 

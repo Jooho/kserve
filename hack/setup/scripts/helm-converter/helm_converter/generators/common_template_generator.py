@@ -50,7 +50,6 @@ class CommonTemplateGenerator:
         Handles both old list format and new dict format for dataFields.
         New format supports individual fields with image/tag separation.
         """
-        # Validate main config structure (required for ConfigMap generation)
         try:
             config = self.mapping['inferenceServiceConfig']['configMap']
         except KeyError as e:
@@ -59,16 +58,13 @@ class CommonTemplateGenerator:
                 f"Required path: mapping['inferenceServiceConfig']['configMap']"
             )
 
-        # Get config fields with safe defaults
         name = config.get('name', 'inferenceservice-config')
 
-        # Validate required dataFields
         try:
             data_fields = config['dataFields']
         except KeyError:
             raise ValueError("ConfigMap config missing required field 'dataFields'")
 
-        # Get chart name for labels template
         try:
             chart_name = self.mapping['metadata']['name']
         except KeyError:
@@ -113,7 +109,6 @@ data:
 
         template += '{{- end }}\n'
 
-        # Write template file with error handling
         # Use consistent {kind}_{name}.yaml pattern (same as chart_generator.py:203)
         output_file = output_dir / f'configmap_{name}.yaml'
         try:
@@ -129,7 +124,6 @@ data:
             output_dir: Output directory for the template
             issuer_manifest: Issuer manifest from kustomize build
         """
-        # Validate issuer manifest structure (required fields)
         try:
             api_version = issuer_manifest['apiVersion']
             kind = issuer_manifest['kind']
