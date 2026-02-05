@@ -50,6 +50,7 @@ localmodel:
             path: image+(:,1)
             valuePath: localmodel.controller.containers.manager.tag
             value: ""
+            fallback: kserve.version
           pullPolicy:
             path: imagePullPolicy
             valuePath: localmodel.controller.containers.manager.imagePullPolicy
@@ -75,6 +76,7 @@ localmodel:
             path: image+(:,1)
             valuePath: localmodel.nodeAgent.containers.manager.tag
             value: ""
+            fallback: kserve.version
           pullPolicy:
             path: imagePullPolicy
             valuePath: localmodel.nodeAgent.containers.manager.imagePullPolicy

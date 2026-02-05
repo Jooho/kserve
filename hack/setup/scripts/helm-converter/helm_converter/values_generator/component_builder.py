@@ -749,23 +749,19 @@ class ComponentBuilder:
         if 'repository' in img_config:
             repo_config = img_config['repository']
 
-            # Check for 'value' field first (priority: value > path > fallback)
-            if 'value' in repo_config:
-                # Use value directly
-                repository = repo_config['value']
-            elif 'path' in repo_config:
-                # Extract from manifest using path
-                manifest_to_use = self._select_manifest_for_path(
-                    repo_config, container_manifest, wrapped_manifest
-                )
-                try:
-                    repository = extract_from_manifest(manifest_to_use, repo_config['path'])
-                except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract repository using path '{repo_config['path']}': {e}")
-                    # Fallback to direct access
-                    actual_image = container_manifest.get('image', '')
-                    repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
-            else:
+            # Select appropriate manifest for path extraction
+            manifest_to_use = self._select_manifest_for_path(
+                repo_config, container_manifest, wrapped_manifest
+            )
+
+            # Use priority-based extraction: value > path > None
+            has_value, repository = process_field_with_priority(
+                repo_config,
+                manifest_to_use,
+                extract_from_manifest
+            )
+
+            if not has_value:
                 # No 'value' or 'path' field - fallback to direct access
                 actual_image = container_manifest.get('image', '')
                 repository = actual_image.rsplit(':', 1)[0] if ':' in actual_image else actual_image
@@ -775,32 +771,26 @@ class ComponentBuilder:
         if 'tag' in img_config:
             tag_config = img_config['tag']
 
-            # Check for 'value' field first (priority: value > path > fallback)
-            if 'value' in tag_config:
-                # Use value directly
-                tag = tag_config['value']
-            elif 'path' in tag_config:
-                # Extract from manifest using path
-                manifest_to_use = self._select_manifest_for_path(
-                    tag_config, container_manifest, wrapped_manifest
-                )
-                try:
-                    tag = extract_from_manifest(manifest_to_use, tag_config['path'])
+            # Select appropriate manifest for path extraction
+            manifest_to_use = self._select_manifest_for_path(
+                tag_config, container_manifest, wrapped_manifest
+            )
 
+            # Use priority-based extraction: value > path > None
+            has_value, tag = process_field_with_priority(
+                tag_config,
+                manifest_to_use,
+                extract_from_manifest
+            )
+
+            if has_value:
+                # Tag extracted from 'value' or 'path' field
+                if tag and tag != '':
                     # Replace :latest with version for comparison consistency
-                    if tag and tag != '':
-                        chart_version = self.mapping['metadata'].get('appVersion', 'latest')
-                        if chart_version != 'latest' and 'latest' in tag:
-                            tag = tag.replace('latest', chart_version)
-
-                except IndexError:
-                    # No colon in image, use default tag
-                    tag = 'latest'
-                except (KeyError, ValueError) as e:
-                    print(f"Warning: Failed to extract tag using path '{tag_config['path']}': {e}")
-                    # Fallback to direct access
-                    actual_image = container_manifest.get('image', '')
-                    tag = actual_image.rsplit(':', 1)[1] if ':' in actual_image else 'latest'
+                    chart_version = self.mapping['metadata'].get('appVersion', 'latest')
+                    if chart_version != 'latest' and 'latest' in tag:
+                        tag = tag.replace('latest', chart_version)
+                # If tag is empty string from value: "", keep it as is
             else:
                 # No 'value' or 'path' field - fallback to direct access
                 actual_image = container_manifest.get('image', '')
@@ -810,19 +800,21 @@ class ComponentBuilder:
         pull_policy = None
         if 'pullPolicy' in img_config:
             policy_config = img_config['pullPolicy']
-            if 'path' in policy_config:
-                # Determine which manifest to use
-                manifest_to_use = self._select_manifest_for_path(
-                    policy_config, container_manifest, wrapped_manifest
-                )
-                try:
-                    pull_policy = extract_from_manifest(manifest_to_use, policy_config['path'])
-                except (KeyError, IndexError, ValueError) as e:
-                    print(f"Warning: Failed to extract pullPolicy using path '{policy_config['path']}': {e}")
-                    # Fallback to direct access
-                    pull_policy = container_manifest.get('imagePullPolicy', 'Always')
-            else:
-                # No path field - fallback to direct access
+
+            # Select appropriate manifest for path extraction
+            manifest_to_use = self._select_manifest_for_path(
+                policy_config, container_manifest, wrapped_manifest
+            )
+
+            # Use priority-based extraction: value > path > None
+            has_value, pull_policy = process_field_with_priority(
+                policy_config,
+                manifest_to_use,
+                extract_from_manifest
+            )
+
+            if not has_value:
+                # No 'value' or 'path' field - fallback to direct access
                 pull_policy = container_manifest.get('imagePullPolicy', 'Always')
 
         # Build values structure based on valuePath format
