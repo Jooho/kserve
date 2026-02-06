@@ -3,7 +3,6 @@ Tests for ConfigMapBuilder module
 
 Integration tests for building inferenceServiceConfig values from ConfigMap manifests.
 """
-import pytest
 import json
 
 from helm_converter.values_generator.configmap_builder import ConfigMapBuilder

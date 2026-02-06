@@ -157,4 +157,3 @@ spec:
         # Use consistent {kind}_{name}.yaml pattern (same as chart_generator.py:203)
         output_file = output_dir / f'{kind.lower()}_{name}.yaml'
         self._write_file(output_file, template)
-

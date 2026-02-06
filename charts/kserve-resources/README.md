@@ -111,4 +111,22 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | kserve.controller.containers.manager.tag | string | `""` |  |
 | kserve.createSharedResources | bool | `true` |  |
 | kserve.version | string | `"v0.16.0"` |  |
+| storageContainer.container.image | string | `"kserve/storage-initializer"` |  |
+| storageContainer.container.imagePullPolicy | string | `"Always"` |  |
+| storageContainer.container.name | string | `"storage-initializer"` |  |
+| storageContainer.container.resources.limits.cpu | string | `"1"` |  |
+| storageContainer.container.resources.limits.memory | string | `"1Gi"` |  |
+| storageContainer.container.resources.requests.cpu | string | `"100m"` |  |
+| storageContainer.container.resources.requests.memory | string | `"100Mi"` |  |
+| storageContainer.container.tag | string | `"latest"` |  |
+| storageContainer.enabled | string | `""` |  |
+| storageContainer.supportedUriFormats[0].prefix | string | `"gs://"` |  |
+| storageContainer.supportedUriFormats[1].prefix | string | `"s3://"` |  |
+| storageContainer.supportedUriFormats[2].prefix | string | `"hdfs://"` |  |
+| storageContainer.supportedUriFormats[3].prefix | string | `"hf://"` |  |
+| storageContainer.supportedUriFormats[4].prefix | string | `"webhdfs://"` |  |
+| storageContainer.supportedUriFormats[5].regex | string | `"https://(.+?).blob.core.windows.net/(.+)"` |  |
+| storageContainer.supportedUriFormats[6].regex | string | `"https://(.+?).file.core.windows.net/(.+)"` |  |
+| storageContainer.supportedUriFormats[7].regex | string | `"https?://(.+)/(.+)"` |  |
+| storageContainer.workloadType | string | `"initContainer"` |  |
 

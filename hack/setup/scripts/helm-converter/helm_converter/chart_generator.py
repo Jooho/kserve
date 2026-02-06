@@ -50,8 +50,10 @@ class ChartGenerator:
 
         # ClusterStorageContainer generation
         if 'common' in self.manifests and 'storageContainer-default' in self.manifests['common']:
-            storage_config = self.mapping.get('storageContainer', {}).get('clusterStorageContainer', {}).copy()
-            enabled_config = self.mapping.get('storageContainer', {}).get('enabled', {})
+            storage_mapping = self.mapping.get('storageContainer', {})
+            storage_config = storage_mapping.get('clusterStorageContainer', {}).copy()
+            enabled_config = storage_mapping.get('enabled', {})
+
             if 'valuePath' in enabled_config:
                 storage_config['enabledPath'] = enabled_config['valuePath']
             if 'fallback' in enabled_config:

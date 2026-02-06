@@ -3,8 +3,6 @@ Tests for RuntimeBuilder module
 
 Integration tests for ClusterServingRuntime value building from manifests.
 """
-import pytest
-
 from helm_converter.values_generator.runtime_builder import RuntimeBuilder
 
 

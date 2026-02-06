@@ -3,8 +3,6 @@ Tests for ComponentBuilder module
 
 Integration tests for component value building from manifests.
 """
-import pytest
-
 from helm_converter.values_generator.component_builder import ComponentBuilder
 
 
