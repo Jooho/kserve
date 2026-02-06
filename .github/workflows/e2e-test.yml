@@ -1423,7 +1423,7 @@ jobs:
 
       - name: Install KServe
         run: |
-          export KSERVE_CUSTOM_ISVC_CONFIGS="localModel.enabled=true|localModel.defaultJobImage=kserve/storage-initializer:${GITHUB_SHA}"
+          export SET_KSERVE_VERSION=${{ env.TAG }}
           ./test/scripts/gh-actions/setup-kserve.sh
 
           kubectl get pods -n kserve

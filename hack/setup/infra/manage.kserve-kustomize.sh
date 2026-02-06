@@ -111,7 +111,7 @@ TARGET_CRDS_TO_VERIFY=()
 # INCLUDE_IN_GENERATED_SCRIPT_START
 determine_shared_resources_config
 
-KSERVE_CRDS="inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io clusterstoragecontainers.serving.kserve.io inferencegraphs.serving.kserve.io trainedmodels.serving.kserve.io"
+KSERVE_CRDS="inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io clusterstoragecontainers.serving.kserve.io inferencegraphs.serving.kserve.io trainedmodels.serving.kserve.io clusterstoragecontainers.serving.kserve.io"
 LLMISVC_CRDS="llminferenceservices.serving.kserve.io llminferenceserviceconfigs.serving.kserve.io"
 LOCALMODEL_CRDS="localmodelcaches.serving.kserve.io localmodelnodegroups.serving.kserve.io localmodelnodes.serving.kserve.io"
 KSERVE_CONFIG_DIR="${REPO_ROOT}/config/overlays/standalone/kserve"
@@ -121,8 +121,22 @@ LOCALMODEL_CONFIG_DIR="${REPO_ROOT}/config/overlays/addons/localmodel"
 if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
     TARGET_OVERLAY_DIRS+=("${REPO_ROOT}/config/overlays/${KSERVE_OVERLAY_DIR}")
     if [ "${KSERVE_OVERLAY_DIR}" == "test" ]; then
-        TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS} ${LOCALMODEL_CRDS}")
-        TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager")   
+        # Auto-enable localmodel for test overlay
+        ENABLE_LOCALMODEL="true"
+
+        # Update test overlay image tags if version is set
+        if [ -n "${SET_KSERVE_VERSION}" ]; then
+            log_info "Updating test overlay image tags to ${SET_KSERVE_VERSION}..."
+            sed -i -e "s/latest/${SET_KSERVE_VERSION}/g" config/overlays/test/configmap/inferenceservice.yaml
+            sed -i -e "s/latest/${SET_KSERVE_VERSION}/g" config/overlays/test/clusterresources/kustomization.yaml
+        fi
+
+        TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
+        TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+        TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
+        TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+        TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager")
+        TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
     fi
 else
     if [ "${SET_KSERVE_VERSION}" != "" ]; then
@@ -313,8 +327,9 @@ install() {
             config_updates+=("ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\"")
         fi
         if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
-            config_updates+=("inferenceServiceConfig.localModel.enabled=true")
-            config_updates+=("inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}")
+            log_info "Adding LocalModel updates: enabled=true, defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}"
+            config_updates+=("localModel.enabled=true")
+            config_updates+=("localModel.defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}")
         fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
