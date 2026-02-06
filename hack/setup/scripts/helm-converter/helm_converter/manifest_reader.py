@@ -244,8 +244,13 @@ class ManifestReader:
                     # Find the runtime in kustomize build results
                     resource_key = f"{runtime_kind}/{runtime_name}"
                     if resource_key in kustomize_runtimes:
+                        # Extract enabledPath from enabled config for individual runtime conditional
+                        config_with_enabled_path = runtime_config.copy()
+                        if 'enabled' in runtime_config and 'valuePath' in runtime_config['enabled']:
+                            config_with_enabled_path['enabledPath'] = runtime_config['enabled']['valuePath']
+
                         runtime_data = {
-                            'config': runtime_config,
+                            'config': config_with_enabled_path,
                             'manifest': kustomize_runtimes[resource_key]
                         }
                         runtimes.append(runtime_data)

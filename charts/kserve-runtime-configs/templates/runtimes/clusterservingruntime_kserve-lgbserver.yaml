@@ -1,4 +1,5 @@
 {{- if .Values.runtimes.enabled }}
+{{- if .Values.runtimes.lightgbm.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -33,4 +34,5 @@ spec:
     name: lightgbm
     priority: 2
     version: "4"
+{{- end }}
 {{- end }}

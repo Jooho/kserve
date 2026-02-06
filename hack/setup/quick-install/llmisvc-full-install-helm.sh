@@ -1305,6 +1305,7 @@ install_kserve_helm() {
             --namespace "${KSERVE_NAMESPACE}" \
             --create-namespace \
             --wait \
+            --set kserve.version="${KSERVE_VERSION}" \
             --set runtimes.enabled=${INSTALL_RUNTIMES} \
             --set llmisvcConfigs.enabled=${INSTALL_LLMISVC_CONFIGS}
         log_success "Successfully installed Runtimes/LLMISVC configs"

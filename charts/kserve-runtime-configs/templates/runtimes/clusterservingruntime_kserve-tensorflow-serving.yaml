@@ -1,4 +1,5 @@
 {{- if .Values.runtimes.enabled }}
+{{- if .Values.runtimes.tensorflow.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -41,4 +42,5 @@ spec:
     name: tensorflow
     priority: 2
     version: "2"
+{{- end }}
 {{- end }}

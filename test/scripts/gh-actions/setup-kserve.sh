@@ -49,19 +49,17 @@ popd
 
 
 if [[ $ENABLE_LLMISVC == "false" ]]; then
-  #TODO: Refactor this to use the same logic for both kustomize and helm
   if [[ $INSTALL_METHOD == "helm" ]]; then
     KSERVE_EXTRA_ARGS="--set kserve.controller.containers.manager.imagePullPolicy=IfNotPresent" \
     LOCALMODEL_EXTRA_ARGS="--set localmodel.controller.containers.manager.imagePullPolicy=IfNotPresent" \
-    SET_KSERVE_VERSION=${TAG} ENABLE_LOCALMODEL=true USE_LOCAL_CHARTS=true INSTALL_RUNTIMES=false \
+    SET_KSERVE_VERSION=${TAG} ENABLE_LOCALMODEL=true USE_LOCAL_CHARTS=true INSTALL_RUNTIMES=true \
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
     kustomize build config/overlays/test/s3-local-backend | kubectl apply --server-side --force-conflicts -f -
   else
-    KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    SET_KSERVE_VERSION=${TAG} KSERVE_OVERLAY_DIR=test INSTALL_RUNTIMES=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    echo "Installing KServe Runtimes..."
+    kubectl apply --server-side=true -k config/overlays/test/clusterresources
   fi
-
-  echo "Installing KServe Runtimes..."
-  kubectl apply --server-side=true -k config/overlays/test/clusterresources
 
   kubectl get events -A
 
@@ -72,11 +70,10 @@ if [[ $ENABLE_LLMISVC == "false" ]]; then
   echo "Add storageSpec testing secrets ..."
   kubectl apply -f config/overlays/test/s3-local-backend/storage-config-secret.yaml -n kserve-ci-e2e-test
 else
-  #TODO: Refactor this to use the same logic for both kustomize and helm
   if [[ $INSTALL_METHOD == "helm" ]]; then
     SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ENABLE_KSERVE=false LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent" ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
-    INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true KSERVE_OVERLAY_DIR=test-llmisvc ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    SET_KSERVE_VERSION=${TAG} INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true ENABLE_LLMISVC=true ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi
 fi
 

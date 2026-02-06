@@ -29,7 +29,6 @@
 #                        If set, uses specified overlay instead of auto-selected ones
 #                        Special overlays:
 #                          - test: KServe + LocalModel (for testing)
-#                          - test-llmisvc: LLMISVC only (for testing)
 #
 #   DEPLOYMENT_MODE - Default deployment mode (default: Knative)
 #
@@ -91,6 +90,7 @@ export INSTALL_MODE="kustomize"
 
 # VARIABLES
 # KSERVE_NAMESPACE is defined in global-vars.env
+SET_KSERVE_VERSION="${SET_KSERVE_VERSION:-}"
 ENABLE_KSERVE="${ENABLE_KSERVE:-${KSERVE:-true}}"
 ENABLE_LLMISVC="${ENABLE_LLMISVC:-${LLMISVC:-false}}"
 ENABLE_LOCALMODEL="${ENABLE_LOCALMODEL:-${LOCALMODEL:-false}}"
@@ -122,10 +122,7 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
     TARGET_OVERLAY_DIRS+=("${REPO_ROOT}/config/overlays/${KSERVE_OVERLAY_DIR}")
     if [ "${KSERVE_OVERLAY_DIR}" == "test" ]; then
         TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS} ${LOCALMODEL_CRDS}")
-        TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager")
-    elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
-        TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
-        TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
+        TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager")   
     fi
 else
     if [ "${ENABLE_KSERVE}" = "true" ]; then
@@ -153,6 +150,10 @@ else
         TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
         TARGET_OVERLAY_DIRS+=("${LOCALMODEL_CONFIG_DIR}")
         TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
+    fi
+    if [ "${SET_KSERVE_VERSION}" != "" ]; then
+        log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
+        KSERVE_VERSION="${SET_KSERVE_VERSION}"
     fi
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
@@ -201,6 +202,33 @@ uninstall() {
 }
 
 install() {
+    update_kustomize_image_tags() {
+        log_info "Updating image tags to ${KSERVE_VERSION}..."
+        # Update inferenceservice image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/configmap/inferenceservice.yaml
+
+        # Update runtimes image tags
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/runtimes/kustomization.yaml
+
+        # Update controller image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/default/manager_image_patch.yaml
+
+        # Update localmodel controller image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/localmodels/localmodel_manager_image_patch.yaml
+
+        # Update localmodel agent image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/localmodelnodes/localmodelnode_agent_image_patch.yaml
+
+        # Update llmisvc controller image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/llmisvc/llmisvc_manager_image_patch.yaml
+
+        # Update StorageInitializer image tag
+        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/storagecontainers/kustomization.yaml
+
+    }
+
+    update_kustomize_image_tags
+
     if kubectl get deployment kserve-controller-manager -n "${KSERVE_NAMESPACE}" &>/dev/null; then
         if [ "$REINSTALL" = false ]; then
           if [ "$UPDATE" = true ]; then

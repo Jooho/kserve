@@ -154,12 +154,12 @@ To learn more about the release, try:
         # Add component status based on what's in the mapping
         if 'inferenceServiceConfig' in self.mapping or 'certManager' in self.mapping:
             notes += '''Component Status:
-{{- if .Values.inferenceServiceConfig.enabled }}
+{{- if .Values.inferenceServiceConfig.enabled | default .Values.kserve.createSharedResources }}
   ✓ InferenceService Config: Enabled
 {{- else }}
   ✗ InferenceService Config: Disabled
 {{- end }}
-{{- if .Values.certManager.enabled }}
+{{- if .Values.certManager.enabled | default .Values.kserve.createSharedResources }}
   ✓ Cert-Manager Issuer: Enabled
 {{- else }}
   ✗ Cert-Manager Issuer: Disabled

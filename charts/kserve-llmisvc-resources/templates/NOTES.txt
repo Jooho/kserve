@@ -8,12 +8,12 @@ To learn more about the release, try:
   $ helm get all {{ .Release.Name }}
 
 Component Status:
-{{- if .Values.inferenceServiceConfig.enabled }}
+{{- if .Values.inferenceServiceConfig.enabled | default .Values.kserve.createSharedResources }}
   ✓ InferenceService Config: Enabled
 {{- else }}
   ✗ InferenceService Config: Disabled
 {{- end }}
-{{- if .Values.certManager.enabled }}
+{{- if .Values.certManager.enabled | default .Values.kserve.createSharedResources }}
   ✓ Cert-Manager Issuer: Enabled
 {{- else }}
   ✗ Cert-Manager Issuer: Disabled

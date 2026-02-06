@@ -1,4 +1,5 @@
 {{- if .Values.runtimes.enabled }}
+{{- if .Values.runtimes.xgboost.enabled }}
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
@@ -33,4 +34,5 @@ spec:
     name: xgboost
     priority: 2
     version: "2"
+{{- end }}
 {{- end }}
