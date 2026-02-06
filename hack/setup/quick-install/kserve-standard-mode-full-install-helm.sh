@@ -1284,16 +1284,20 @@ install_kserve() {
         # Update deployment mode if needed
         if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
             log_info "Adding deployment mode configuration: ${DEPLOYMENT_MODE}"
-            config_args+=" --set deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\""
+            config_args+=" --set inferenceServiceConfig.deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\""
         fi
 
         # Enable Gateway API for KServe(ISVC) if needed
         if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
             log_info "Adding Gateway API configuration: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
-            config_args+=" --set ingress.enableGatewayApi=true"
-            config_args+=" --set ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\""
+            config_args+=" --set inferenceServiceConfig.ingress.enableGatewayApi=true"
+            config_args+=" --set inferenceServiceConfig.ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\""
         fi
 
+        if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
+            config_args+=" --set inferenceServiceConfig.localModel.enabled=true"
+            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}"
+        fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
             log_info "Adding custom configurations: ${KSERVE_CUSTOM_ISVC_CONFIGS}"
@@ -1522,6 +1526,11 @@ main() {
         set_env_with_priority "DEPLOYMENT_MODE" "Standard" "" ""
         determine_shared_resources_config
         
+        if [ "${SET_KSERVE_VERSION}" != "" ]; then
+            log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
+            KSERVE_VERSION="${SET_KSERVE_VERSION}"
+        fi
+        
         # Build chart arrays based on ENABLE_* flags
         if [ "${ENABLE_KSERVE}" = "true" ]; then
             log_info "KServe is enabled"
@@ -1545,11 +1554,6 @@ main() {
             RESOURCE_CHARTS+=("kserve-localmodel-resources")
             RESOURCE_EXTRA_ARGS_LIST+=("${LOCALMODEL_EXTRA_ARGS:-}")
             TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
-        fi
-        
-        if [ "${SET_KSERVE_VERSION}" != "" ]; then
-            log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
-            KSERVE_VERSION="${SET_KSERVE_VERSION}"
         fi
         
         if [ "${USE_LOCAL_CHARTS}" = "true" ]; then

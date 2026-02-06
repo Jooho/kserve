@@ -125,6 +125,11 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
         TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager")   
     fi
 else
+    if [ "${SET_KSERVE_VERSION}" != "" ]; then
+        log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
+        KSERVE_VERSION="${SET_KSERVE_VERSION}"
+    fi
+
     if [ "${ENABLE_KSERVE}" = "true" ]; then
         TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
         TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
@@ -150,10 +155,6 @@ else
         TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
         TARGET_OVERLAY_DIRS+=("${LOCALMODEL_CONFIG_DIR}")
         TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
-    fi
-    if [ "${SET_KSERVE_VERSION}" != "" ]; then
-        log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
-        KSERVE_VERSION="${SET_KSERVE_VERSION}"
     fi
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
@@ -311,7 +312,10 @@ install() {
             config_updates+=("ingress.enableGatewayApi=true")
             config_updates+=("ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\"")
         fi
-
+        if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
+            config_updates+=("inferenceServiceConfig.localModel.enabled=true")
+            config_updates+=("inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}")
+        fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
             log_info "Adding custom configurations: ${KSERVE_CUSTOM_ISVC_CONFIGS}"
