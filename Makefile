@@ -190,7 +190,6 @@ manifests: controller-gen yq
 	# Copy the full crd to the helm chart
 	cp config/crd/full/*.yaml charts/kserve-crd/templates/
 	rm charts/kserve-crd/templates/kustomization.yaml
-	cp config/crd/full/serving.kserve.io_clusterstoragecontainers.yaml charts/kserve-llmisvc-crd/templates/
 	# Replace cert-manager namespace references in kserve core CRDs (if any exist in future)
 	sed -i 's|cert-manager.io/inject-ca-from: kserve/|cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/|g' charts/kserve-crd/templates/*.yaml
 	sed -i 's|cert-manager.io/issuer: kserve/|cert-manager.io/issuer: {{ .Release.Namespace }}/|g' charts/kserve-crd/templates/*.yaml
@@ -210,7 +209,6 @@ manifests: controller-gen yq
 	
 	# Copy the minimal crd to the helm chart
 	cp config/crd/minimal/*.yaml charts/kserve-crd-minimal/templates/
-	cp config/crd/minimal/serving.kserve.io_clusterstoragecontainers.yaml charts/kserve-llmisvc-crd-minimal/templates/
 	cp config/crd/minimal/llmisvc/*.yaml charts/kserve-llmisvc-crd-minimal/templates/
 	cp config/crd/minimal/localmodel/*.yaml charts/kserve-localmodel-crd-minimal/templates/
 	cp -f config/crd/minimal/*.yaml charts/kserve-crd-minimal/templates/

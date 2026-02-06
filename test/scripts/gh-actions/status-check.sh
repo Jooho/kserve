@@ -17,7 +17,7 @@ echo "::group::K8s Events in kserve namespace"
 kubectl get events -n kserve
 echo "::endgroup::"
 
-echo "::group::Gather logs in kserve namespace"
+echo "::group::Describe pods/Gather logs in kserve namespace"
 if ! kubectl get namespace kserve &>/dev/null; then
   echo "⚠️ Namespace kserve does not exist, skipping..."
   return
@@ -27,6 +27,19 @@ for pod in $(kubectl get pods -n  kserve -o jsonpath='{.items[*].metadata.name}'
   echo "--- Pod: $pod ---"
   kubectl describe pods -n kserve $pod
   kubectl logs -n kserve $pod --all-containers=true --tail=1000 2>&1
+  echo "--- End Pod: $pod ---"
+done
+echo "::endgroup::"
+
+echo "::group::Pod manifest in kserve namespace"
+if ! kubectl get namespace kserve &>/dev/null; then
+  echo "⚠️ Namespace kserve does not exist, skipping..."
+  return
+fi
+
+for pod in $(kubectl get pods -n  kserve -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  echo "--- Pod: $pod ---"
+  kubectl get pods -n kserve $pod -o yaml
   echo "--- End Pod: $pod ---"
 done
 echo "::endgroup::"

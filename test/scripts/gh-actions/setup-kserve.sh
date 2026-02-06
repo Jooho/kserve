@@ -50,7 +50,7 @@ popd
 
 if [[ $ENABLE_LLMISVC == "false" ]]; then
   if [[ $INSTALL_METHOD == "helm" ]]; then
-    export KSERVE_EXTRA_ARGS="--set kserve.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent" 
+    export KSERVE_EXTRA_ARGS="--set kserve.controller.containers.manager.imagePullPolicy=IfNotPresent" 
     export LOCALMODEL_EXTRA_ARGS="--set localmodel.controller.containers.manager.imagePullPolicy=IfNotPresent --set localmodel.nodeAgent.containers.manager.imagePullPolicy=IfNotPresent" 
     export ENABLE_LOCALMODEL=true
     export SET_KSERVE_VERSION=${TAG}
@@ -81,7 +81,7 @@ else
     export SET_KSERVE_VERSION=${TAG}
     export USE_LOCAL_CHARTS=true
     export ENABLE_KSERVE=false
-    export LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent" 
+    export LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent" 
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
     export SET_KSERVE_VERSION=${TAG}
