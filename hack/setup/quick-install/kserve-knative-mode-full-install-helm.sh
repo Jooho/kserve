@@ -1056,19 +1056,20 @@ install_kserve() {
         # Update deployment mode if needed
         if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
             log_info "Adding deployment mode configuration: ${DEPLOYMENT_MODE}"
-            config_args+=" --set inferenceServiceConfig.deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\""
+            config_args+=" --set inferenceServiceConfig.deploy.defaultDeploymentMode=${DEPLOYMENT_MODE}"
         fi
 
         # Enable Gateway API for KServe(ISVC) if needed
         if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
             log_info "Adding Gateway API configuration: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
             config_args+=" --set inferenceServiceConfig.ingress.enableGatewayApi=true"
-            config_args+=" --set inferenceServiceConfig.ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\""
+            config_args+=" --set inferenceServiceConfig.ingress.ingressClassName=${GATEWAY_NETWORK_LAYER}"
         fi
 
         if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
             config_args+=" --set inferenceServiceConfig.localModel.enabled=true"
-            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}"
+            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer"
+            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImageTag=${KSERVE_VERSION}"
         fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then

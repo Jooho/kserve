@@ -317,14 +317,14 @@ install() {
         # Update deployment mode if needed
         if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
             log_info "Adding deployment mode update: ${DEPLOYMENT_MODE}"
-            config_updates+=("deploy.defaultDeploymentMode=\"${DEPLOYMENT_MODE}\"")
+            config_updates+=("deploy.defaultDeploymentMode=${DEPLOYMENT_MODE}")
         fi
 
         # Enable Gateway API for KServe(ISVC) if needed
         if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
             log_info "Adding Gateway API updates: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
             config_updates+=("ingress.enableGatewayApi=true")
-            config_updates+=("ingress.ingressClassName=\"${GATEWAY_NETWORK_LAYER}\"")
+            config_updates+=("ingress.ingressClassName=${GATEWAY_NETWORK_LAYER}")
         fi
         if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
             log_info "Adding LocalModel updates: enabled=true, defaultJobImage=kserve/storage-initializer:${KSERVE_VERSION}"
