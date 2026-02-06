@@ -137,6 +137,10 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
         TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
         TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager")
         TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
+    elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
+        TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")        
+        TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")        
+        TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")        
     fi
 else
     if [ "${SET_KSERVE_VERSION}" != "" ]; then

@@ -87,6 +87,7 @@ else
     export SET_KSERVE_VERSION=${TAG}
     export INSTALL_RUNTIMES=false
     export INSTALL_LLMISVC_CONFIGS=true
+    export KSERVE_OVERLAY_DIR=test-llmisvc
     export ENABLE_LLMISVC=true
     export ENABLE_KSERVE=false
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
