@@ -75,7 +75,7 @@ else
     LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent" \
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
-    SET_KSERVE_VERSION=${TAG} INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true ENABLE_LLMISVC=true ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
+    SET_KSERVE_VERSION=${TAG} INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true ENABLE_LLMISVC=true ENABLE_KSERVE=false ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh
   fi
 fi
 
