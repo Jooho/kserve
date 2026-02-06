@@ -51,7 +51,7 @@ popd
 if [[ $ENABLE_LLMISVC == "false" ]]; then
   if [[ $INSTALL_METHOD == "helm" ]]; then
     KSERVE_EXTRA_ARGS="--set kserve.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent" \
-    LOCALMODEL_EXTRA_ARGS="--set localmodel.controller.containers.manager.imagePullPolicy=IfNotPresent" \
+    LOCALMODEL_EXTRA_ARGS="--set localmodel.controller.containers.manager.imagePullPolicy=IfNotPresent --set localmodel.nodeAgent.containers.manager.imagePullPolicy=IfNotPresent" \
     SET_KSERVE_VERSION=${TAG} ENABLE_LOCALMODEL=true USE_LOCAL_CHARTS=true INSTALL_RUNTIMES=true \
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
     kustomize build config/overlays/test/s3-local-backend | kubectl apply --server-side --force-conflicts -f -
@@ -72,7 +72,7 @@ if [[ $ENABLE_LLMISVC == "false" ]]; then
 else
   if [[ $INSTALL_METHOD == "helm" ]]; then
     SET_KSERVE_VERSION=${TAG} USE_LOCAL_CHARTS=true ENABLE_KSERVE=false \
-    LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent --set storageContainer.container.tag=${TAG}" \
+    LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent --set storageContainer.container.imagePullPolicy=IfNotPresent" \
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
     SET_KSERVE_VERSION=${TAG} INSTALL_RUNTIMES=false INSTALL_LLMISVC_CONFIGS=true ENABLE_LLMISVC=true ${REPO_ROOT}/hack/setup/infra/manage.kserve-kustomize.sh

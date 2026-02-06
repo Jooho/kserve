@@ -7,7 +7,7 @@ metadata:
     {{- include "llmisvc.labels" . | nindent 4 }}
 spec:
   container:
-    image: {{ .Values.storageContainer.container.image }}:{{ .Values.storageContainer.container.tag }}
+    image: {{ .Values.storageContainer.container.image }}:{{ .Values.storageContainer.container.tag | default .Values.kserve.version }}
     imagePullPolicy: {{ .Values.storageContainer.container.imagePullPolicy }}
     name: {{ .Values.storageContainer.container.name }}
     resources: {{- toYaml .Values.storageContainer.container.resources | nindent 6 }}

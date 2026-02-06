@@ -133,10 +133,15 @@ class GenericPlaceholderGenerator(BaseGenerator):
                 if 'repository' in img_config and 'tag' in img_config:
                     img_repo_path = img_config['repository']['valuePath']
                     img_tag_path = img_config['tag']['valuePath']
+                    # Get fallback from tag config (same as workload_generator.py)
+                    img_tag_config = img_config['tag']
+                    fallback = img_tag_config.get('fallback', '')
                     placeholder_key = f'__CONTAINER_IMAGE_PLACEHOLDER_{img_repo_path}_{img_tag_path}__'
                     if 'spec' in manifest and 'container' in manifest['spec']:
                         manifest['spec']['container']['image'] = placeholder_key
-                        placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{{{{ .Values.{img_tag_path} }}}}'
+                        # Use build_template_with_fallback for tag (same pattern as other image tags)
+                        tag_template = build_template_with_fallback(img_tag_path, fallback)
+                        placeholders[placeholder_key] = f'{{{{ .Values.{img_repo_path} }}}}:{tag_template}'
 
             # Handle resources for container
             if 'resources' in container_config:

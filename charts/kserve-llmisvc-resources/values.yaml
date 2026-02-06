@@ -145,7 +145,7 @@ storageContainer:
   container:
     name: storage-initializer
     image: kserve/storage-initializer
-    tag: latest
+    tag: ''
     imagePullPolicy: Always
     resources:
       limits:

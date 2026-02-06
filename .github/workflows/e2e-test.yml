@@ -166,6 +166,14 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      - name: Upload predictiveserver image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ${{ env.DOCKER_IMAGES_PATH }}/${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload image transformer image
         uses: actions/upload-artifact@v4
         with:
@@ -458,6 +466,12 @@ jobs:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.XGB_IMG }}-${{ env.TAG }}
           path: ./tmp
 
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
       - name: Load docker images
         uses: ./.github/actions/load-docker-images
         with:
@@ -540,6 +554,12 @@ jobs:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.XGB_IMG }}-${{ env.TAG }}
           path: ./tmp
 
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
       - name: Load docker images
         uses: ./.github/actions/load-docker-images
         with:
@@ -614,6 +634,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.LGB_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
           path: ./tmp
 
       - name: Download transformer image
@@ -700,6 +726,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.SKLEARN_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
           path: ./tmp
 
       - name: Load docker images
@@ -847,6 +879,12 @@ jobs:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.XGB_IMG }}-${{ env.TAG }}
           path: ./tmp
 
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
       - name: Download custom model grpc image
         uses: actions/download-artifact@v4
         with:
@@ -976,6 +1014,12 @@ jobs:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.XGB_IMG }}-${{ env.TAG }}
           path: ./tmp
 
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
       - name: Download custom model grpc image
         uses: actions/download-artifact@v4
         with:
@@ -1095,6 +1139,12 @@ jobs:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.SKLEARN_IMG }}-${{ env.TAG }}
           path: ./tmp
 
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
       - name: Load docker images
         uses: ./.github/actions/load-docker-images
         with:
@@ -1176,6 +1226,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.XGB_IMG }}-${{ env.TAG }}
+          path: ./tmp
+
+      - name: Download predictiveserver image
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PREDICTOR_ARTIFACT_PREFIX }}-${{ env.PREDICTIVE_IMG }}-${{ env.TAG }}
           path: ./tmp
 
       - name: Load docker images

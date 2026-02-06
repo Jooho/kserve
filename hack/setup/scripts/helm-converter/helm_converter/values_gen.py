@@ -12,7 +12,7 @@ from .values_generator.utils import OrderedDumper, generate_header, print_keys
 from .values_generator.configmap_builder import ConfigMapBuilder
 from .values_generator.component_builder import ComponentBuilder
 from .values_generator.runtime_builder import RuntimeBuilder
-from .values_generator.path_extractor import process_field_with_priority
+from .values_generator.path_extractor import process_field_with_priority, extract_from_manifest
 from .generators.utils import load_kserve_deps_env, get_field_value, set_nested_value
 
 
@@ -150,28 +150,62 @@ class ValuesGenerator:
                 if has_value:
                     storage_values['enabled'] = enabled_value
 
-            # Extract container configuration
-            if 'spec' in storage_manifest and 'container' in storage_manifest['spec']:
-                container_spec = storage_manifest['spec']['container']
+            # Extract container configuration using mapper settings
+            container_config = storage_config.get('clusterStorageContainer', {}).get('container', {})
+            if container_config:
                 storage_values['container'] = {}
 
-                # Extract container name
-                if 'name' in container_spec:
-                    storage_values['container']['name'] = container_spec['name']
+                # Extract name using mapper
+                if 'name' in container_config:
+                    has_value, name_value = process_field_with_priority(
+                        container_config['name'],
+                        storage_manifest,
+                        extract_from_manifest
+                    )
+                    if has_value:
+                        storage_values['container']['name'] = name_value
 
-                # Extract image (split image:tag)
-                if 'image' in container_spec:
-                    image_parts = container_spec['image'].rsplit(':', 1)
-                    storage_values['container']['image'] = image_parts[0]
-                    storage_values['container']['tag'] = image_parts[1] if len(image_parts) > 1 else 'latest'
+                # Extract image repository and tag using mapper (respects value="" for fallback)
+                if 'image' in container_config:
+                    # Repository
+                    if 'repository' in container_config['image']:
+                        has_value, repo_value = process_field_with_priority(
+                            container_config['image']['repository'],
+                            storage_manifest,
+                            extract_from_manifest
+                        )
+                        if has_value:
+                            storage_values['container']['image'] = repo_value
 
-                # Extract imagePullPolicy
-                if 'imagePullPolicy' in container_spec:
-                    storage_values['container']['imagePullPolicy'] = container_spec['imagePullPolicy']
+                    # Tag (mapper has value="", which enables fallback to kserve.version)
+                    if 'tag' in container_config['image']:
+                        has_value, tag_value = process_field_with_priority(
+                            container_config['image']['tag'],
+                            storage_manifest,
+                            extract_from_manifest
+                        )
+                        if has_value:
+                            storage_values['container']['tag'] = tag_value
 
-                # Extract resources
-                if 'resources' in container_spec:
-                    storage_values['container']['resources'] = container_spec['resources']
+                # Extract imagePullPolicy using mapper
+                if 'imagePullPolicy' in container_config:
+                    has_value, policy_value = process_field_with_priority(
+                        container_config['imagePullPolicy'],
+                        storage_manifest,
+                        extract_from_manifest
+                    )
+                    if has_value:
+                        storage_values['container']['imagePullPolicy'] = policy_value
+
+                # Extract resources using mapper
+                if 'resources' in container_config:
+                    has_value, resources_value = process_field_with_priority(
+                        container_config['resources'],
+                        storage_manifest,
+                        extract_from_manifest
+                    )
+                    if has_value:
+                        storage_values['container']['resources'] = resources_value
 
             # Extract supportedUriFormats
             if 'spec' in storage_manifest and 'supportedUriFormats' in storage_manifest['spec']:

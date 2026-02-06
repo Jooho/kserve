@@ -118,7 +118,7 @@ KServe Predictive AI - Traditional ML and Deep Learning Model Serving Platform
 | storageContainer.container.resources.limits.memory | string | `"1Gi"` |  |
 | storageContainer.container.resources.requests.cpu | string | `"100m"` |  |
 | storageContainer.container.resources.requests.memory | string | `"100Mi"` |  |
-| storageContainer.container.tag | string | `"latest"` |  |
+| storageContainer.container.tag | string | `""` |  |
 | storageContainer.enabled | string | `""` |  |
 | storageContainer.supportedUriFormats[0].prefix | string | `"gs://"` |  |
 | storageContainer.supportedUriFormats[1].prefix | string | `"s3://"` |  |
