@@ -35,7 +35,7 @@ install() {
             log_info "yq ${current_version} is already installed in ${BIN_DIR} (>= ${YQ_VERSION})"
             return 0
         fi
-        [[ -n "$current_version" ]] && log_info "Upgrading yq from ${current_version} to ${YQ_VERSION}..."
+        [[ -n "$current_version" ]] && log_info "Replacing yq ${current_version} with ${YQ_VERSION} in ${BIN_DIR}..."
     fi
 
     local temp_file=$(mktemp)
