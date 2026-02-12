@@ -383,15 +383,15 @@ func (isvc *InferenceService) assignPaddleRuntime() {
 }
 
 func (isvc *InferenceService) SetRuntimeDefaults(runtimeAnnotations map[string]string) {
-	if runtimeAnnotations == nil {
-		return
-	}
-
+	// Try annotation-based approach first (new way)
 	serverType, exists := runtimeAnnotations[constants.ServerTypeAnnotationKey]
-	if !exists {
-		return
+
+	// Fallback to runtime name-based approach for backward compatibility (old way)
+	if !exists && isvc.Spec.Predictor.Model.Runtime != nil {
+		serverType = constants.GetServerTypeFromRuntimeName(*isvc.Spec.Predictor.Model.Runtime)
 	}
 
+	// Apply server-specific defaults based on server type
 	switch serverType {
 	case constants.ServerTypeMLServer:
 		isvc.SetMlServerDefaults()

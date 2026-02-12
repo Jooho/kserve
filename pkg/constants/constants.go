@@ -575,6 +575,21 @@ const (
 	ServerTypeXGBoostServer     = "xgbserver"
 )
 
+// GetServerTypeFromRuntimeName converts runtime name to server type for backward compatibility.
+// This enables fallback from annotation-based to name-based runtime detection.
+func GetServerTypeFromRuntimeName(runtimeName string) string {
+	switch runtimeName {
+	case MLServer:
+		return ServerTypeMLServer
+	case TorchServe:
+		return ServerTypeTorchServe
+	case TritonServer:
+		return ServerTypeTritonServer
+	default:
+		return ""
+	}
+}
+
 const (
 	ModelClassLabel = "modelClass"
 	ServiceEnvelope = "serviceEnvelope"
