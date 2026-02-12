@@ -361,7 +361,7 @@ kind: ClusterServingRuntime
 metadata:
   name: kserve-tritonserver
   annotations:
-    serving.kserve.io/serverType: triton
+    serving.kserve.io/serverType: tritonserver
 spec:
   disabled: {{ .Values.kserve.servingruntime.tritonserver.disabled }}
   annotations:
