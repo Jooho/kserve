@@ -6,9 +6,8 @@ TOOLS:
   - kustomize
   - yq
   
+INCLUDE_DEFINITIONS:
+  - ./kserve-knative-mode-dependency-install.definition
+    
 COMPONENTS:
-  - name: cert-manager
-  - name: istio
-  - name: istio-ingress-class
-  - name: knative-operator
   - name: kserve-helm

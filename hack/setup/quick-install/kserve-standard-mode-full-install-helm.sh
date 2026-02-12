@@ -766,6 +766,39 @@ install_yq() {
 }
 
 # ----------------------------------------
+# CLI/Component: gateway-api-extension-crd
+# ----------------------------------------
+
+uninstall_gateway_api_extension_crd() {
+    log_info "Uninstalling Gateway Inference Extension CRDs..."
+    kubectl delete -f "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GIE_VERSION}/manifests.yaml" --ignore-not-found=true 2>/dev/null || true
+    log_success "Gateway Inference Extension CRDs uninstalled"
+}
+
+install_gateway_api_extension_crd() {
+    if kubectl get crd inferencepools.inference.networking.x-k8s.io &>/dev/null; then
+        if [ "$REINSTALL" = false ]; then
+            log_info "Gateway Inference Extension CRDs are already installed. Use --reinstall to reinstall."
+            return 0
+        else
+            log_info "Reinstalling Gateway Inference Extension CRDs..."
+            uninstall_gateway_api_extension_crd
+        fi
+    fi
+
+    log_info "Installing Gateway Inference Extension CRDs ${GIE_VERSION}..."
+    kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GIE_VERSION}/manifests.yaml"
+
+    log_success "Successfully installed Gateway Inference Extension CRDs ${GIE_VERSION}"
+
+    wait_for_crds "60s" \
+        "inferencepools.inference.networking.x-k8s.io" \
+        "inferenceobjectives.inference.networking.x-k8s.io"
+
+    log_success "Gateway Inference Extension CRDs are ready!"
+}
+
+# ----------------------------------------
 # CLI/Component: cert-manager
 # ----------------------------------------
 
@@ -1452,6 +1485,7 @@ main() {
         uninstall_keda_otel_addon
         uninstall_keda
         uninstall_cert_manager
+        uninstall_gateway_api_extension_crd
         
         
         
@@ -1470,6 +1504,7 @@ main() {
     install_helm
     install_kustomize
     install_yq
+    install_gateway_api_extension_crd
     install_cert_manager
     install_keda
     install_keda_otel_addon
