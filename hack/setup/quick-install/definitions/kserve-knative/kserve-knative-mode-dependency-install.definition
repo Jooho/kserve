@@ -9,7 +9,4 @@ COMPONENTS:
   - name: cert-manager
   - name: istio
   - name: istio-ingress-class
-  - name: knative-operator
-  - name: keda
-  - name: keda-otel-addon
-  - name: opentelemetry
+  - name: knative-operator  

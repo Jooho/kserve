@@ -443,18 +443,17 @@ set_env_with_priority() {
     local current_value
     eval "current_value=\${${var_name}}"
 
-    # If current value differs from default/component/global, it must be runtime - keep it
-    if [ -n "$current_value" ] && [ "$current_value" != "$default_value" ] &&
-       [ "$current_value" != "$component_value" ] && [ "$current_value" != "$global_value" ]; then
+    # If current value exists and differs from default, it's a runtime value - keep it
+    if [ -n "$current_value" ] && [ -n "$default_value" ] && [ "$current_value" != "$default_value" ]; then
         # This is a runtime value, keep it
         return
     fi
 
     # Apply priority: component env > global env > default
     if [ -n "$component_value" ]; then
-        export "$var_name=$component_value"
+        eval "export $var_name=\"$component_value\""
     elif [ -n "$global_value" ]; then
-        export "$var_name=$global_value"
+        eval "export $var_name=\"$global_value\""
     fi
     # If both are empty, variable keeps its default value
 }
@@ -540,6 +539,7 @@ DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-Knative}"
 GATEWAY_NETWORK_LAYER="${GATEWAY_NETWORK_LAYER:-false}"
 LLMISVC="${LLMISVC:-false}"
 EMBED_MANIFESTS="${EMBED_MANIFESTS:-false}"
+EMBED_TEMPLATES="${EMBED_TEMPLATES:-false}"
 KSERVE_CUSTOM_ISVC_CONFIGS="${KSERVE_CUSTOM_ISVC_CONFIGS:-}"
 
 #================================================
@@ -553,6 +553,33 @@ TEMPLATE_DIR="${REPO_ROOT}/hack/setup/infra/external-lb/templates"
 GATEWAYCLASS_NAME="${GATEWAYCLASS_NAME:-envoy}"
 CONTROLLER_NAME="${CONTROLLER_NAME:-gateway.envoyproxy.io/gatewayclass-controller}"
 GATEWAY_NAME="kserve-ingress-gateway"
+
+#================================================
+# Template Functions (EMBED_TEMPLATES MODE)
+#================================================
+
+# ============================================================================
+# Template Functions: external-lb
+# ============================================================================
+
+get_metallb_config() {
+    cat <<'METALLB_CONFIG_EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: metallb-system
+  name: config
+data:
+  config: |
+    address-pools:
+    - name: default
+      protocol: layer2
+      addresses:
+      - {{START}}-{{END}}
+METALLB_CONFIG_EOF
+}
+
+
 
 #================================================
 # Component Functions
@@ -617,66 +644,6 @@ install_helm() {
 
     log_success "Successfully installed Helm ${HELM_VERSION} to ${BIN_DIR}/helm"
     helm version
-}
-
-# ----------------------------------------
-# CLI/Component: kustomize
-# ----------------------------------------
-
-
-
-install_kustomize() {
-    local os=$(detect_os)
-    local arch=$(detect_arch)
-    local archive_name="kustomize_${KUSTOMIZE_VERSION}_${os}_${arch}.tar.gz"
-    local download_url="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${archive_name}"
-
-    log_info "Installing Kustomize ${KUSTOMIZE_VERSION} for ${os}/${arch}..."
-
-    if command -v kustomize &>/dev/null; then
-        local current_version=$(kustomize version --short 2>/dev/null | grep -oP 'v[0-9.]+')
-        if [[ -n "$current_version" ]] && version_gte "$current_version" "$KUSTOMIZE_VERSION"; then
-            log_info "Kustomize ${current_version} is already installed (>= ${KUSTOMIZE_VERSION})"
-            return 0
-        fi
-        [[ -n "$current_version" ]] && log_info "Upgrading Kustomize from ${current_version} to ${KUSTOMIZE_VERSION}..."
-    fi
-
-    local temp_dir=$(mktemp -d)
-    local temp_file="${temp_dir}/${archive_name}"
-
-    if command -v wget &>/dev/null; then
-        wget -q "${download_url}" -O "${temp_file}"
-    elif command -v curl &>/dev/null; then
-        curl -sL "${download_url}" -o "${temp_file}"
-    else
-        log_error "Neither wget nor curl is available" >&2
-        rm -rf "${temp_dir}"
-        exit 1
-    fi
-
-    tar -xzf "${temp_file}" -C "${temp_dir}"
-
-    local binary_path="${temp_dir}/kustomize"
-
-    if [[ ! -f "${binary_path}" ]]; then
-        log_error "kustomize binary not found in archive" >&2
-        rm -rf "${temp_dir}"
-        exit 1
-    fi
-
-    chmod +x "${binary_path}"
-
-    if [[ -w "${BIN_DIR}" ]]; then
-        mv "${binary_path}" "${BIN_DIR}/kustomize"
-    else
-        sudo mv "${binary_path}" "${BIN_DIR}/kustomize"
-    fi
-
-    rm -rf "${temp_dir}"
-
-    log_success "Successfully installed Kustomize ${KUSTOMIZE_VERSION} to ${BIN_DIR}/kustomize"
-    kustomize version
 }
 
 # ----------------------------------------
@@ -988,8 +955,14 @@ install_external_lb() {
 
             log_info "Configuring MetalLB IP range: ${START}-${END}"
 
-            sed -e "s/{{START}}/${START}/g" -e "s/{{END}}/${END}/g" \
-                "${TEMPLATE_DIR}/metallb-config.yaml.tmpl" | kubectl apply -f -
+            if [ "$EMBED_TEMPLATES" = "true" ]; then
+                get_metallb_config | \
+                    sed -e "s/{{START}}/${START}/g" -e "s/{{END}}/${END}/g" | \
+                    kubectl apply -f -
+            else
+                sed -e "s/{{START}}/${START}/g" -e "s/{{END}}/${END}/g" \
+                    "${TEMPLATE_DIR}/metallb-config.yaml.tmpl" | kubectl apply -f -
+            fi
 
             kubectl rollout restart deployment controller -n metallb-system
             kubectl rollout status deployment controller -n metallb-system --timeout=60s
@@ -1271,7 +1244,6 @@ main() {
         uninstall_cert_manager
         
         
-        
         echo "=========================================="
         echo "✅ Uninstallation completed!"
         echo "=========================================="
@@ -1282,10 +1254,9 @@ main() {
     echo "Install KServe Standard Mode/LLMIsvc dependencies"
     echo "=========================================="
 
-
+    export EMBED_TEMPLATES="true"
 
     install_helm
-    install_kustomize
     install_yq
     install_cert_manager
     install_keda
