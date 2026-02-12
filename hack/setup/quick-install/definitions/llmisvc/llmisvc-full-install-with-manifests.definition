@@ -5,15 +5,10 @@ TOOLS:
   - helm
   - yq
 
+INCLUDE_DEFINITIONS:
+  - ./llmisvc-dependency-install.definition
+  
 COMPONENTS:
-  - name: external-lb
-  - name: cert-manager
-  - name: gateway-api-extension-crd
-  - name: envoy-gateway
-  - name: envoy-ai-gateway
-  - name: gateway-api-gwclass
-  - name: gateway-api-gw
-  - name: lws-operator
   - name: kserve-kustomize
     env:
       LLMISVC: "true"
