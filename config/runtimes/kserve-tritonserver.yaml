@@ -3,7 +3,7 @@ kind: ClusterServingRuntime
 metadata:
   name: kserve-tritonserver
   annotations:
-    serving.kserve.io/serverType: tritonserver
+    serving.kserve.io/server-type: tritonserver
 spec:
   annotations:
     prometheus.kserve.io/port: '8002'
