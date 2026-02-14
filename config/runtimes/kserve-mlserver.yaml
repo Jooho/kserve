@@ -3,7 +3,7 @@ kind: ClusterServingRuntime
 metadata:
   name: kserve-mlserver
   annotations:
-    serving.kserve.io/serverType: mlserver
+    serving.kserve.io/server-type: mlserver
 spec:
   annotations:
     # mlserver version 1.1.0 uses port 8082 as default instead of 8080.

@@ -3,7 +3,7 @@ kind: ClusterServingRuntime
 metadata:
   name: kserve-huggingfaceserver-multinode
   annotations:
-    serving.kserve.io/serverType: huggingfaceserver
+    serving.kserve.io/server-type: huggingfaceserver
 spec:
   annotations:
     prometheus.kserve.io/port: "8080"

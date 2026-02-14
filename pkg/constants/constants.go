@@ -141,7 +141,7 @@ var (
 
 // ServingRuntime Server Type Annotations
 var (
-	ServerTypeAnnotationKey = KServeAPIGroupName + "/serverType"
+	ServerTypeAnnotationKey = KServeAPIGroupName + "/server-type"
 )
 
 // InferenceService Internal Annotations
@@ -544,7 +544,7 @@ const (
 	DefaultNSKnativeServing = "knative-serving"
 )
 
-// built-in runtime servers
+// built-in runtime servers names
 const (
 	SKLearnServer     = "kserve-sklearnserver"
 	MLServer          = "kserve-mlserver"
