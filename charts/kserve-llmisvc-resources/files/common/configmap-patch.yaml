@@ -64,7 +64,7 @@ data:
     {
         "art": {
             "image" : "{{ .Values.kserve.servingruntime.art.image }}",
-            "defaultImageVersion": "{{ .Values.kserve.servingruntime.art.defaultVersion }}"
+            "defaultImageVersion": "{{ .Values.kserve.servingruntime.art.defaultVersion | default .Values.kserve.version }}"
         }
     }
   ingress: |-

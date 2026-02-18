@@ -9,12 +9,12 @@ data:
     data block\n# to actually change the configuration.\n\n# ======================================
     EXPLAINERS CONFIGURATION ======================================\n# Example\nexplainers:
     |-\n  {\n      \"art\": {\n          \"image\" : \"kserve/art-explainer\",\n          \"defaultImageVersion\":
-    \"v0.16.0\"\n      }\n  }\n# Art Explainer runtime configuration\n explainers:
+    \"latest\"\n      }\n  }\n# Art Explainer runtime configuration\n explainers:
     |-\n   {\n       # Art explainer runtime configuration\n       \"art\": {\n           #
     image contains the default Art explainer serving runtime image uri.\n           \"image\"
     : \"kserve/art-explainer\",\n   \n           # defautltImageVersion contains the
     Art explainer serving runtime default image version.\n           \"defaultImageVersion\":
-    \"v0.16.0\"\n       }\n   }\n# ====================================== ISVC CONFIGURATION
+    \"latest\"\n       }\n   }\n# ====================================== ISVC CONFIGURATION
     ======================================\n# Example - setting custom annotation
     \ \n inferenceService: |-\n   {\n     \"serviceAnnotationDisallowedList\": [\n
     \       \"my.custom.annotation/1\"  \n     ],\n     \"serviceLabelDisallowedList\":
@@ -65,14 +65,14 @@ data:
     in seconds for scale down.\n     \"scaleDownStabilizationWindowSeconds\": \"300\"\n
     \  }\n  \n # ====================================== STORAGE INITIALIZER CONFIGURATION
     ======================================\n # Example\n storageInitializer: |-\n
-    \  {\n       \"image\" : \"quay.io/jooholee/storage-initializer:v0.16.0\",\n       \"memoryRequest\":
+    \  {\n       \"image\" : \"kserve/storage-initializer:latest\",\n       \"memoryRequest\":
     \"100Mi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\": \"100m\",\n
     \      \"cpuLimit\": \"1\",\n       \"caBundleConfigMapName\": \"\",\n       \"caBundleVolumeMountPath\":
     \"/etc/ssl/custom-certs\",\n       \"enableModelcar\": false,\n       \"cpuModelcar\":
     \"10m\",\n       \"memoryModelcar\": \"15Mi\"\n   }\n storageInitializer: |-\n
     \  {\n       # image contains the default storage initializer image uri.\n       \"image\"
-    : \"quay.io/jooholee/storage-initializer:v0.16.0\",\n       \n       # memoryRequest
-    is the requests.memory to set for the storage initializer init container.\n       \"memoryRequest\":
+    : \"kserve/storage-initializer:latest\",\n       \n       # memoryRequest is the
+    requests.memory to set for the storage initializer init container.\n       \"memoryRequest\":
     \"100Mi\",\n   \n        # memoryLimit is the limits.memory to set for the storage
     initializer init container.\n       \"memoryLimit\": \"1Gi\",\n       \n       #
     cpuRequest is the requests.cpu to set for the storage initializer init container.\n
@@ -107,8 +107,8 @@ data:
     used for downloading models from the cloud storage.\n # You can override this
     configuration by specifying the annotations on service account or static secret.\n
     # https://kserve.github.io/website/master/modelserving/storage/s3/s3/\n # For
-    a quick reference about AWS ENV variables:\n # AWS Cli: https://docs.aws.amazon.com/cli/v0.16.0/userguide/cli-configure-envvars.html\n
-    # Boto: https://boto3.amazonaws.com/v1/documentation/api/v0.16.0/guide/configuration.html#using-environment-variables\n
+    a quick reference about AWS ENV variables:\n # AWS Cli: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html\n
+    # Boto: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html#using-environment-variables\n
     #\n # The `s3AccessKeyIDName` and `s3SecretAccessKeyName` fields are only used
     from this configmap when static credentials (IAM User Access Key Secret)\n # are
     used as the authentication method for AWS S3.\n # The rest of the fields are used
@@ -227,11 +227,11 @@ data:
     NOTE: This configuration only applicable to serverless deployment.\n       \"pathTemplate\":
     \"/serving/{{ .Namespace }}/{{ .Name }}\"\n   }\n \n # ======================================
     LOGGER CONFIGURATION ======================================\n # Example\n logger:
-    |-\n   {\n       \"image\" : \"kserve/agent:v0.16.0\",\n       \"memoryRequest\":
+    |-\n   {\n       \"image\" : \"kserve/agent:latest\",\n       \"memoryRequest\":
     \"100Mi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\": \"100m\",\n
     \      \"cpuLimit\": \"1\",\n       \"defaultUrl\": \"http://default-broker\"\n
     \  }\n logger: |-\n   {\n       # image contains the default logger image uri.\n
-    \      \"image\" : \"kserve/agent:v0.16.0\",\n   \n       # memoryRequest is the
+    \      \"image\" : \"kserve/agent:latest\",\n   \n       # memoryRequest is the
     requests.memory to set for the logger container.\n       \"memoryRequest\": \"100Mi\",\n
     \      \n       # memoryLimit is the limits.memory to set for the logger container.\n
     \      \"memoryLimit\": \"1Gi\",\n       \n       # cpuRequest is the requests.cpu
@@ -240,39 +240,38 @@ data:
     \"1\",\n       \n       # defaultUrl specifies the default logger url. If logger
     is not specified in the resource this url is used.\n       \"defaultUrl\": \"http://default-broker\"\n
     \  }\n \n # ====================================== BATCHER CONFIGURATION ======================================\n
-    # Example\n batcher: |-\n   {\n       \"image\" : \"kserve/agent:v0.16.0\",\n
-    \      \"memoryRequest\": \"1Gi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\":
-    \"1\",\n       \"cpuLimit\": \"1\",\n       \"maxBatchSize\": \"32\",\n       \"maxLatency\":
-    \"5000\"\n   }\n batcher: |-\n   {\n       # image contains the default batcher
-    image uri.\n       \"image\" : \"kserve/agent:v0.16.0\",\n       \n       # memoryRequest
-    is the requests.memory to set for the batcher container.\n       \"memoryRequest\":
-    \"1Gi\",\n   \n       # memoryLimit is the limits.memory to set for the batcher
-    container.\n       \"memoryLimit\": \"1Gi\",\n       \n       # cpuRequest is
-    the requests.cpu to set for the batcher container.\n       \"cpuRequest\": \"1\",\n
-    \      \n       # cpuLimit is the limits.cpu to set for the batcher container.\n
-    \      \"cpuLimit\": \"1\"\n\n       # maxBatchSize is the default maximum batch
-    size for batcher.\n       \"maxBatchSize\": \"32\",\n\n       # maxLatency is
-    the default maximum latency in milliseconds for batcher to wait and collect the
-    batch.\n       \"maxLatency\": \"5000\"\n   }\n \n # ======================================
+    # Example\n batcher: |-\n   {\n       \"image\" : \"kserve/agent:latest\",\n       \"memoryRequest\":
+    \"1Gi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\": \"1\",\n       \"cpuLimit\":
+    \"1\",\n       \"maxBatchSize\": \"32\",\n       \"maxLatency\": \"5000\"\n   }\n
+    batcher: |-\n   {\n       # image contains the default batcher image uri.\n       \"image\"
+    : \"kserve/agent:latest\",\n       \n       # memoryRequest is the requests.memory
+    to set for the batcher container.\n       \"memoryRequest\": \"1Gi\",\n   \n       #
+    memoryLimit is the limits.memory to set for the batcher container.\n       \"memoryLimit\":
+    \"1Gi\",\n       \n       # cpuRequest is the requests.cpu to set for the batcher
+    container.\n       \"cpuRequest\": \"1\",\n       \n       # cpuLimit is the limits.cpu
+    to set for the batcher container.\n       \"cpuLimit\": \"1\"\n\n       # maxBatchSize
+    is the default maximum batch size for batcher.\n       \"maxBatchSize\": \"32\",\n\n
+    \      # maxLatency is the default maximum latency in milliseconds for batcher
+    to wait and collect the batch.\n       \"maxLatency\": \"5000\"\n   }\n \n # ======================================
     AGENT CONFIGURATION ======================================\n # Example\n agent:
-    |-\n   {\n       \"image\" : \"kserve/agent:v0.16.0\",\n       \"memoryRequest\":
+    |-\n   {\n       \"image\" : \"kserve/agent:latest\",\n       \"memoryRequest\":
     \"100Mi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\": \"100m\",\n
     \      \"cpuLimit\": \"1\"\n   }\n agent: |-\n   {\n       # image contains the
-    default agent image uri.\n       \"image\" : \"kserve/agent:v0.16.0\",\n   \n
-    \      # memoryRequest is the requests.memory to set for the agent container.\n
-    \      \"memoryRequest\": \"100Mi\",\n   \n       # memoryLimit is the limits.memory
-    to set for the agent container.\n       \"memoryLimit\": \"1Gi\",\n       \n       #
-    cpuRequest is the requests.cpu to set for the agent container.\n       \"cpuRequest\":
-    \"100m\",\n       \n       # cpuLimit is the limits.cpu to set for the agent container.\n
+    default agent image uri.\n       \"image\" : \"kserve/agent:latest\",\n   \n       #
+    memoryRequest is the requests.memory to set for the agent container.\n       \"memoryRequest\":
+    \"100Mi\",\n   \n       # memoryLimit is the limits.memory to set for the agent
+    container.\n       \"memoryLimit\": \"1Gi\",\n       \n       # cpuRequest is
+    the requests.cpu to set for the agent container.\n       \"cpuRequest\": \"100m\",\n
+    \      \n       # cpuLimit is the limits.cpu to set for the agent container.\n
     \      \"cpuLimit\": \"1\"\n   }\n \n # ======================================
     ROUTER CONFIGURATION ======================================\n # Example\n router:
-    |-\n   {\n       \"image\" : \"kserve/router:v0.16.0\",\n       \"memoryRequest\":
+    |-\n   {\n       \"image\" : \"kserve/router:latest\",\n       \"memoryRequest\":
     \"100Mi\",\n       \"memoryLimit\": \"1Gi\",\n       \"cpuRequest\": \"100m\",\n
     \      \"cpuLimit\": \"1\",\n       \"headers\": {\n         \"propagate\": []\n
     \      },\n       \"imagePullPolicy\": \"IfNotPresent\",\n       \"imagePullSecrets\":
     [\"docker-secret\"]\n   }\n # router is the implementation of inference graph.\n
     router: |-\n   {\n       # image contains the default router image uri.\n       \"image\"
-    : \"kserve/router:v0.16.0\",\n       \n       # memoryRequest is the requests.memory
+    : \"kserve/router:latest\",\n       \n       # memoryRequest is the requests.memory
     to set for the router container.\n       \"memoryRequest\": \"100Mi\",\n       \n
     \      # memoryLimit is the limits.memory to set for the router container.\n       \"memoryLimit\":
     \"1Gi\",\n       \n       # cpuRequest is the requests.cpu to set for the router
@@ -330,7 +329,7 @@ data:
     localModel: |-\n   {\n     \"enabled\": false,\n     # jobNamespace specifies
     the namespace where the download job will be created.\n     \"jobNamespace\":
     \"kserve-localmodel-jobs\",\n     # defaultJobImage specifies the default image
-    used for the download job.\n     \"defaultJobImage\" : \"quay.io/jooholee/storage-initializer:v0.16.0\",\n
+    used for the download job.\n     \"defaultJobImage\" : \"kserve/storage-initializer:latest\",\n
     \    # Kubernetes modifies the filesystem group ID on the attached volume.\n     \"fsGroup\":
     1000,\n     # TTL for the download job after it is finished.\n     \"jobTTLSecondsAfterFinished\":
     3600,\n     # The frequency at which the local model agent reconciles the local
@@ -339,7 +338,7 @@ data:
     without isvcs\n     \"disableVolumeManagement\": false\n   }"
   agent: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -352,7 +351,7 @@ data:
     }
   batcher: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "1Gi",
         "memoryLimit": "1Gi",
         "cpuRequest": "1",
@@ -389,7 +388,7 @@ data:
     {
         "art": {
             "image" : "kserve/art-explainer",
-            "defaultImageVersion": "v0.16.0"
+            "defaultImageVersion": "latest"
         }
     }
   inferenceService: |-
@@ -412,7 +411,7 @@ data:
     {
       "enabled": false,
       "jobNamespace": "kserve-localmodel-jobs",
-      "defaultJobImage" : "quay.io/jooholee/storage-initializer:v0.16.0",
+      "defaultJobImage" : "kserve/storage-initializer:latest",
       "fsGroup": 1000,
       "jobTTLSecondsAfterFinished": 3600,
       "reconcilationFrequencyInSecs": 60,
@@ -420,7 +419,7 @@ data:
     }
   logger: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -446,7 +445,7 @@ data:
     }
   router: |-
     {
-        "image" : "kserve/router:v0.16.0",
+        "image" : "kserve/router:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -459,7 +458,7 @@ data:
     }
   storageInitializer: |-
     {
-        "image" : "quay.io/jooholee/storage-initializer:v0.16.0",
+        "image" : "kserve/storage-initializer:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",

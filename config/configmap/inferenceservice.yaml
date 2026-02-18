@@ -26,7 +26,7 @@ data:
       {
           "art": {
               "image" : "kserve/art-explainer",
-              "defaultImageVersion": "v0.16.0"
+              "defaultImageVersion": "latest"
           }
       }
     # Art Explainer runtime configuration
@@ -38,7 +38,7 @@ data:
                "image" : "kserve/art-explainer",
        
                # defautltImageVersion contains the Art explainer serving runtime default image version.
-               "defaultImageVersion": "v0.16.0"
+               "defaultImageVersion": "latest"
            }
        }
     # ====================================== ISVC CONFIGURATION ======================================
@@ -149,7 +149,7 @@ data:
      # Example
      storageInitializer: |-
        {
-           "image" : "quay.io/jooholee/storage-initializer:v0.16.0",
+           "image" : "kserve/storage-initializer:latest",
            "memoryRequest": "100Mi",
            "memoryLimit": "1Gi",
            "cpuRequest": "100m",
@@ -163,7 +163,7 @@ data:
      storageInitializer: |-
        {
            # image contains the default storage initializer image uri.
-           "image" : "quay.io/jooholee/storage-initializer:v0.16.0",
+           "image" : "kserve/storage-initializer:latest",
            
            # memoryRequest is the requests.memory to set for the storage initializer init container.
            "memoryRequest": "100Mi",
@@ -227,8 +227,8 @@ data:
      # You can override this configuration by specifying the annotations on service account or static secret.
      # https://kserve.github.io/website/master/modelserving/storage/s3/s3/
      # For a quick reference about AWS ENV variables:
-     # AWS Cli: https://docs.aws.amazon.com/cli/v0.16.0/userguide/cli-configure-envvars.html
-     # Boto: https://boto3.amazonaws.com/v1/documentation/api/v0.16.0/guide/configuration.html#using-environment-variables
+     # AWS Cli: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
+     # Boto: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html#using-environment-variables
      #
      # The `s3AccessKeyIDName` and `s3SecretAccessKeyName` fields are only used from this configmap when static credentials (IAM User Access Key Secret)
      # are used as the authentication method for AWS S3.
@@ -393,7 +393,7 @@ data:
      # Example
      logger: |-
        {
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
            "memoryRequest": "100Mi",
            "memoryLimit": "1Gi",
            "cpuRequest": "100m",
@@ -403,7 +403,7 @@ data:
      logger: |-
        {
            # image contains the default logger image uri.
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
        
            # memoryRequest is the requests.memory to set for the logger container.
            "memoryRequest": "100Mi",
@@ -425,7 +425,7 @@ data:
      # Example
      batcher: |-
        {
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
            "memoryRequest": "1Gi",
            "memoryLimit": "1Gi",
            "cpuRequest": "1",
@@ -436,7 +436,7 @@ data:
      batcher: |-
        {
            # image contains the default batcher image uri.
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
            
            # memoryRequest is the requests.memory to set for the batcher container.
            "memoryRequest": "1Gi",
@@ -461,7 +461,7 @@ data:
      # Example
      agent: |-
        {
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
            "memoryRequest": "100Mi",
            "memoryLimit": "1Gi",
            "cpuRequest": "100m",
@@ -470,7 +470,7 @@ data:
      agent: |-
        {
            # image contains the default agent image uri.
-           "image" : "kserve/agent:v0.16.0",
+           "image" : "kserve/agent:latest",
        
            # memoryRequest is the requests.memory to set for the agent container.
            "memoryRequest": "100Mi",
@@ -489,7 +489,7 @@ data:
      # Example
      router: |-
        {
-           "image" : "kserve/router:v0.16.0",
+           "image" : "kserve/router:latest",
            "memoryRequest": "100Mi",
            "memoryLimit": "1Gi",
            "cpuRequest": "100m",
@@ -504,7 +504,7 @@ data:
      router: |-
        {
            # image contains the default router image uri.
-           "image" : "kserve/router:v0.16.0",
+           "image" : "kserve/router:latest",
            
            # memoryRequest is the requests.memory to set for the router container.
            "memoryRequest": "100Mi",
@@ -612,7 +612,7 @@ data:
          # jobNamespace specifies the namespace where the download job will be created.
          "jobNamespace": "kserve-localmodel-jobs",
          # defaultJobImage specifies the default image used for the download job.
-         "defaultJobImage" : "quay.io/jooholee/storage-initializer:v0.16.0",
+         "defaultJobImage" : "kserve/storage-initializer:latest",
          # Kubernetes modifies the filesystem group ID on the attached volume.
          "fsGroup": 1000,
          # TTL for the download job after it is finished.
@@ -628,13 +628,13 @@ data:
     {
         "art": {
             "image" : "kserve/art-explainer",
-            "defaultImageVersion": "v0.16.0"
+            "defaultImageVersion": "latest"
         }
     }
 
   storageInitializer: |-
     {
-        "image" : "quay.io/jooholee/storage-initializer:v0.16.0",
+        "image" : "kserve/storage-initializer:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -686,7 +686,7 @@ data:
 
   logger: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -696,7 +696,7 @@ data:
 
   batcher: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "1Gi",
         "memoryLimit": "1Gi",
         "cpuRequest": "1",
@@ -707,7 +707,7 @@ data:
 
   agent: |-
     {
-        "image" : "kserve/agent:v0.16.0",
+        "image" : "kserve/agent:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -716,7 +716,7 @@ data:
 
   router: |-
     {
-        "image" : "kserve/router:v0.16.0",
+        "image" : "kserve/router:latest",
         "memoryRequest": "100Mi",
         "memoryLimit": "1Gi",
         "cpuRequest": "100m",
@@ -739,7 +739,7 @@ data:
     {
       "enabled": false,
       "jobNamespace": "kserve-localmodel-jobs",
-      "defaultJobImage" : "quay.io/jooholee/storage-initializer:v0.16.0",
+      "defaultJobImage" : "kserve/storage-initializer:latest",
       "fsGroup": 1000,
       "jobTTLSecondsAfterFinished": 3600,
       "reconcilationFrequencyInSecs": 60,

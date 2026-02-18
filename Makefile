@@ -87,25 +87,7 @@ lint-helm-charts:
 	@bash hack/setup/scripts/lint-helm.sh
 
 verify-helm-helpers-consistency:
-	@# Verify that deepMerge and replaceNamespace helper functions are identical across all charts.
-	@# These helpers are duplicated in each chart (instead of using a library chart) to avoid
-	@# the complexity of Helm dependencies. This check ensures they stay in sync.
-	@echo "Verifying Helm helper function consistency..."
-	@TEMP_DIR=$$(mktemp -d); \
-	for chart in kserve-resources kserve-llmisvc-resources kserve-localmodel-resources kserve-runtime-configs; do \
-		sed -n '/define.*deepMerge/,/^{{- end }}/p' charts/$$chart/templates/_helpers.tpl | sed 's/kserve-resources/CHARTNAME/g; s/llm-isvc-resources/CHARTNAME/g; s/kserve-localmodel-resources/CHARTNAME/g; s/kserve-runtime-configs/CHARTNAME/g' > $$TEMP_DIR/$$chart-deepMerge.txt 2>/dev/null || true; \
-		sed -n '/define.*replaceNamespace/,/^{{- end }}/p' charts/$$chart/templates/_helpers.tpl | sed 's/kserve-resources/CHARTNAME/g; s/llm-isvc-resources/CHARTNAME/g; s/kserve-localmodel-resources/CHARTNAME/g; s/kserve-runtime-configs/CHARTNAME/g' > $$TEMP_DIR/$$chart-replaceNamespace.txt 2>/dev/null || true; \
-	done; \
-	echo "→ Checking deepMerge consistency..."; \
-	diff -q $$TEMP_DIR/kserve-resources-deepMerge.txt $$TEMP_DIR/kserve-llmisvc-resources-deepMerge.txt || { echo "✗ deepMerge differs between kserve-resources and kserve-llmisvc-resources"; rm -rf $$TEMP_DIR; exit 1; }; \
-	diff -q $$TEMP_DIR/kserve-resources-deepMerge.txt $$TEMP_DIR/kserve-localmodel-resources-deepMerge.txt || { echo "✗ deepMerge differs between kserve-resources and kserve-localmodel-resources"; rm -rf $$TEMP_DIR; exit 1; }; \
-	diff -q $$TEMP_DIR/kserve-resources-deepMerge.txt $$TEMP_DIR/kserve-runtime-configs-deepMerge.txt || { echo "✗ deepMerge differs between kserve-resources and kserve-runtime-configs"; rm -rf $$TEMP_DIR; exit 1; }; \
-	echo "→ Checking replaceNamespace consistency..."; \
-	diff -q $$TEMP_DIR/kserve-resources-replaceNamespace.txt $$TEMP_DIR/kserve-llmisvc-resources-replaceNamespace.txt || { echo "✗ replaceNamespace differs between kserve-resources and kserve-llmisvc-resources"; rm -rf $$TEMP_DIR; exit 1; }; \
-	diff -q $$TEMP_DIR/kserve-resources-replaceNamespace.txt $$TEMP_DIR/kserve-localmodel-resources-replaceNamespace.txt || { echo "✗ replaceNamespace differs between kserve-resources and kserve-localmodel-resources"; rm -rf $$TEMP_DIR; exit 1; }; \
-	diff -q $$TEMP_DIR/kserve-resources-replaceNamespace.txt $$TEMP_DIR/kserve-runtime-configs-replaceNamespace.txt || { echo "✗ replaceNamespace differs between kserve-resources and kserve-runtime-configs"; rm -rf $$TEMP_DIR; exit 1; }; \
-	rm -rf $$TEMP_DIR; \
-	echo "✓ All helper functions are consistent across charts"
+	@bash hack/setup/scripts/verify-helm-helpers.sh
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen yq
