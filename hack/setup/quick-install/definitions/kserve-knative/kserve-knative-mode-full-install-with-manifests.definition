@@ -14,4 +14,4 @@ COMPONENTS:
   - name: keda
   - name: keda-otel-addon
   - name: opentelemetry
-  - name: kserve
+  - name: kserve-kustomize

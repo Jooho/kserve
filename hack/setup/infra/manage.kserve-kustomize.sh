@@ -122,16 +122,52 @@ TARGET_CRDS_TO_VERIFY=()
 # VARIABLES END
 
 # INCLUDE_IN_GENERATED_SCRIPT_START
-determine_shared_resources_config
-
 KSERVE_CRDS="inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io inferencegraphs.serving.kserve.io trainedmodels.serving.kserve.io"
 LLMISVC_CRDS="llminferenceservices.serving.kserve.io llminferenceserviceconfigs.serving.kserve.io"
 LOCALMODEL_CRDS="localmodelcaches.serving.kserve.io localmodelnodegroups.serving.kserve.io localmodelnodes.serving.kserve.io"
 KSERVE_CONFIG_DIR="${REPO_ROOT}/config/overlays/standalone/kserve"
 LLMISVC_CONFIG_DIR="${REPO_ROOT}/config/overlays/standalone/llmisvc"
 LOCALMODEL_CONFIG_DIR="${REPO_ROOT}/config/overlays/addons/localmodel"
+RUNTIMES_DIR="${REPO_ROOT}/config/runtimes"
 
-if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
+# Create temporary overlay if version/registry override is needed
+if [ -z "${KSERVE_OVERLAY_DIR}" ] && ([ -n "${SET_KSERVE_VERSION}" ] || [ -n "${SET_KSERVE_REGISTRY}" ]); then
+    TEMP_OVERLAY_DIR="${REPO_ROOT}/config/overlays/temp"
+    TEMPLATE_DIR="${REPO_ROOT}/config/overlays/version-template"
+
+    log_info "Creating temporary overlay from template: ${TEMP_OVERLAY_DIR}"
+
+    # Copy template
+    rm -rf "${TEMP_OVERLAY_DIR}"
+    cp -r "${TEMPLATE_DIR}" "${TEMP_OVERLAY_DIR}"
+
+    # Replace version/registry placeholders
+    VERSION="${SET_KSERVE_VERSION:-latest}"
+    REGISTRY="${SET_KSERVE_REGISTRY:-kserve}"
+
+    find "${TEMP_OVERLAY_DIR}" -type f -name "*.yaml" -exec sed -i \
+        -e "s/latest/${VERSION}/g" \
+        -e "s|kserve/|${REGISTRY}/|g" {} \;
+
+    # Uncomment components/patches based on ENABLE_* flags
+    if [ "${ENABLE_KSERVE}" = "true" ]; then
+        sed -i 's/#ENABLE_KSERVE //' "${TEMP_OVERLAY_DIR}/kustomization.yaml"
+    fi
+
+    if [ "${ENABLE_LLMISVC}" = "true" ]; then
+        sed -i 's/#ENABLE_LLMISVC //' "${TEMP_OVERLAY_DIR}/kustomization.yaml"
+    fi
+
+    if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
+        sed -i 's/#ENABLE_LOCALMODEL //' "${TEMP_OVERLAY_DIR}/kustomization.yaml"
+    fi
+
+    # Use temporary overlay
+    KSERVE_OVERLAY_DIR="temp"
+    log_success "Temporary overlay created successfully"
+fi
+
+if [ -n "${KSERVE_OVERLAY_DIR}" ]; then
     TARGET_OVERLAY_DIRS+=("${REPO_ROOT}/config/overlays/${KSERVE_OVERLAY_DIR}")
     if [ "${KSERVE_OVERLAY_DIR}" == "test" ]; then
         # Auto-enable localmodel for test overlay
@@ -151,9 +187,26 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
         TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager")
         TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
     elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
-        TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")        
-        TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")        
+        TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
+        TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
         TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
+    elif [ "${KSERVE_OVERLAY_DIR}" == "temp" ]; then
+        RUNTIMES_DIR="${REPO_ROOT}/config/overlays/temp/cluster-resources"        
+        if [ "${ENABLE_KSERVE}" = "true" ]; then
+            TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
+            TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
+            TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager")
+        fi
+        if [ "${ENABLE_LLMISVC}" = "true" ]; then
+            TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
+            TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
+            TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
+        fi
+        if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
+            TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+            TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+            TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
+        fi
     fi
 else
     if [ "${ENABLE_KSERVE}" = "true" ]; then
@@ -235,48 +288,6 @@ uninstall() {
 }
 
 install() {
-    update_kustomize_image_tags() {
-        log_info "Updating image tags to ${KSERVE_VERSION}..."
-        
-        # Update inferenceservice image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/configmap/inferenceservice.yaml
-
-        # Update runtimes image tags
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/runtimes/kustomization.yaml
-
-        # Update controller image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/default/manager_image_patch.yaml
-
-        # Update localmodel controller image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/localmodels/localmodel_manager_image_patch.yaml
-
-        # Update localmodel agent image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/localmodelnodes/localmodelnode_agent_image_patch.yaml
-
-        # Update llmisvc controller image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/llmisvc/llmisvc_manager_image_patch.yaml
-
-        # Update StorageInitializer image tag
-        sed -i -e "s/latest/${KSERVE_VERSION}/g" config/storagecontainers/kustomization.yaml
-
-        # Update image registry if SET_KSERVE_REGISTRY is provided
-        if [ -n "${SET_KSERVE_REGISTRY}" ]; then
-            log_info "Updating image registry to ${SET_KSERVE_REGISTRY}..."
-
-            # Update controller images
-            sed -i -e "s|kserve/kserve-controller:|${SET_KSERVE_REGISTRY}/kserve-controller:|g" config/default/manager_image_patch.yaml
-            sed -i -e "s|kserve/kserve-localmodel-controller:|${SET_KSERVE_REGISTRY}/kserve-localmodel-controller:|g" config/localmodels/localmodel_manager_image_patch.yaml
-            sed -i -e "s|kserve/kserve-localmodelnode-agent:|${SET_KSERVE_REGISTRY}/kserve-localmodelnode-agent:|g" config/localmodelnodes/localmodelnode_agent_image_patch.yaml
-            sed -i -e "s|kserve/llmisvc-controller:|${SET_KSERVE_REGISTRY}/llmisvc-controller:|g" config/llmisvc/llmisvc_manager_image_patch.yaml
-
-            # Update storage-initializer
-            sed -i -e "s|kserve/storage-initializer:|${SET_KSERVE_REGISTRY}/storage-initializer:|g" config/storagecontainers/kustomization.yaml
-            sed -i -e "s|kserve/storage-initializer:|${SET_KSERVE_REGISTRY}/storage-initializer:|g" config/configmap/inferenceservice.yaml
-        fi
-    }
-
-    update_kustomize_image_tags
-
     if kubectl get deployment kserve-controller-manager -n "${KSERVE_NAMESPACE}" &>/dev/null; then
         if [ "$REINSTALL" = false ]; then
           if [ "$UPDATE" = true ]; then
@@ -341,6 +352,23 @@ install() {
                 fi
             fi
         done
+        
+        if [ "${INSTALL_RUNTIMES}" = "true" ]; then
+            log_info "Installing ClusterServingRuntimes..."
+            kubectl apply --server-side=true -k "${RUNTIMES_DIR}"
+        fi
+        
+
+        if [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
+            log_info "Installing LLMISVC configs..."
+            kubectl apply --server-side=true -k "${REPO_ROOT}/config/llmisvcconfig"
+        fi
+
+        # Cleanup temporary overlay
+        if [ "${KSERVE_OVERLAY_DIR}" = "temp" ]; then
+            rm -rf "${REPO_ROOT}/config/overlays/temp"
+            log_info "Temporary overlay directory cleaned up"
+        fi
     fi
 
     if [ "${USE_LOCAL_CONFIGMAP}" = "false" ]; then
@@ -399,16 +427,6 @@ install() {
         fi
     fi
     log_success "KServe is ready!"
-
-
-    if [ "${INSTALL_RUNTIMES}" = "true" ]; then
-        log_info "Installing ClusterServingRuntimes..."
-        kubectl apply --server-side=true -k config/runtimes
-    fi
-    if [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
-        log_info "Installing LLMISVC configs..."
-        kubectl apply --server-side=true -k config/llmisvcconfig
-    fi
 }
 
 if [ "$UNINSTALL" = true ]; then

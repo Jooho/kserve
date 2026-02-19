@@ -15,6 +15,6 @@ COMPONENTS:
   - name: gateway-api-gwclass
   - name: gateway-api-gw
   - name: lws-operator
-  - name: kserve-helm
+  - name: kserve-kustomize
     env:
       LLMISVC: "true"
