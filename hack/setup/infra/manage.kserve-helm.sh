@@ -80,7 +80,7 @@
 #   KSERVE_EXTRA_ARGS="--set kserve.controller.resources.limits.cpu=500m" ./manage.kserve-helm.sh
 #
 #   # Custom controller image for local development
-#   USE_LOCAL_CHARTS=true KSERVE_EXTRA_ARGS="--set kserve.controller.tag=local-test --set kserve.controller.containers.manager.imagePullPolicy=Never" ./manage.kserve-helm.sh
+#   USE_LOCAL_CHARTS=true KSERVE_EXTRA_ARGS="--set kserve.controller.tag=local-test --set kserve.controller.imagePullPolicy=Never" ./manage.kserve-helm.sh
 #
 #   # Install without ClusterServingRuntimes
 #   INSTALL_RUNTIMES=false ./manage.kserve-helm.sh
@@ -221,20 +221,20 @@ install() {
         # Update deployment mode if needed
         if [ "${DEPLOYMENT_MODE}" = "Standard" ] || [ "${DEPLOYMENT_MODE}" = "RawDeployment" ]; then
             log_info "Adding deployment mode configuration: ${DEPLOYMENT_MODE}"
-            config_args+=" --set inferenceServiceConfig.deploy.defaultDeploymentMode=${DEPLOYMENT_MODE}"
+            config_args+=" --set kserve.controller.deploymentMode=${DEPLOYMENT_MODE}"
         fi
 
         # Enable Gateway API for KServe(ISVC) if needed
         if [ "${GATEWAY_NETWORK_LAYER}" != "false" ] && [ "${ENABLE_LLMISVC}" != "true" ]; then
             log_info "Adding Gateway API configuration: enableGatewayApi=true, ingressClassName=${GATEWAY_NETWORK_LAYER}"
-            config_args+=" --set inferenceServiceConfig.ingress.enableGatewayApi=true"
-            config_args+=" --set inferenceServiceConfig.ingress.ingressClassName=${GATEWAY_NETWORK_LAYER}"
+            config_args+=" --set kserve.controller.gateway.ingressGateway.enableGatewayApi=true"
+            config_args+=" --set kserve.controller.gateway.ingressGateway.className=${GATEWAY_NETWORK_LAYER}"
         fi
 
         if [ "${ENABLE_LOCALMODEL}" = "true" ]; then
-            config_args+=" --set inferenceServiceConfig.localModel.enabled=true"
-            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImage=kserve/storage-initializer"
-            config_args+=" --set inferenceServiceConfig.localModel.defaultJobImageTag=${KSERVE_VERSION}"
+            config_args+=" --set kserve.localModel.enabled=true"
+            config_args+=" --set kserve.localModel.defaultJobImage=kserve/storage-initializer"
+            config_args+=" --set kserve.localModel.defaultJobImageTag=${KSERVE_VERSION}"
         fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then

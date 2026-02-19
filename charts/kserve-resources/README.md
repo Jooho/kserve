@@ -84,6 +84,8 @@ $ helm install kserve oci://ghcr.io/kserve/charts/kserve --version v0.16.0
 | kserve.localmodel.agent.tolerations | list | `[]` |  |
 | kserve.localmodel.controller.image | string | `"kserve/kserve-localmodel-controller"` |  |
 | kserve.localmodel.controller.tag | string | `""` |  |
+| kserve.localmodel.defaultJobImage | string | `"kserve/storage-initializer"` |  |
+| kserve.localmodel.defaultJobTag | string | `""` |  |
 | kserve.localmodel.disableVolumeManagement | bool | `false` |  |
 | kserve.localmodel.enabled | bool | `false` |  |
 | kserve.localmodel.jobNamespace | string | `"kserve-localmodel-jobs"` |  |

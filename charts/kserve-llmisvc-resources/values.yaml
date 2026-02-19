@@ -335,6 +335,8 @@ kserve:
     enabled: false
     jobNamespace: kserve-localmodel-jobs
     jobTTLSecondsAfterFinished: 3600
+    defaultJobImage: kserve/storage-initializer
+    defaultJobTag: ""
     securityContext:
       fsGroup: 1000
     disableVolumeManagement: false

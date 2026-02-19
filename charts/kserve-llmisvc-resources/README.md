@@ -78,6 +78,8 @@ $ helm install kserve-llmisvc oci://ghcr.io/kserve/charts/kserve-llmisvc-resourc
 | kserve.llmisvc.controller.tolerations | list | `[]` | A list of Kubernetes Tolerations, if required For more information, see [Toleration v1 core](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#toleration-v1-core)  For example:   tolerations:   - key: foo.bar.com/role     operator: Equal     value: master     effect: NoSchedule |
 | kserve.llmisvc.controller.topologySpreadConstraints | list | `[]` | A list of Kubernetes TopologySpreadConstraints, if required For more information, see [Topology spread constraint v1 core](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#topologyspreadconstraint-v1-core)  For example:   topologySpreadConstraints:   - maxSkew: 2     topologyKey: topology.kubernetes.io/zone     whenUnsatisfiable: ScheduleAnyway     labelSelector:       matchLabels:         app.kubernetes.io/instance: llmisvc-controller-manager         app.kubernetes.io/component: controller |
 | kserve.localmodel.agent.reconcilationFrequencyInSecs | int | `60` |  |
+| kserve.localmodel.defaultJobImage | string | `"kserve/storage-initializer"` |  |
+| kserve.localmodel.defaultJobTag | string | `""` |  |
 | kserve.localmodel.disableVolumeManagement | bool | `false` |  |
 | kserve.localmodel.enabled | bool | `false` |  |
 | kserve.localmodel.jobNamespace | string | `"kserve-localmodel-jobs"` |  |

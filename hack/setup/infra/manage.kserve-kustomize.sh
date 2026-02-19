@@ -98,6 +98,12 @@ export INSTALL_MODE="kustomize"
 # KSERVE_NAMESPACE is defined in global-vars.env
 SET_KSERVE_VERSION="${SET_KSERVE_VERSION:-}"
 SET_KSERVE_REGISTRY="${SET_KSERVE_REGISTRY:-}"
+
+# Override KSERVE_VERSION if SET_KSERVE_VERSION is provided
+if [ -n "${SET_KSERVE_VERSION}" ]; then
+    KSERVE_VERSION="${SET_KSERVE_VERSION}"
+fi
+
 ENABLE_KSERVE="${ENABLE_KSERVE:-${KSERVE:-true}}"
 ENABLE_LLMISVC="${ENABLE_LLMISVC:-${LLMISVC:-false}}"
 ENABLE_LOCALMODEL="${ENABLE_LOCALMODEL:-${LOCALMODEL:-false}}"
@@ -147,14 +153,9 @@ if [ "${KSERVE_OVERLAY_DIR}" != "" ]; then
     elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
         TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")        
         TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")        
-        TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")        
+        TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
     fi
 else
-    if [ "${SET_KSERVE_VERSION}" != "" ]; then
-        log_info "Setting KServe version to ${SET_KSERVE_VERSION}"
-        KSERVE_VERSION="${SET_KSERVE_VERSION}"
-    fi
-
     if [ "${ENABLE_KSERVE}" = "true" ]; then
         TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
         TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
@@ -236,6 +237,7 @@ uninstall() {
 install() {
     update_kustomize_image_tags() {
         log_info "Updating image tags to ${KSERVE_VERSION}..."
+        
         # Update inferenceservice image tag
         sed -i -e "s/latest/${KSERVE_VERSION}/g" config/configmap/inferenceservice.yaml
 

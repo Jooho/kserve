@@ -81,7 +81,7 @@ else
     export SET_KSERVE_VERSION=${TAG}
     export USE_LOCAL_CHARTS=true
     export ENABLE_KSERVE=false
-    export LLMISVC_EXTRA_ARGS="--set llmisvc.controller.containers.manager.imagePullPolicy=IfNotPresent" 
+    export LLMISVC_EXTRA_ARGS="--set kserve.llmisvc.controller.imagePullPolicy=IfNotPresent" 
     ${REPO_ROOT}/hack/setup/infra/manage.kserve-helm.sh
   else
     export SET_KSERVE_VERSION=${TAG}
