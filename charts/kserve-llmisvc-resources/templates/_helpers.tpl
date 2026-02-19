@@ -92,15 +92,15 @@ Deep merge two dictionaries (recursive)
 
 Usage: include "llm-isvc-resources.deepMerge" (list $base $patch) | fromYaml
 
-IMPORTANT LIMITATIONS:
-- Only merges dictionaries (maps), NOT arrays
-- Arrays in $patch completely replace arrays in $base (no element-wise merge)
-- For resources with array fields (e.g., webhooks), use string replacement instead
+Features:
+- Merges dictionaries (maps) recursively
+- Arrays with named elements (e.g., containers, env, volumeMounts) are merged by name
+- Other arrays in $patch completely replace arrays in $base
 
 Example:
-  Base:    {a: {b: 1, c: 2}, d: [1,2]}
-  Patch:   {a: {b: 10}, d: [3]}
-  Result:  {a: {b: 10, c: 2}, d: [3]}  <- d array is replaced, not merged
+  Base:    {a: {b: 1, c: 2}, containers: [{name: foo, x: 1}]}
+  Patch:   {a: {b: 10}, containers: [{name: foo, y: 2}]}
+  Result:  {a: {b: 10, c: 2}, containers: [{name: foo, x: 1, y: 2}]}
 */}}
 {{- define "llm-isvc-resources.deepMerge" -}}
 {{- $base := index . 0 -}}
@@ -109,8 +109,26 @@ Example:
   {{- if hasKey $base $key -}}
     {{- $baseValue := get $base $key -}}
     {{- if and (kindIs "map" $value) (kindIs "map" $baseValue) -}}
+      {{- /* Recursively merge nested maps */ -}}
       {{- $merged := include "llm-isvc-resources.deepMerge" (list $baseValue $value) | fromYaml -}}
       {{- $_ := set $base $key $merged -}}
+    {{- else if and (kindIs "slice" $value) (kindIs "slice" $baseValue) -}}
+      {{- /* Check if array elements have 'name' field for smart merge */ -}}
+      {{- $canMergeByName := false -}}
+      {{- if gt (len $value) 0 -}}
+        {{- $firstElem := index $value 0 -}}
+        {{- if and (kindIs "map" $firstElem) (hasKey $firstElem "name") -}}
+          {{- $canMergeByName = true -}}
+        {{- end -}}
+      {{- end -}}
+      {{- if $canMergeByName -}}
+        {{- /* Merge arrays by name */ -}}
+        {{- $mergedResult := include "llm-isvc-resources.mergeArrayByName" (list $baseValue $value) | fromYaml -}}
+        {{- $_ := set $base $key (get $mergedResult "items") -}}
+      {{- else -}}
+        {{- /* Replace array completely */ -}}
+        {{- $_ := set $base $key $value -}}
+      {{- end -}}
     {{- else -}}
       {{- $_ := set $base $key $value -}}
     {{- end -}}
@@ -119,6 +137,51 @@ Example:
   {{- end -}}
 {{- end -}}
 {{ toYaml $base }}
+{{- end }}
+
+{{/*
+Merge two arrays by matching 'name' field
+
+Usage: include "llm-isvc-resources.mergeArrayByName" (list $baseArray $patchArray) | fromYaml
+
+For each item in patch array:
+- If matching name exists in base, merge them (recursively)
+- Otherwise add as new item
+Items in base without matching patch are preserved
+*/}}
+{{- define "llm-isvc-resources.mergeArrayByName" -}}
+{{- $baseArray := index . 0 -}}
+{{- $patchArray := index . 1 -}}
+{{- $processedNames := dict -}}
+{{- $result := dict "items" (list) -}}
+
+{{- /* First pass: merge matching items from base with patches */ -}}
+{{- range $baseItem := $baseArray -}}
+  {{- $name := $baseItem.name -}}
+  {{- $matched := false -}}
+  {{- range $patchItem := $patchArray -}}
+    {{- if eq $patchItem.name $name -}}
+      {{- /* Found matching item - merge them */ -}}
+      {{- $merged := include "llm-isvc-resources.deepMerge" (list $baseItem $patchItem) | fromYaml -}}
+      {{- $_ := set $result "items" (append (get $result "items") $merged) -}}
+      {{- $_ := set $processedNames $name true -}}
+      {{- $matched = true -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not $matched -}}
+    {{- /* No patch for this base item - keep as is */ -}}
+    {{- $_ := set $result "items" (append (get $result "items") $baseItem) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* Second pass: add new items from patch that weren't in base */ -}}
+{{- range $patchItem := $patchArray -}}
+  {{- if not (hasKey $processedNames $patchItem.name) -}}
+    {{- $_ := set $result "items" (append (get $result "items") $patchItem) -}}
+  {{- end -}}
+{{- end -}}
+
+{{ toYaml $result }}
 {{- end }}
 
 {{/*

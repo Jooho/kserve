@@ -12,7 +12,3 @@ spec:
         imagePullPolicy: {{ .Values.kserve.localmodel.controller.imagePullPolicy }}
         resources:
           {{- toYaml .Values.kserve.localmodel.controller.resources | nindent 10 }}
-        volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
-          readOnly: true
