@@ -1,11 +1,18 @@
 kserve:
-  version: &defaultVersion v0.16.0
+  version: v0.16.0
+  createSharedResources: true
+  inferenceServiceConfig:
+    enabled: ""
+  certManager:
+    enabled: ""
+  storagecontainer:
+    enabled: ""
   agent:
     image: kserve/agent
-    tag: *defaultVersion
+    tag: ""
   router:
     image: kserve/router
-    tag: *defaultVersion
+    tag: ""
     # -- Specifies when to pull router image from registry.
     imagePullPolicy: "IfNotPresent"
     # -- specifies the list of secrets to be used for pulling the router image from registry.
@@ -14,7 +21,7 @@ kserve:
     serviceClusterIPNone: false
   storage:
     image: kserve/storage-initializer
-    tag: *defaultVersion
+    tag: ""
     resources:
       requests:
         memory: 100Mi
@@ -256,7 +263,7 @@ kserve:
     image: kserve/kserve-controller
 
     # -- KServe controller contrainer image tag.
-    tag: *defaultVersion
+    tag: ""
 
     # -- Reference to one or more secrets to be used when pulling images.
     # For more information, see [Pull an Image from a Private Registry](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
@@ -318,7 +325,6 @@ kserve:
     sklearnserver:
       disabled: false
       image: kserve/sklearnserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -331,7 +337,6 @@ kserve:
     xgbserver:
       disabled: false
       image: kserve/xgbserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -344,7 +349,6 @@ kserve:
     huggingfaceserver:
       disabled: false
       image: kserve/huggingfaceserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -390,7 +394,6 @@ kserve:
     pmmlserver:
       disabled: false
       image: kserve/pmmlserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -403,7 +406,6 @@ kserve:
     paddleserver:
       disabled: false
       image: kserve/paddleserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -416,7 +418,6 @@ kserve:
     lgbserver:
       disabled: false
       image: kserve/lgbserver
-      tag: *defaultVersion
       imagePullSecrets: []
       imagePullPolicy: IfNotPresent
       securityContext:
@@ -443,13 +444,13 @@ kserve:
             - ALL
     art:
       image: kserve/art-explainer
-      defaultVersion: *defaultVersion
+      defaultVersion: ""
       imagePullSecrets: []
   localmodel:
     enabled: false
     controller:
       image: kserve/kserve-localmodel-controller
-      tag: *defaultVersion
+      tag: ""
     jobNamespace: kserve-localmodel-jobs
     jobTTLSecondsAfterFinished: 3600
     securityContext:
@@ -461,7 +462,7 @@ kserve:
       tolerations: []
       hostPath: /mnt/models
       image: kserve/kserve-localmodelnode-agent
-      tag: *defaultVersion
+      tag: ""
       reconcilationFrequencyInSecs: 60
       securityContext:
         runAsUser: 1000

@@ -1,0 +1,24 @@
+{{- if .Values.kserve.storagecontainer.enabled | default .Values.kserve.createSharedResources }}
+{{- /* 1. Load base storagecontainer file */ -}}
+{{- $baseContent := .Files.Get "files/common/storagecontainer.yaml" -}}
+
+{{- /* 2. Load and render patch file */ -}}
+{{- $patchContent := .Files.Get "files/common/storagecontainer-patch.yaml" | toString -}}
+{{- $patchRendered := tpl $patchContent . -}}
+
+{{- /* 3. Parse base resource */ -}}
+{{- $base := fromYaml $baseContent -}}
+
+{{- /* 4. Parse patch resource */ -}}
+{{- $patch := fromYaml $patchRendered -}}
+
+{{- /* 5. Merge patch into base using deep merge */ -}}
+{{- if and $base $patch -}}
+{{- $merged := include "kserve-resources.deepMerge" (list $base $patch) | fromYaml -}}
+---
+{{ toYaml $merged }}
+{{- else if $base -}}
+---
+{{ toYaml $base }}
+{{- end -}}
+{{- end }}

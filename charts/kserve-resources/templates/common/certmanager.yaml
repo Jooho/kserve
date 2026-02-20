@@ -1,0 +1,5 @@
+{{- if .Values.kserve.certManager.enabled | default .Values.kserve.createSharedResources }}
+{{- $certContent := .Files.Get "files/common/certmanager.yaml" -}}
+---
+{{ include "kserve-resources.replaceNamespace" (list $certContent .Release.Namespace) }}
+{{- end }}

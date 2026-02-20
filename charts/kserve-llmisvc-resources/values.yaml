@@ -6,15 +6,21 @@ commonAnnotations: {}
 
 kserve:
   # -- Version of KServe LLM ISVC components
-  version: &defaultVersion v0.16.0
-
+  version: v0.16.0
+  createSharedResources: true
+  inferenceServiceConfig:
+    enabled: ""
+  certManager:
+    enabled: ""
+  storagecontainer:
+    enabled: ""
   llmisvc:
     controller:
       # -- KServe LLM ISVC controller manager container image
       image: kserve/llmisvc-controller
 
       # -- KServe LLM ISVC controller container image tag
-      tag: *defaultVersion
+      tag: ""
 
       # -- Specifies when to pull controller image from registry
       imagePullPolicy: "IfNotPresent"
@@ -198,3 +204,161 @@ kserve:
 
       # -- Termination grace period in seconds
       terminationGracePeriodSeconds: 10
+  agent:
+      image: kserve/agent
+      tag: ""
+  router:
+    image: kserve/router
+    tag: ""
+    # -- Specifies when to pull router image from registry.
+    imagePullPolicy: "IfNotPresent"
+    # -- specifies the list of secrets to be used for pulling the router image from registry.
+    imagePullSecrets: []
+  service:
+    serviceClusterIPNone: false
+  storage:
+    image: kserve/storage-initializer
+    tag: ""
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: "1"
+    # security context for the default storage container
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      runAsNonRoot: true
+      capabilities:
+        drop:
+          - ALL
+
+    # -- Flag for enabling model sidecar feature.
+    enableModelcar: true
+
+    # -- Model sidecar UID.
+    uidModelcar: 1010
+
+    # -- Model sidecar cpu requirement.
+    cpuModelcar: 10m
+
+    # -- Model sidecar memory requirement.
+    memoryModelcar: 15Mi
+
+    # -- Mounted CA bundle config map name for storage initializer.
+    caBundleConfigMapName: ""
+
+    # -- Mounted path for CA bundle config map.
+    caBundleVolumeMountPath: "/etc/ssl/custom-certs"
+
+    # -- Storage spec secret name.
+    storageSpecSecretName: storage-config
+
+    # -- Storage secret name reference for storage initializer.
+    storageSecretNameAnnotation: serving.kserve.io/secretName
+
+    # -- Configurations for S3 storage
+    s3:
+      # -- AWS S3 static access key id.
+      accessKeyIdName: AWS_ACCESS_KEY_ID
+
+      # -- AWS S3 static secret access key.
+      secretAccessKeyName: AWS_SECRET_ACCESS_KEY
+
+      # -- AWS S3 endpoint.
+      endpoint: ""
+
+      # -- Whether to use secured https or http to download models, allowed values are 0 and 1 and default to 1.
+      useHttps: ""
+
+      # -- Default region name of AWS S3.
+      region: ""
+
+      # -- Whether to verify the tls/ssl certificate, default to true.
+      verifySSL: ""
+
+      # -- Whether to use virtual bucket or not, default to false.
+      useVirtualBucket: ""
+
+      # -- Whether to use anonymous credentials to download the model or not, default to false.
+      useAnonymousCredential: ""
+
+      # -- Mounted CA bundle config map name.
+      CABundleConfigMap: ""
+
+      # -- When used with a configured CA bundle config map, specifies the full path (mount path + file name) for the mounted config map data.
+      # When used absent of a configured CA bundle config map, specifies the path to a certificate bundle to use for HTTPS certificate validation.
+      CABundle: ""
+  metricsaggregator:
+    # -- configures metric aggregation annotation. This adds the annotation serving.kserve.io/enable-metric-aggregation to every
+    # service with the specified boolean value. If true enables metric aggregation in queue-proxy by setting env vars in the queue proxy container
+    # to configure scraping ports.
+    enableMetricAggregation: "false"
+
+    # -- If true, prometheus annotations are added to the pod to scrape the metrics. If serving.kserve.io/enable-metric-aggregation is false,
+    # the prometheus port is set with the default prometheus scraping port 9090, otherwise the prometheus port annotation is set with the metric aggregation port.
+    enablePrometheusScraping: "false"
+  controller:
+    # -- KServe deployment mode: "Standard", "Knative".
+    deploymentMode: "Knative"
+    gateway:
+      # -- Ingress domain for RawDeployment mode, for Serverless it is configured in Knative.
+      domain: example.com
+      # -- Optional additional domains for ingress routing.
+      additionalIngressDomains: []
+      # -- Ingress domain template for RawDeployment mode, for Serverless mode it is configured in Knative.
+      domainTemplate: "{{ .Name }}-{{ .Namespace }}.{{ .IngressDomain }}"
+      # -- pathTemplate specifies the template for generating path based url for each inference service.
+      pathTemplate: ""
+      # -- HTTP endpoint url scheme.
+      urlScheme: http
+      # -- DisableIstioVirtualHost controls whether to use istio as network layer.
+      disableIstioVirtualHost: false
+      # -- Whether to disable ingress creation for RawDeployment mode.
+      disableIngressCreation: false
+      localGateway:
+        gateway: knative-serving/knative-local-gateway
+        gatewayService: knative-local-gateway.istio-system.svc.cluster.local
+        knativeGatewayService: ""
+      ingressGateway:
+        enableGatewayApi: false
+        kserveGateway: kserve/kserve-ingress-gateway
+        gateway: knative-serving/knative-ingress-gateway
+        className: istio
+  servingruntime:
+    art:
+      image: kserve/art-explainer
+      defaultVersion: v0.16.0
+  localmodel:
+    enabled: false
+    jobNamespace: kserve-localmodel-jobs
+    jobTTLSecondsAfterFinished: 3600
+    securityContext:
+      fsGroup: 1000
+    disableVolumeManagement: false
+    agent:
+      reconcilationFrequencyInSecs: 60
+  security:
+    autoMountServiceAccountToken: true
+  inferenceservice:
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+      requests:
+        cpu: "1"
+        memory: "2Gi"
+  opentelemetryCollector:
+    scrapeInterval: "5s"
+    metricReceiverEndpoint: "keda-otel-scaler.keda.svc:4317"
+    metricScalerEndpoint: "keda-otel-scaler.keda.svc:4318"
+    resource:
+      cpuLimit: "1"
+      memoryLimit: "2Gi"
+      cpuRequest: "200m"
+      memoryRequest: "512Mi"
+  autoscaler:
+    scaleUpStabilizationWindowSeconds: "0"
+    scaleDownStabilizationWindowSeconds: "300"

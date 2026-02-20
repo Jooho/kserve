@@ -49,7 +49,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the deployment name
 */}}
 {{- define "llm-isvc-resources.deploymentName" -}}
-kserve-llmisvc-controller-manager
+llmisvc-controller-manager
 {{- end }}
 
 {{/*
@@ -86,3 +86,48 @@ imagePullSecrets:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Deep merge two dictionaries (recursive)
+
+Usage: include "llm-isvc-resources.deepMerge" (list $base $patch) | fromYaml
+
+IMPORTANT LIMITATIONS:
+- Only merges dictionaries (maps), NOT arrays
+- Arrays in $patch completely replace arrays in $base (no element-wise merge)
+- For resources with array fields (e.g., webhooks), use string replacement instead
+
+Example:
+  Base:    {a: {b: 1, c: 2}, d: [1,2]}
+  Patch:   {a: {b: 10}, d: [3]}
+  Result:  {a: {b: 10, c: 2}, d: [3]}  <- d array is replaced, not merged
+*/}}
+{{- define "llm-isvc-resources.deepMerge" -}}
+{{- $base := index . 0 -}}
+{{- $patch := index . 1 -}}
+{{- range $key, $value := $patch -}}
+  {{- if hasKey $base $key -}}
+    {{- $baseValue := get $base $key -}}
+    {{- if and (kindIs "map" $value) (kindIs "map" $baseValue) -}}
+      {{- $merged := include "llm-isvc-resources.deepMerge" (list $baseValue $value) | fromYaml -}}
+      {{- $_ := set $base $key $merged -}}
+    {{- else -}}
+      {{- $_ := set $base $key $value -}}
+    {{- end -}}
+  {{- else -}}
+    {{- $_ := set $base $key $value -}}
+  {{- end -}}
+{{- end -}}
+{{ toYaml $base }}
+{{- end }}
+
+{{/*
+Safe namespace replacement - only replaces exact "namespace: kserve" pattern
+*/}}
+{{- define "llm-isvc-resources.replaceNamespace" -}}
+{{- $content := index . 0 -}}
+{{- $namespace := index . 1 -}}
+{{- $pattern := "namespace: kserve\n" -}}
+{{- $replacement := printf "namespace: %s\n" $namespace -}}
+{{- $content | replace $pattern $replacement -}}
+{{- end -}}

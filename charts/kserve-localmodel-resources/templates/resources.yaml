@@ -1,0 +1,65 @@
+{{- /* 1. Load base resources file and replace namespace */ -}}
+{{- $baseContent := .Files.Get "files/resources.yaml" -}}
+{{- $baseContent = include "kserve-localmodel-resources.replaceNamespace" (list $baseContent .Release.Namespace) -}}
+
+{{- /* 1.1. Replace cert-manager annotation with correct namespace */ -}}
+{{- $pattern := "cert-manager.io/inject-ca-from: kserve/localmodel-serving-cert" -}}
+{{- $replacement := printf "cert-manager.io/inject-ca-from: %s/localmodel-serving-cert" .Release.Namespace -}}
+{{- $baseContent = $baseContent | replace $pattern $replacement -}}
+
+{{- /* 2. Load and render all patch files */ -}}
+{{- $allPatchContent := "" -}}
+{{- range $path, $_ := .Files.Glob "files/*-patch.yaml" -}}
+  {{- $patchContent := $.Files.Get $path | toString -}}
+  {{- if $patchContent -}}
+    {{- $allPatchContent = printf "%s\n---\n%s" $allPatchContent $patchContent -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* 3. Render patch content with template variables */ -}}
+{{- $patchRendered := tpl $allPatchContent . -}}
+
+{{- /* 4. Parse base resources into a map by kind/name */ -}}
+{{- $baseMap := dict -}}
+{{- range $obj := splitList "---" $baseContent -}}
+  {{- $trimmed := trim $obj -}}
+  {{- if $trimmed -}}
+    {{- $parsed := fromYaml $trimmed -}}
+    {{- if and $parsed $parsed.kind $parsed.metadata $parsed.metadata.name -}}
+      {{- $key := printf "%s/%s" $parsed.kind $parsed.metadata.name -}}
+      {{- $_ := set $baseMap $key $parsed -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* 5. Parse rendered patch resources */ -}}
+{{- $patchMap := dict -}}
+{{- range $obj := splitList "---" $patchRendered -}}
+  {{- $trimmed := trim $obj -}}
+  {{- if $trimmed -}}
+    {{- $parsed := fromYaml $trimmed -}}
+    {{- if and $parsed $parsed.kind $parsed.metadata $parsed.metadata.name -}}
+      {{- $key := printf "%s/%s" $parsed.kind $parsed.metadata.name -}}
+      {{- $_ := set $patchMap $key $parsed -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* 6. Merge patch into base using deep merge */ -}}
+{{- range $key, $patch := $patchMap -}}
+  {{- if hasKey $baseMap $key -}}
+    {{- $base := get $baseMap $key -}}
+    {{- $merged := include "kserve-localmodel-resources.deepMerge" (list $base $patch) | fromYaml -}}
+    {{- $_ := set $baseMap $key $merged -}}
+  {{- else -}}
+    {{- /* New resource from patch */ -}}
+    {{- $_ := set $baseMap $key $patch -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* 7. Output all merged resources */ -}}
+{{- range $key := keys $baseMap | sortAlpha }}
+{{- $resource := index $baseMap $key }}
+---
+{{ toYaml $resource }}
+{{ end -}}
