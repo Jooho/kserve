@@ -11,3 +11,5 @@ INCLUDE_DEFINITIONS:
   
 COMPONENTS:
   - name: kserve-kustomize
+    env:
+      INSTALL_RUNTIMES: true
