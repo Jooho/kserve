@@ -13,3 +13,4 @@ COMPONENTS:
   - name: kserve-kustomize
     env:
       DEPLOYMENT_MODE: Standard
+      INSTALL_RUNTIMES: true

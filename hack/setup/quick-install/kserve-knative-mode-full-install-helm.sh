@@ -135,6 +135,21 @@ log_warning() {
     echo -e "${YELLOW}[WARNING]${RESET} $*" >&2
 }
 
+is_positive() {
+  input_val=$1
+  if [[ z$input_val == z ]]; then
+    input_val="no"
+  fi
+
+  if [[ $input_val == '0' || $input_val == "true" || $input_val == 'True' || $input_val == 'yes' || $input_val == 'Yes' || $input_val == 'y' || $input_val == 'Y' ]]; then
+    echo 0
+  elif [[ $input_val == '1' || $input_val == 'false' || $input_val == 'False' || $input_val == 'no' || $input_val == 'No' || $input_val == 'n' || $input_val == 'N' ]]; then
+    echo 1
+  else    
+    echo 2
+  fi
+}
+
 
 # ============================================================================
 # Infrastructure Installation Helper Functions
@@ -1338,11 +1353,11 @@ install_kserve_helm() {
             log_info "  - ${update}"
         done
         update_isvc_config "${config_updates[@]}"
-        if [ "${LLMISVC}" != "true" ]; then
+        if [ $(is_positive ${LLMISVC}) = "1" ]; then
             kubectl rollout restart deployment kserve-controller-manager -n ${KSERVE_NAMESPACE}
         fi
     else
-        if [ "${LLMISVC}" = "true" ]; then
+        if [ $(is_positive ${LLMISVC}) = "0" ]; then
             log_info "No configuration updates needed for LLMISVC (GATEWAY_NETWORK_LAYER=${GATEWAY_NETWORK_LAYER})"
         else
             log_info "No configuration updates needed (DEPLOYMENT_MODE=${DEPLOYMENT_MODE}, GATEWAY_NETWORK_LAYER=${GATEWAY_NETWORK_LAYER})"

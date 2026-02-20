@@ -230,8 +230,11 @@ def generate_script_content(
     kserve_manifest_functions = ""
     if config["embed_manifests"]:
         config["global_env"]["EMBED_MANIFESTS"] = "true"
-        crd_manifest, core_manifest = manifest_builder.build_kserve_manifests(repo_root, config, components)
-        kserve_manifest_functions = manifest_builder.generate_manifest_functions(crd_manifest, core_manifest)
+        crd_manifest, core_manifest, runtime_manifest, llmisvcconfig_manifest = \
+            manifest_builder.build_kserve_manifests(repo_root, config, components)
+        kserve_manifest_functions = manifest_builder.generate_manifest_functions(
+            crd_manifest, core_manifest, runtime_manifest, llmisvcconfig_manifest
+        )
 
     # Read common functions
     common_sh = repo_root / "hack/setup/common.sh"
