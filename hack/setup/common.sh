@@ -358,7 +358,11 @@ update_isvc_config() {
             # Apply each update
             reduce $updates[] as $item (.;
                 if .data[$item.data_key] == null or .data[$item.data_key] == "" then
-                    .
+                    .data[$item.data_key] = (
+                        {}
+                        | setpath_safe($item.path | split("."); $item.value)
+                        | tojson
+                    )
                 else
                     .data[$item.data_key] |= (
                         fromjson
@@ -406,6 +410,32 @@ check_cli_exist() {
 
 command_exists() {
     command -v "$1" &>/dev/null
+}
+
+# Retry a command with delay between attempts
+# Usage: retry_command <max_attempts> <delay_seconds> <command...>
+# Example: retry_command 3 5 kubectl apply -k "${RUNTIMES_DIR}"
+# Returns: 0 on success, 1 on failure after all attempts
+retry_command() {
+    local max_attempts="$1"
+    local delay="$2"
+    shift 2
+    local attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        if "$@" 2>&1; then
+            return 0
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_warning "Command failed, retrying in ${delay} seconds... (attempt $attempt/$max_attempts)"
+            sleep "$delay"
+        else
+            log_error "Command failed after $max_attempts attempts"
+            return 1
+        fi
+        attempt=$((attempt + 1))
+    done
 }
 
 # Compare semantic versions (returns 0 if v1 >= v2, 1 otherwise)

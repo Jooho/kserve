@@ -619,9 +619,13 @@ jobs:
 
       - name: Install KServe
         run: |
-          ${{ matrix.install-method == 'helm' && 'export INSTALL_METHOD="helm"' || '' }}
-          ${{ matrix.install-method == 'helm' && format('export SET_KSERVE_VERSION={0}', env.TAG) || '' }}
-          export KSERVE_CUSTOM_ISVC_CONFIGS='ingress.pathTemplate=/serving/{{ .Namespace }}/{{ .Name }}|ingress.ingressDomain=mydomain.com'
+          if [ "${{ matrix.install-method }}" == "helm" ]; then
+            export INSTALL_METHOD="helm"
+            export SET_KSERVE_VERSION=${{ env.TAG }}
+            export KSERVE_CUSTOM_ISVC_CONFIGS='kserve.controller.gateway.pathTemplate=/serving/{{ .Namespace }}/{{ .Name }}|kserve.controller.gateway.domain=mydomain.com'
+          else
+            export KSERVE_CUSTOM_ISVC_CONFIGS='ingress.pathTemplate=/serving/{{ .Namespace }}/{{ .Name }}|ingress.ingressDomain=mydomain.com'
+          fi
           export NETWORK_LAYER='istio-ingress'
           ./test/scripts/gh-actions/setup-kserve.sh
 
@@ -1083,9 +1087,13 @@ jobs:
 
       - name: Install KServe
         run: |
-          ${{ matrix.install-method == 'helm' && 'export INSTALL_METHOD="helm"' || '' }}
-          ${{ matrix.install-method == 'helm' && format('export SET_KSERVE_VERSION={0}', env.TAG) || '' }}
-          export KSERVE_CUSTOM_ISVC_CONFIGS='ingress.disableIstioVirtualHost=true'
+          if [ "${{ matrix.install-method }}" == "helm" ]; then
+            export INSTALL_METHOD="helm"
+            export SET_KSERVE_VERSION=${{ env.TAG }}
+            export KSERVE_CUSTOM_ISVC_CONFIGS='kserve.controller.gateway.disableIstioVirtualHost=true'
+          else
+            export KSERVE_CUSTOM_ISVC_CONFIGS='ingress.disableIstioVirtualHost=true'
+          fi
           ./test/scripts/gh-actions/setup-kserve.sh
 
           kubectl get pods -n kserve

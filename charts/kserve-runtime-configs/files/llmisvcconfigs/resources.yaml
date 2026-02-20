@@ -1230,7 +1230,7 @@ spec:
             failureThreshold: 3
             grpc:
               port: 9003
-              service: envoy.service.ext_proc.v3.ExternalProcessor
+              service: liveness
             initialDelaySeconds: 5
             periodSeconds: 10
             successThreshold: 1
@@ -1253,7 +1253,7 @@ spec:
             failureThreshold: 3
             grpc:
               port: 9003
-              service: envoy.service.ext_proc.v3.ExternalProcessor
+              service: readiness
             initialDelaySeconds: 30
             periodSeconds: 10
             successThreshold: 1

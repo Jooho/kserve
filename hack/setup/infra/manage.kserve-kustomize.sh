@@ -269,16 +269,14 @@ uninstall() {
 
         # Uninstall overlay resources in reverse order
         for ((i=${#TARGET_OVERLAY_DIRS[@]}-1; i>=0; i--)); do
-            overlay_dir="${TARGET_OVERLAY_DIRS[$i]}"
-            log_info "Uninstalling resources from ${overlay_dir}..."
-            kubectl kustomize "${overlay_dir}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
+            log_info "Uninstalling resources from ${TARGET_OVERLAY_DIRS[$i]}..."
+            kubectl kustomize "${TARGET_OVERLAY_DIRS[$i]}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
         done
 
         # Uninstall CRDs in reverse order
         for ((i=${#TARGET_CRD_DIRS[@]}-1; i>=0; i--)); do
-            crd_dir="${TARGET_CRD_DIRS[$i]}"
-            log_info "Uninstalling CRDs from ${crd_dir}..."
-            kubectl kustomize "${crd_dir}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
+            log_info "Uninstalling CRDs from ${TARGET_CRD_DIRS[$i]}..."
+            kubectl kustomize "${TARGET_CRD_DIRS[$i]}" | kubectl delete -f - --force --grace-period=0 2>/dev/null || true
         done
     fi
 
@@ -342,26 +340,21 @@ install() {
             kustomize build "${overlay_dir}" | kubectl apply --server-side -f -
 
             # Wait for corresponding deployment
-            if [ ${#TARGET_DEPLOYMENT_NAMES[@]} -gt $i ]; then
-                deploy="${TARGET_DEPLOYMENT_NAMES[$i]}"
-                if [ -n "${deploy}" ]; then
-                    for d in ${deploy}; do
-                        log_info "Waiting for ${d} to be ready..."
-                        wait_for_deployment "${KSERVE_NAMESPACE}" "${d}" "300s"
-                    done
-                fi
+            if [ ${#TARGET_DEPLOYMENT_NAMES[@]} -gt $i ] && [ -n "${TARGET_DEPLOYMENT_NAMES[$i]}" ]; then
+                for d in ${TARGET_DEPLOYMENT_NAMES[$i]}; do
+                    wait_for_deployment "${KSERVE_NAMESPACE}" "${d}" "300s"
+                done
             fi
         done
         
         if [ "${INSTALL_RUNTIMES}" = "true" ]; then
             log_info "Installing ClusterServingRuntimes..."
-            kubectl apply --server-side=true -k "${RUNTIMES_DIR}"
+            retry_command 3 5 kubectl apply --server-side=true -k "${RUNTIMES_DIR}"
         fi
-        
 
         if [ "${INSTALL_LLMISVC_CONFIGS}" = "true" ]; then
             log_info "Installing LLMISVC configs..."
-            kubectl apply --server-side=true -k "${REPO_ROOT}/config/llmisvcconfig"
+            retry_command 3 5 kubectl apply --server-side=true -k "${REPO_ROOT}/config/llmisvcconfig"
         fi
 
         # Cleanup temporary overlay
@@ -407,14 +400,10 @@ install() {
             done
             update_isvc_config "${config_updates[@]}"
             for i in "${!TARGET_OVERLAY_DIRS[@]}"; do
-                if [ ${#TARGET_DEPLOYMENT_NAMES[@]} -gt $i ]; then
-                    deploy="${TARGET_DEPLOYMENT_NAMES[$i]}"
-                    if [ -n "${deploy}" ]; then
-                        for d in ${deploy}; do
-                            log_info "Waiting for ${d} to be ready..."
-                            wait_for_deployment "${KSERVE_NAMESPACE}" "${d}" "300s"
-                        done
-                    fi
+                if [ ${#TARGET_DEPLOYMENT_NAMES[@]} -gt $i ] && [ -n "${TARGET_DEPLOYMENT_NAMES[$i]}" ]; then
+                    for d in ${TARGET_DEPLOYMENT_NAMES[$i]}; do
+                        wait_for_deployment "${KSERVE_NAMESPACE}" "${d}" "300s"
+                    done
                 fi
             done
             log_success "KServe configuration updated"
