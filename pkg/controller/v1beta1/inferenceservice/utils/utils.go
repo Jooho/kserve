@@ -327,7 +327,7 @@ func GetServingRuntime(ctx context.Context, cl client.Client, name string, names
 	runtime := &v1alpha1.ServingRuntime{}
 	err := cl.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, runtime)
 	if err == nil {
-		return &runtime.Spec, runtime.ObjectMeta.Annotations, nil, false
+		return &runtime.Spec, runtime.Annotations, nil, false
 	} else if !apierrors.IsNotFound(err) {
 		return nil, nil, err, false
 	}
@@ -335,7 +335,7 @@ func GetServingRuntime(ctx context.Context, cl client.Client, name string, names
 	clusterRuntime := &v1alpha1.ClusterServingRuntime{}
 	err = cl.Get(ctx, client.ObjectKey{Name: name}, clusterRuntime)
 	if err == nil {
-		return &clusterRuntime.Spec, clusterRuntime.ObjectMeta.Annotations, nil, true
+		return &clusterRuntime.Spec, clusterRuntime.Annotations, nil, true
 	} else if !apierrors.IsNotFound(err) {
 		return nil, nil, err, false
 	}
