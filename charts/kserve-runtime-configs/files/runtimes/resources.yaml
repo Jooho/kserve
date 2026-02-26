@@ -1,6 +1,8 @@
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: huggingfaceserver
   name: kserve-huggingfaceserver
 spec:
   annotations:
@@ -48,6 +50,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: huggingfaceserver
   name: kserve-huggingfaceserver-multinode
 spec:
   annotations:
@@ -214,6 +218,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: lgbserver
   name: kserve-lgbserver
 spec:
   annotations:
@@ -253,6 +259,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: mlserver
   name: kserve-mlserver
 spec:
   annotations:
@@ -266,8 +274,6 @@ spec:
       value: "8080"
     - name: MLSERVER_GRPC_PORT
       value: "9000"
-    - name: MODELS_DIR
-      value: /mnt/models
     image: docker.io/seldonio/mlserver:1.5.0
     name: kserve-container
     resources:
@@ -323,6 +329,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: paddleserver
   name: kserve-paddleserver
 spec:
   annotations:
@@ -361,6 +369,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: pmmlserver
   name: kserve-pmmlserver
 spec:
   annotations:
@@ -403,6 +413,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: predictiveserver
   name: kserve-predictiveserver
 spec:
   annotations:
@@ -451,6 +463,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: sklearnserver
   name: kserve-sklearnserver
 spec:
   annotations:
@@ -489,6 +503,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: tensorflow-serving
   name: kserve-tensorflow-serving
 spec:
   annotations:
@@ -536,6 +552,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: torchserve
   name: kserve-torchserve
 spec:
   annotations:
@@ -580,6 +598,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: tritonserver
   name: kserve-tritonserver
 spec:
   annotations:
@@ -640,6 +660,8 @@ spec:
 apiVersion: serving.kserve.io/v1alpha1
 kind: ClusterServingRuntime
 metadata:
+  annotations:
+    serving.kserve.io/server-type: xgbserver
   name: kserve-xgbserver
 spec:
   annotations:
