@@ -76,10 +76,48 @@ jobs:
             PRERELEASE=""
           fi
 
+          # Get previous tag for changelog
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Generate auto-generated notes from GitHub
+          echo "Generating release notes..."
+          AUTO_NOTES=$(gh api repos/:owner/:repo/releases/generate-notes \
+            -F tag_name="$VERSION" \
+            -F target_commitish="$(git rev-parse HEAD)" \
+            ${PREV_TAG:+-F previous_tag_name="$PREV_TAG"} \
+            --jq .body)
+
+          # Create comprehensive release notes
+          RELEASE_NOTES=$(cat <<EOF
+          ## Installation
+
+          Install KServe ${VERSION}:
+
+          \`\`\`bash
+          kubectl apply -f https://github.com/kserve/kserve/releases/download/${VERSION}/kserve.yaml
+          \`\`\`
+
+          Or using the install script:
+          \`\`\`bash
+          curl -s "https://raw.githubusercontent.com/kserve/kserve/${VERSION}/hack/quick_install.sh" | bash
+          \`\`\`
+
+          ## What's Changed
+
+          ${AUTO_NOTES}
+
+          ## Documentation
+
+          - [KServe Website](https://kserve.github.io/website/)
+
+          **Full Changelog**: https://github.com/kserve/kserve/compare/${PREV_TAG}...${VERSION}
+          EOF
+          )
+
           # Create GitHub Release
           gh release create "$VERSION" \
             --title "KServe $VERSION" \
-            --generate-notes \
+            --notes "$RELEASE_NOTES" \
             $PRERELEASE
 
           echo ""
