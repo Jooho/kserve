@@ -34,7 +34,7 @@ dependencies = [
     "cryptography>=46.0.5", # CVE-2026-26007 cryptography Subgroup Attack Due to Missing Subgroup Validation for SECT Curves
 ]
 name = "kserve"
-version = "0.16.0"
+version = "0.17.0rc0"
 description = "KServe Python SDK"
 readme = "README.md"
 classifiers = [
@@ -59,7 +59,7 @@ repository = "https://github.com/kserve/kserve/tree/master/python/kserve"
 
 [project.optional-dependencies]
 storage = [
-    "kserve-storage==0.16.0"
+    "kserve-storage==0.17.0rc0"
 ]
 logging = [
     "asgi-logger<1.0.0,>=0.1.0",
