@@ -144,4 +144,4 @@ $ helm install kserve oci://ghcr.io/kserve/charts/kserve --version v0.17.0-rc0
 | kserve.storage.tag | string | `""` |  |
 | kserve.storage.uidModelcar | int | `1010` |  |
 | kserve.storagecontainer.enabled | string | `""` |  |
-| kserve.version | string | `"v0.17.0-rc0"` |  |
+| kserve.version | string | `"v0.16.0"` |  |

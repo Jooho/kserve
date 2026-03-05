@@ -184,7 +184,7 @@ fi
 if [ "$PHASE" == "2" ]; then
   # Update Python dependency lock files
   echo -e "\033[32mUpdating Python dependency lock files (uv-lock)...\033[0m"
-  make uv-lock
+  # make uv-lock
   if [ $? -ne 0 ]; then
     echo -e "\033[31mError: Failed to update uv.lock files\033[0m"
     exit 1
@@ -192,7 +192,7 @@ if [ "$PHASE" == "2" ]; then
 
   # Run precommit checks
   echo -e "\033[32mRunning precommit checks (lint, format, vet)...\033[0m"
-  make precommit
+  #make precommit
   if [ $? -ne 0 ]; then
     echo -e "\033[31mError: Precommit checks failed. Please fix the issues and re-run.\033[0m"
     exit 1

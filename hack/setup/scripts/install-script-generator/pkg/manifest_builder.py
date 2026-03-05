@@ -144,7 +144,7 @@ def select_kserve_directories(repo_root: Path, llmisvc: str) -> tuple[list[Path]
     if llmisvc == "true":
         crd_dirs = [
             repo_root / "config/crd/full/clusterstoragecontainer",
-            repo_root / "config/crd/full/llmisvc",         
+            repo_root / "config/crd/full/llmisvc",
         ]
         config_dirs = [repo_root / "config/overlays/standalone/llmisvc"]
     else:
