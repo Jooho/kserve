@@ -406,7 +406,7 @@ undeploy-dev:
 
 bump-version:
 	@echo "bumping version numbers for this release"
-	@hack/prepare-for-release.sh $(PRIOR_VERSION) $(NEW_VERSION)
+	@hack/prepare-for-release.sh $(PRIOR_VERSION) $(NEW_VERSION) $(PHASE)
 
 # Build the docker image
 docker-build:
