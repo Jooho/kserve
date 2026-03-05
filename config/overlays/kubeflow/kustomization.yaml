@@ -27,4 +27,5 @@ configurations:
 - params.yaml
 
 patches:
+- path: patches/namespace.yaml
 - path: patches/statefulset.yaml
