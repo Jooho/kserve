@@ -103,17 +103,17 @@ if [ "$PHASE" == "1" ]; then
   echo -e "\033[32mUpdating charts...\033[0m"
   for readmeFile in `find charts -name README.md`; do
     echo -e "\033[32mUpdating ${readmeFile}...\033[0m"
-    sed "${SED_INPLACE[@]}" "s/\bv${PRIOR_VERSION}\b/v${NEW_VERSION}/g" ${readmeFile}
-    sed "${SED_INPLACE[@]}" "s/Version-v${pversion}/Version-v${nversion}/g" ${readmeFile}
+    sed "${SED_INPLACE[@]}" "s/\bv${PRIOR_VERSION}\b/v${NEW_VERSION}/g" "${readmeFile}"
+    sed "${SED_INPLACE[@]}" "s/Version-v${pversion}/Version-v${nversion}/g" "${readmeFile}"
     # sanity check, when doing final release update to the next rc version it might skip the double dash
-    sed "${SED_INPLACE[@]}" "s/Version-v${NEW_VERSION}/Version-v${nversion}/g" ${readmeFile}
+    sed "${SED_INPLACE[@]}" "s/Version-v${NEW_VERSION}/Version-v${nversion}/g" "${readmeFile}"
   done
 
   for yaml in `find charts \( -name "Chart.yaml" -o -name "values.yaml" \)`; do
     # do not interact over empty files
-    if [ ! -s "${yaml}" ]; then
+    if [ -s "${yaml}" ]; then
       echo -e "\033[32mUpdating ${yaml}...\033[0m"
-      sed "${SED_INPLACE[@]}" "s/\bv${PRIOR_VERSION}\b/v${NEW_VERSION}/g" ${yaml}
+      sed "${SED_INPLACE[@]}" "s/\bv${PRIOR_VERSION}\b/v${NEW_VERSION}/g" "${yaml}"
     fi
   done
 
