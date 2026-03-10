@@ -35,3 +35,4 @@ jobs:
         with:
           target_branches: ${{ steps.extract-branch.outputs.branch }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          experimental: '{"skip_merge_commits": true}'
