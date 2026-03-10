@@ -1,23 +1,37 @@
-name: Cherry Pick On Comment
+name: Backport On Comment
 
 on:
   issue_comment:
     types: [created]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  cherry-pick:
-    
-    name: Cherry Pick
-    if: github.event.issue.pull_request != '' && contains(github.event.comment.body, '/cherry-pick') && github.event.comment.author_association == 'CONTRIBUTOR'
+  backport:
+    name: Backport
     runs-on: ubuntu-latest
 
+    # Only run when a comment starting with `/cherry-pick` is created on a PR by authorized users
+    if: >
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/cherry-pick') &&
+      contains(fromJSON('["OWNER", "COLLABORATOR"]'), github.event.comment.author_association)
+
     steps:
-      - name: Checkout the latest code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      - name: Extract target branch from comment
+        id: extract-branch
+        run: |
+          # Extract branch from comment like "/cherry-pick release-0.17"
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          TARGET_BRANCH=$(echo "$COMMENT_BODY" | awk '{print $2}' | tr -d '[:space:]')
+          echo "branch=$TARGET_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Create backport pull requests
+        uses: korthout/backport-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # otherwise, you will fail to push refs to dest repo
-      - name: Automatic Cherry Pick
-        uses: hianhianhian/gha-cherry-pick@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          target_branches: ${{ steps.extract-branch.outputs.branch }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
