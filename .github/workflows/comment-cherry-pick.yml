@@ -13,11 +13,11 @@ jobs:
     name: Backport
     runs-on: ubuntu-latest
 
-    # Only run when a comment starting with `/cherry-pick` is created on a merged PR
+    # Only run when a comment starting with `/cherry-pick` is created on a PR by authorized users
     if: >
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '/cherry-pick') &&
-      github.event.comment.author_association == 'COLLABORATOR'
+      contains(fromJSON('["OWNER", "COLLABORATOR"]'), github.event.comment.author_association)
 
     steps:
       - uses: actions/checkout@v4
