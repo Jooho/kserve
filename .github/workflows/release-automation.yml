@@ -3,17 +3,9 @@ name: Release Automation
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: 'Release type'
-        required: true
-        type: choice
-        options:
-          - rc0
-          - rc1+
-          - official
       prior_version:
-        description: 'Prior version (e.g., 0.17.0-rc0) - Required for rc0/rc1+'
-        required: false
+        description: 'Prior version (e.g., 0.17.0-rc0)'
+        required: true
         type: string
       new_version:
         description: 'New version (e.g., 0.17.0-rc1 or 0.17.0)'
@@ -39,6 +31,7 @@ jobs:
     outputs:
       minor_version: ${{ steps.parse.outputs.minor_version }}
       release_branch: ${{ steps.parse.outputs.release_branch }}
+      release_type: ${{ steps.parse.outputs.release_type }}
 
     steps:
       - name: Checkout repository
@@ -70,36 +63,62 @@ jobs:
 
           echo "✅ Permission granted for ${{ github.actor }}"
 
-      - name: Parse version
+      - name: Parse version and determine release type
         id: parse
         run: |
+          PRIOR_VERSION="${{ inputs.prior_version }}"
           NEW_VERSION="${{ inputs.new_version }}"
           MINOR_VERSION=$(echo "$NEW_VERSION" | cut -d. -f1,2)
           RELEASE_BRANCH="release-${MINOR_VERSION}"
 
+          # Determine release type from versions
+          # RC0: prior is final (0.17.0) → new is -rc0 (0.18.0-rc0)
+          # RC1+: prior is -rc → new is -rc with higher number
+          # Official: prior is -rc → new is final (0.17.0-rc1 → 0.17.0)
+
+          if [[ "$NEW_VERSION" == *"-rc0" ]]; then
+            RELEASE_TYPE="rc0"
+          elif [[ "$PRIOR_VERSION" == *"-rc"* ]] && [[ "$NEW_VERSION" == *"-rc"* ]]; then
+            RELEASE_TYPE="rc1+"
+          elif [[ "$PRIOR_VERSION" == *"-rc"* ]] && [[ "$NEW_VERSION" != *"-rc"* ]]; then
+            RELEASE_TYPE="official"
+          else
+            echo "❌ Error: Cannot determine release type from versions"
+            echo "   Prior: $PRIOR_VERSION"
+            echo "   New: $NEW_VERSION"
+            exit 1
+          fi
+
           echo "minor_version=$MINOR_VERSION" >> $GITHUB_OUTPUT
           echo "release_branch=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
+          echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
 
           echo "Parsed version info:"
+          echo "  Prior Version: $PRIOR_VERSION"
           echo "  New Version: $NEW_VERSION"
           echo "  Minor Version: $MINOR_VERSION"
           echo "  Release Branch: $RELEASE_BRANCH"
+          echo "  Release Type: $RELEASE_TYPE"
 
-      - name: Validate inputs
+      - name: Validate version format
         run: |
-          RELEASE_TYPE="${{ inputs.release_type }}"
           PRIOR_VERSION="${{ inputs.prior_version }}"
           NEW_VERSION="${{ inputs.new_version }}"
 
-          # RC0 and RC1+ require prior_version
-          if [[ "$RELEASE_TYPE" == "rc0" ]] || [[ "$RELEASE_TYPE" == "rc1+" ]]; then
-            if [[ -z "$PRIOR_VERSION" ]]; then
-              echo "❌ Error: prior_version is required for $RELEASE_TYPE"
-              exit 1
-            fi
+          # Validate version format (basic check)
+          if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$'; then
+            echo "❌ Error: Invalid version format: $NEW_VERSION"
+            echo "   Expected: X.Y.Z or X.Y.Z-rcN"
+            exit 1
           fi
 
-          echo "✅ Input validation passed"
+          if ! echo "$PRIOR_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$'; then
+            echo "❌ Error: Invalid version format: $PRIOR_VERSION"
+            echo "   Expected: X.Y.Z or X.Y.Z-rcN"
+            exit 1
+          fi
+
+          echo "✅ Version format validation passed"
 
       - name: Check if tag already exists
         env:
@@ -135,7 +154,7 @@ jobs:
   # ============================================================
   rc0-prepare:
     needs: validate
-    if: inputs.release_type == 'rc0' && inputs.dry_run == false
+    if: needs.validate.outputs.release_type == 'rc0' && inputs.dry_run == false
     runs-on: ubuntu-latest
 
     steps:
@@ -192,7 +211,7 @@ jobs:
   # ============================================================
   rc1-cherrypick:
     needs: validate
-    if: inputs.release_type == 'rc1+' && inputs.dry_run == false
+    if: needs.validate.outputs.release_type == 'rc1+' && inputs.dry_run == false
     runs-on: ubuntu-latest
 
     steps:
@@ -267,7 +286,7 @@ jobs:
   # ============================================================
   rc1-bump-master:
     needs: [validate, rc1-cherrypick]
-    if: inputs.release_type == 'rc1+' && inputs.dry_run == false
+    if: needs.validate.outputs.release_type == 'rc1+' && inputs.dry_run == false
     runs-on: ubuntu-latest
 
     steps:
@@ -321,9 +340,9 @@ jobs:
       always() &&
       inputs.dry_run == false &&
       (
-        (inputs.release_type == 'rc0' && needs.rc0-prepare.result == 'success') ||
-        (inputs.release_type == 'rc1+' && needs.rc1-bump-master.result == 'success') ||
-        inputs.release_type == 'official'
+        (needs.validate.outputs.release_type == 'rc0' && needs.rc0-prepare.result == 'success') ||
+        (needs.validate.outputs.release_type == 'rc1+' && needs.rc1-bump-master.result == 'success') ||
+        needs.validate.outputs.release_type == 'official'
       )
     runs-on: ubuntu-latest
 
@@ -437,26 +456,28 @@ jobs:
     steps:
       - name: Show dry-run summary
         run: |
+          RELEASE_TYPE="${{ needs.validate.outputs.release_type }}"
+
           echo ""
           echo "=================================================="
           echo "🔍 DRY-RUN MODE - Validation passed"
           echo "=================================================="
           echo ""
           echo "Release Configuration:"
-          echo "  Type:           ${{ inputs.release_type }}"
+          echo "  Type:           $RELEASE_TYPE"
           echo "  Prior Version:  ${{ inputs.prior_version }}"
           echo "  New Version:    ${{ inputs.new_version }}"
           echo "  Release Branch: ${{ needs.validate.outputs.release_branch }}"
           echo ""
 
-          if [[ "${{ inputs.release_type }}" == "rc0" ]]; then
+          if [[ "$RELEASE_TYPE" == "rc0" ]]; then
             echo "📋 RC0 Workflow Plan:"
             echo "  1. ✅ Validate version and permissions"
             echo "  2. Bump version on master"
             echo "  3. Create release branch: ${{ needs.validate.outputs.release_branch }}"
             echo "  4. Create tag: v${{ inputs.new_version }}"
             echo "  5. Create draft GitHub release"
-          elif [[ "${{ inputs.release_type }}" == "rc1+" ]]; then
+          elif [[ "$RELEASE_TYPE" == "rc1+" ]]; then
             echo "📋 RC1+ Workflow Plan:"
             echo "  1. ✅ Validate version and permissions"
             echo "  2. Cherry-pick approved PRs to release branch"
