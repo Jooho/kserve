@@ -31,63 +31,55 @@ Simplified and automated KServe release process (5~7 weeks) using scripts and Gi
 
 ## RC0: Initial Release Candidate
 
-### 1. Prepare and Merge
-
-**Option A: Automated (Recommended)**
+### 0. Set Release Variables
 
 ```bash
-git clone git@github.com:YOUR_ORG/kserve.git
-cd kserve
-
-# Preview changes (dry-run)
-make bump-version NEW_VERSION=0.17.0-rc0 PRIOR_VERSION=0.16.0
-
-# Execute version update + create draft PR automatically
-make bump-version NEW_VERSION=0.17.0-rc0 PRIOR_VERSION=0.16.0 ARGS="--create-pr"
+# Set these variables for your release (example: 0.17.0)
+export NEW_VERSION=0.17.0
+export PRIOR_VERSION=0.16.0
 ```
 
-**Option B: Manual**
+### 1. Prepare and Merge
 
 ```bash
 git clone git@github.com:YOUR_ORG/kserve.git
 cd kserve
 
-# Execute version update only
-make bump-version NEW_VERSION=0.17.0-rc0 PRIOR_VERSION=0.16.0 ARGS="--execute"
+git checkout -b release/${NEW_VERSION}-rc0
 
-# Review and commit manually
-git checkout -b release/0.17.0-rc0
+# Prepare release (uses variables from step 0)
+make bump-version NEW_VERSION=${NEW_VERSION}-rc0 PRIOR_VERSION=${PRIOR_VERSION}
+
+# Push release branch to your repository
 git add .
-git commit -S -s -m "release: prepare release v0.17.0-rc0"
-git push -u origin release/0.17.0-rc0
+git commit -S -s -m "release: prepare release v${NEW_VERSION}-rc0"
+git push -u origin release/${NEW_VERSION}-rc0
 
-# Create PR to master in upstream kserve
-gh pr create --title "release: prepare release v0.17.0-rc0" --label release-tracking --draft
+# Create PR to master in upstream kserve via GitHub UI
 ```
 
 ### 2. Prepare Release (Branch & Tag)
 
 **GitHub Actions:**
 1. Go to **Actions** → **Prepare Release (Branch & Tag)** → **Run workflow**
-2. Select **"Use workflow from: master"** (dropdown at top)
-3. Set `version: v0.17.0-rc0`, `dry_run: true`
-4. Review output, then run with `dry_run: false`
+2. Set `version: v${NEW_VERSION}-rc0`, `dry_run: true`
+3. Review output, then run with `dry_run: false`
 
 **Local Script (only for testing):**
 ```bash
-./hack/release/create-release.sh v0.17.0-rc0 --dry-run
+./hack/release/create-release.sh v${NEW_VERSION}-rc0 --dry-run
 ```
 
 This creates:
-- Branch: `release-0.17`
-- Tag: `v0.17.0-rc0`
+- Branch: `release-${NEW_VERSION%.*}` (e.g., `release-0.17`)
+- Tag: `v${NEW_VERSION}-rc0`
 
 ### 3. Review and Publish Draft Release
 
 The workflow automatically creates a **Draft Release** with:
 
-- ✅ Release notes (commit-based, auto-generated)
-- ✅ Install files (from `install/v0.17.0-rc0/`)
+- ✅ Release notes (auto-generated from commits)
+- ✅ Install files (from `install/v${NEW_VERSION}-rc0/`)
 - ✅ Pre-release flag (for RC versions)
 
 > **Note:** Approvers or above (listed in [OWNERS](../OWNERS)) can publish GitHub Releases.
@@ -96,7 +88,7 @@ The workflow automatically creates a **Draft Release** with:
 
 1. **Review the Draft Release:**
    - Go to: <https://github.com/kserve/kserve/releases>
-   - Find the draft release for `v0.17.0-rc0`
+   - Find the draft release for `v${NEW_VERSION}-rc0`
 
 2. **Edit if needed:**
    - Update release notes
@@ -123,8 +115,8 @@ The workflow automatically creates a **Draft Release** with:
 ### 4. Announce
 
 ```bash
-echo "📢 KServe v0.17.0-rc0 is now available!"
-echo "Release: https://github.com/kserve/kserve/releases/tag/v0.17.0-rc0"
+echo "📢 KServe v${NEW_VERSION}-rc0 is now available!"
+echo "Release: https://github.com/kserve/kserve/releases/tag/v${NEW_VERSION}-rc0"
 echo "Please test and report bugs. Feature freeze is now in effect."
 ```
 
@@ -132,75 +124,47 @@ echo "Please test and report bugs. Feature freeze is now in effect."
 
 ## RC1+: Bug Fix Release Candidates
 
+### 0. Set Release Variables
+
+```bash
+# Update these variables for RC1
+export NEW_VERSION=0.17.0
+export PRIOR_VERSION=0.17.0-rc0  # Previous RC version
+```
+
 ### 1. Fix Bugs
 
 - Fix bugs in master
 - Label PR with `cherrypick-approved`
 - Merge to master
 
-### 2. Cherry-pick to Release Branch
-
-**Option A: Batch Cherry-pick (Recommended for multiple PRs)**
-
-```bash
-# Preview PRs to be cherry-picked
-./hack/release/batch-cherry-pick.sh
-
-# Execute cherry-pick
-./hack/release/batch-cherry-pick.sh --execute
-
-# Push to your fork
-./hack/release/batch-cherry-pick.sh --push
-
-# Create draft PR to kserve/kserve (default)
-./hack/release/batch-cherry-pick.sh --create-pr
-```
-
-**Option B: Manual Cherry-pick (Single PR)**
+### 2. Cherry-pick
 
 ```bash
 # In merged PR, comment:
-/cherry-pick release-0.17
+/cherry-pick release-${NEW_VERSION%.*}
 ```
 
-### 3. Prepare RC1 and Merge
-
-**Automated (Recommended):**
+### 3. Prepare and Merge
 
 ```bash
-# Preview changes
-make bump-version NEW_VERSION=0.17.0-rc1 PRIOR_VERSION=0.17.0-rc0
-
-# Create draft PR automatically
-make bump-version NEW_VERSION=0.17.0-rc1 PRIOR_VERSION=0.17.0-rc0 ARGS="--create-pr"
-
-# After PR is merged to master, cherry-pick to release branch:
-# Comment on merged PR: /cherry-pick release-0.17
+make bump-version NEW_VERSION=${NEW_VERSION}-rc1 PRIOR_VERSION=${PRIOR_VERSION}
+# Create PR with cherrypick-approved label, merge to master
+# Cherry-pick: /cherry-pick release-${NEW_VERSION%.*}  ex. /cherry-pick release-0.17
 ```
 
-**Manual:**
-
-```bash
-# Execute version update
-make bump-version NEW_VERSION=0.17.0-rc1 PRIOR_VERSION=0.17.0-rc0 ARGS="--execute"
-
-# Create PR manually with cherrypick-approved label, merge to master
-# Cherry-pick: /cherry-pick release-0.17
-```
-
-### 4. Create RC1 Tag
+### 4. Prepare Release (Tag Only)
 
 **GitHub Actions (Recommended):**
 
 1. Go to **Actions** → **Prepare Release (Branch & Tag)** → **Run workflow**
-2. Select **"Use workflow from: master"** (dropdown at top)
-3. Set `version: v0.17.0-rc1`, `dry_run: true`
-4. Review output, then run with `dry_run: false`
+2. Set `version: v${NEW_VERSION}-rc1`, `dry_run: true`
+3. Review output, then run with `dry_run: false`
 
 **Local Script (only for testing):**
 
 ```bash
-./hack/release/create-release.sh v0.17.0-rc1 --dry-run
+./hack/release/create-release.sh v${NEW_VERSION}-rc1 --dry-run
 ```
 
 
@@ -221,44 +185,34 @@ Publishing automatically triggers `python-publish` and `helm-publish` workflows.
 
 ## Final Release
 
-### 1. Prepare Final Release and Merge
-
-**Automated (Recommended):**
+### 0. Set Release Variables
 
 ```bash
-# Preview changes
-make bump-version NEW_VERSION=0.17.0 PRIOR_VERSION=0.17.0-rc1
-
-# Create draft PR automatically
-make bump-version NEW_VERSION=0.17.0 PRIOR_VERSION=0.17.0-rc1 ARGS="--create-pr"
-
-# After PR is merged to master, cherry-pick to release branch:
-# Comment on merged PR: /cherry-pick release-0.17
+# Update these variables for final release
+export NEW_VERSION=0.17.0
+export PRIOR_VERSION=0.17.0-rc1  # Last RC version (or rc0 if no RC1)
 ```
 
-**Manual:**
+### 1. Prepare and Merge
 
 ```bash
-# Execute version update
-make bump-version NEW_VERSION=0.17.0 PRIOR_VERSION=0.17.0-rc1 ARGS="--execute"
-
-# Create PR manually with cherrypick-approved label, merge to master
-# Cherry-pick: /cherry-pick release-0.17
+make bump-version NEW_VERSION=${NEW_VERSION} PRIOR_VERSION=${PRIOR_VERSION}
+# Create PR with cherrypick-approved label, merge to master
+# Cherry-pick: /cherry-pick release-${NEW_VERSION%.*}  ex. /cherry-pick release-0.17
 ```
 
-### 2. Create Final Release Tag
+### 2. Prepare Release (Tag Only)
 
 **GitHub Actions (Recommended):**
 
 1. Go to **Actions** → **Prepare Release (Branch & Tag)** → **Run workflow**
-2. Select **"Use workflow from: master"** (dropdown at top)
-3. Set `version: v0.17.0`, `dry_run: true`
-4. Review output, then run with `dry_run: false`
+2. Set `version: v${NEW_VERSION}`, `dry_run: true`
+3. Review output, then run with `dry_run: false`
 
 **Local Script (only for testing):**
 
 ```bash
-./hack/release/create-release.sh v0.17.0 --dry-run
+./hack/release/create-release.sh v${NEW_VERSION} --dry-run
 ```
 
 ### 3. Review and Publish Final Release
@@ -278,24 +232,6 @@ Publishing automatically triggers `python-publish` and `helm-publish` workflows.
 
 ## Resources
 
-### Scripts
-
-- [`prepare-for-release.sh`](../hack/release/prepare-for-release.sh) - Prepare release PR (bump versions)
-- [`create-release.sh`](../hack/release/create-release.sh) - Create branch/tag (GitHub Actions)
-- [`batch-cherry-pick.sh`](../hack/release/batch-cherry-pick.sh) - Batch cherry-pick approved PRs
-- [`generate-release-notes.sh`](../hack/release/generate-release-notes.sh) - Generate commit-based release notes
-
-### Workflows
-
-- [`prepare-release.yml`](../.github/workflows/prepare-release.yml) - Create branch, tag, and draft release
-- [`python-publish.yml`](../.github/workflows/python-publish.yml) - Publish to PyPI
-- [`helm-publish.yml`](../.github/workflows/helm-publish.yml) - Publish Helm charts
-
-### Help
-
-```bash
-./hack/release/prepare-for-release.sh --help
-./hack/release/create-release.sh --help
-./hack/release/batch-cherry-pick.sh --help
-./hack/release/generate-release-notes.sh --help
-```
+- Scripts: [`prepare-for-release.sh`](../hack/release/prepare-for-release.sh), [`create-release.sh`](../hack/release/create-release.sh)
+- Workflows: [`prepare-release.yml`](../.github/workflows/prepare-release.yml), [`python-publish.yml`](../.github/workflows/python-publish.yml)
+- Help: `./hack/release/create-release.sh --help`
