@@ -9,7 +9,7 @@ readonly LABEL_COMPLETED="cherrypicked"
 DRY_RUN=true
 PUSH_BRANCH=false
 CREATE_PR=false
-DRAFT_PR=false
+DRAFT_PR=true
 TARGET_BRANCH=""
 NEW_BRANCH=""
 STATE_FILE=""
@@ -33,8 +33,8 @@ parse_arguments() {
                 CREATE_PR=true
                 shift
                 ;;
-            --draft)
-                DRAFT_PR=true
+            --no-draft)
+                DRAFT_PR=false
                 shift
                 ;;
             --pr-repo)
@@ -54,8 +54,8 @@ parse_arguments() {
                 echo "  (no options)          Dry-run (default)"
                 echo "  --execute             Cherry-pick commits locally"
                 echo "  --push                Push cherry-pick branch to origin"
-                echo "  --create-pr           Create PR from pushed branch"
-                echo "  --draft               Create PR as draft (use with --create-pr)"
+                echo "  --create-pr           Create draft PR from pushed branch (default)"
+                echo "  --no-draft            Create regular PR (use with --create-pr)"
                 echo "  --pr-repo OWNER/REPO  PR target repo (default: kserve/kserve)"
                 echo "  -h, --help            Show this help"
                 echo ""
@@ -81,8 +81,8 @@ parse_arguments() {
         esac
     done
 
-    if [ "$DRAFT_PR" = true ] && [ "$CREATE_PR" != true ]; then
-        log_error "--draft requires --create-pr"
+    if [ "$DRAFT_PR" = false ] && [ "$CREATE_PR" != true ]; then
+        log_error "--no-draft requires --create-pr"
         exit 1
     fi
 

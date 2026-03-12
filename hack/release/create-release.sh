@@ -3,6 +3,9 @@
 
 set -eo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd 2>/dev/null)"
+source "${SCRIPT_DIR}/../setup/common.sh"
+
 # Detect the upstream remote (kserve/kserve)
 detect_upstream_remote() {
     # Check all remotes for kserve/kserve
@@ -20,15 +23,6 @@ detect_upstream_remote() {
 }
 
 # ============================================================
-# Color codes for output
-# ============================================================
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-BLUE='\033[34m'
-NC='\033[0m' # No Color
-
-# ============================================================
 # Global variables
 # ============================================================
 VERSION=""
@@ -43,27 +37,6 @@ RELEASE_TYPE=""
 # ============================================================
 # Helper functions
 # ============================================================
-
-print_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
-}
-
-print_section() {
-    echo ""
-    echo -e "${GREEN}$1${NC}"
-}
 
 usage() {
     cat <<EOF
@@ -112,11 +85,12 @@ EOF
 # ============================================================
 
 validate_version_format() {
-    print_section "🔍 Phase 1: Validating version format..."
+    echo ""
+    log_info "Phase 1: Validating version format..."
 
     local pattern="^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$"
     if [[ ! $VERSION =~ $pattern ]]; then
-        print_error "Invalid version format: $VERSION"
+        log_error "Invalid version format: $VERSION"
         echo ""
         echo "Valid formats:"
         echo "  - v0.17.0-rc0 (Release Candidate 0)"
@@ -125,11 +99,12 @@ validate_version_format() {
         exit 1
     fi
 
-    print_success "Version format is valid"
+    log_success "Version format is valid"
 }
 
 parse_version() {
-    print_section "🔍 Parsing version components..."
+    echo ""
+    log_info "Parsing version components..."
 
     # Remove leading 'v'
     local version_no_v=$(echo "$VERSION" | sed 's/^v//')
@@ -152,7 +127,7 @@ parse_version() {
     elif [[ -z "$RC" ]]; then
         RELEASE_TYPE="Final Release"
     else
-        print_error "Invalid RC format: $RC"
+        log_error "Invalid RC format: $RC"
         exit 1
     fi
 
@@ -162,21 +137,21 @@ parse_version() {
     echo "  RC Suffix: ${RC:-none}"
     echo "  Release Type: $RELEASE_TYPE"
     echo "  Target Branch: $BRANCH"
-    print_success "Version parsed successfully"
+    log_success "Version parsed successfully"
 }
 
 validate_kserve_deps() {
-    print_section "🔍 Phase 2: Validating kserve-deps.env..."
+    echo ""; log_info "Phase 2: Validating kserve-deps.env..."
 
     if [[ ! -f "kserve-deps.env" ]]; then
-        print_error "kserve-deps.env file not found!"
+        log_error "kserve-deps.env file not found!"
         exit 1
     fi
 
     local current_version=$(grep KSERVE_VERSION= kserve-deps.env | cut -d= -f2)
 
     if [[ "$current_version" != "$VERSION" ]]; then
-        print_error "Version mismatch!"
+        log_error "Version mismatch!"
         echo "   Input version: $VERSION"
         echo "   kserve-deps.env: $current_version"
         echo ""
@@ -185,42 +160,42 @@ validate_kserve_deps() {
         exit 1
     fi
 
-    print_success "kserve-deps.env version matches: $current_version"
+    log_success "kserve-deps.env version matches: $current_version"
 }
 
 validate_tag_duplicate() {
-    print_section "🔍 Phase 3: Checking for duplicate tag..."
+    echo ""; log_info "Phase 3: Checking for duplicate tag..."
 
     if git rev-parse "$VERSION" >/dev/null 2>&1; then
-        print_error "Tag $VERSION already exists!"
+        log_error "Tag $VERSION already exists!"
         echo ""
         echo "Existing tag information:"
         git show -s --format='%h %ci %s' "$VERSION"
         exit 1
     fi
 
-    print_success "Tag $VERSION does not exist (OK)"
+    log_success "Tag $VERSION does not exist (OK)"
 }
 
 validate_github_release_duplicate() {
-    print_section "🔍 Phase 4: Checking for duplicate GitHub Release..."
+    echo ""; log_info "Phase 4: Checking for duplicate GitHub Release..."
 
     # Skip actual check if --github-actions is not set
     if [[ "$GITHUB_ACTIONS_MODE" == false ]]; then
-        print_info "GitHub Release check requires --github-actions flag"
+        log_info "GitHub Release check requires --github-actions flag"
         return
     fi
 
     # Check if gh CLI is available
     if ! command -v gh >/dev/null 2>&1; then
-        print_warning "gh CLI not found, skipping GitHub Release duplicate check"
-        print_info "Install gh CLI to enable this check: https://cli.github.com/"
+        log_warning "gh CLI not found, skipping GitHub Release duplicate check"
+        log_info "Install gh CLI to enable this check: https://cli.github.com/"
         return
     fi
 
     # Check if release exists
     if gh release view "$VERSION" --repo kserve/kserve >/dev/null 2>&1; then
-        print_error "GitHub Release $VERSION already exists!"
+        log_error "GitHub Release $VERSION already exists!"
         echo ""
         echo "Existing release information:"
         gh release view "$VERSION" --repo kserve/kserve --json name,tagName,isPrerelease,createdAt,url \
@@ -228,7 +203,7 @@ validate_github_release_duplicate() {
         exit 1
     fi
 
-    print_success "GitHub Release $VERSION does not exist (OK)"
+    log_success "GitHub Release $VERSION does not exist (OK)"
 }
 
 validate_branch_rc0() {
@@ -236,17 +211,17 @@ validate_branch_rc0() {
         return
     fi
 
-    print_section "🔍 Phase 5: Checking release branch (RC0 mode)..."
+    echo ""; log_info "Phase 5: Checking release branch (RC0 mode)..."
 
     if git ls-remote --heads $UPSTREAM_REMOTE "$BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
-        print_error "Branch $BRANCH already exists!"
+        log_error "Branch $BRANCH already exists!"
         echo "   RC0 should create a new release branch."
         echo ""
         echo "If you want to create RC1+, use version like: v${BASE_VERSION}-rc1"
         exit 1
     fi
 
-    print_success "Branch $BRANCH does not exist (OK for RC0)"
+    log_success "Branch $BRANCH does not exist (OK for RC0)"
 }
 
 validate_branch_rc1_plus() {
@@ -254,17 +229,17 @@ validate_branch_rc1_plus() {
         return
     fi
 
-    print_section "🔍 Phase 6: Checking release branch (RC1+/Final mode)..."
+    echo ""; log_info "Phase 6: Checking release branch (RC1+/Final mode)..."
 
     if ! git ls-remote --heads $UPSTREAM_REMOTE "$BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
-        print_error "Branch $BRANCH does not exist!"
+        log_error "Branch $BRANCH does not exist!"
         echo "   RC1+ and Final releases require an existing release branch."
         echo ""
         echo "Please create RC0 first: v${BASE_VERSION}-rc0"
         exit 1
     fi
 
-    print_success "Branch $BRANCH exists (OK for RC1+/Final)"
+    log_success "Branch $BRANCH exists (OK for RC1+/Final)"
 }
 
 # ============================================================
@@ -274,7 +249,7 @@ validate_branch_rc1_plus() {
 show_dry_run_plan() {
     echo ""
     echo "=================================================="
-    echo -e "${BLUE}🔍 DRY-RUN MODE - No changes will be made${NC}"
+    echo -e "${BLUE}DRY-RUN MODE - No changes will be made${RESET}"
     echo "=================================================="
     echo ""
     echo "📋 Release Information:"
@@ -307,7 +282,7 @@ show_dry_run_plan() {
     fi
     echo ""
     echo "=================================================="
-    print_success "All validations passed!"
+    log_success "All validations passed!"
     echo "=================================================="
     echo ""
     echo "🚀 To execute this release, run:"
@@ -318,7 +293,7 @@ show_dry_run_plan() {
 handle_error() {
     echo ""
     echo "=================================================="
-    print_error "Error occurred! Rolling back..."
+    log_error "Error occurred! Rolling back..."
     echo "=================================================="
 
     # Delete tag if created
@@ -341,46 +316,46 @@ handle_error() {
     fi
 
     echo "=================================================="
-    print_error "Rollback completed"
+    log_error "Rollback completed"
     echo "=================================================="
     exit 1
 }
 
 create_rc0() {
-    print_section "Step 1: Creating release branch from master..."
+    echo ""; log_info "Step 1: Creating release branch from master..."
 
     git checkout master
     git pull $UPSTREAM_REMOTE master
     git checkout -b "$BRANCH"
     git push $UPSTREAM_REMOTE "$BRANCH"
 
-    print_success "Created and pushed branch: $BRANCH"
+    log_success "Created and pushed branch: $BRANCH"
 }
 
 create_rc1_plus_or_final() {
-    print_section "Step 1: Checking out existing release branch..."
+    echo ""; log_info "Step 1: Checking out existing release branch..."
 
     git fetch $UPSTREAM_REMOTE "$BRANCH"
     git checkout "$BRANCH"
     git pull $UPSTREAM_REMOTE "$BRANCH"
 
-    print_success "Checked out branch: $BRANCH"
+    log_success "Checked out branch: $BRANCH"
 }
 
 create_tag() {
-    print_section "Step 2: Creating tag..."
+    echo ""; log_info "Step 2: Creating tag..."
 
     git tag "$VERSION"
     git push $UPSTREAM_REMOTE "$VERSION"
 
-    print_success "Created and pushed tag: $VERSION"
+    log_success "Created and pushed tag: $VERSION"
 }
 
 
 execute_release() {
     echo ""
     echo "=================================================="
-    print_info "🚀 EXECUTION MODE - Creating release..."
+    log_info "🚀 EXECUTION MODE - Creating release..."
     echo "=================================================="
     echo ""
 
@@ -404,7 +379,7 @@ execute_release() {
 
     echo ""
     echo "=================================================="
-    print_success "Branch and tag created successfully!"
+    log_success "Branch and tag created successfully!"
     echo "=================================================="
     echo ""
     echo "Branch: $BRANCH"
@@ -425,7 +400,7 @@ execute_release() {
 main() {
     # Check if running from repository root
     if [[ ! -f "kserve-deps.env" ]]; then
-        print_error "This script must be run from the repository root directory"
+        log_error "This script must be run from the repository root directory"
         exit 1
     fi
 
@@ -455,7 +430,7 @@ main() {
                 usage
                 ;;
             *)
-                print_error "Unknown option: $1"
+                log_error "Unknown option: $1"
                 usage
                 ;;
         esac
@@ -463,7 +438,7 @@ main() {
 
     # Validate option combinations
     if [[ "$DRY_RUN" == true ]] && [[ "$VALIDATE_ONLY" == true ]]; then
-        print_error "Cannot use --dry-run and --validate-only together"
+        log_error "Cannot use --dry-run and --validate-only together"
         echo ""
         echo "Choose one:"
         echo "  --validate-only : Only run validations"
@@ -492,7 +467,7 @@ main() {
 
         if [[ -z "$UPSTREAM_REMOTE" ]]; then
             echo ""
-            print_error "No remote pointing to kserve/kserve found!"
+            log_error "No remote pointing to kserve/kserve found!"
             echo ""
             echo "Please add upstream remote:"
             echo "  git remote add upstream git@github.com:kserve/kserve.git"
@@ -520,7 +495,7 @@ main() {
     # Exit if validate-only mode
     if [[ "$VALIDATE_ONLY" == true ]]; then
         echo ""
-        print_success "All validations passed!"
+        log_success "All validations passed!"
         exit 0
     fi
 
@@ -534,7 +509,7 @@ main() {
     if [[ "${GITHUB_ACTIONS:-false}" != "true" ]]; then
         echo ""
         echo "=================================================="
-        print_error "Direct execution is not allowed!"
+        log_error "Direct execution is not allowed!"
         echo "=================================================="
         echo ""
         echo "This script can only be executed in GitHub Actions"

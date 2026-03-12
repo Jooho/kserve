@@ -100,26 +100,8 @@ jobs:
             echo "Creating draft final release for $VERSION"
           fi
 
-          # Get previous tag for changelog
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-          # Generate auto-generated notes from GitHub
-          echo "Generating release notes..."
-          AUTO_NOTES=$(gh api repos/:owner/:repo/releases/generate-notes \
-            -F tag_name="$VERSION" \
-            -F target_commitish="$(git rev-parse HEAD)" \
-            ${PREV_TAG:+-F previous_tag_name="$PREV_TAG"} \
-            --jq .body)
-
-          # Create release notes
-          RELEASE_NOTES=$(cat <<EOF
-          ## Installation
-
-          - [Installation Guide](https://kserve.github.io/website/docs/next/getting-started/quickstart-guide)
-
-          ${AUTO_NOTES}
-          EOF
-          )
+          # Generate release notes using script
+          RELEASE_NOTES=$(./hack/release/generate-release-notes.sh "$VERSION")
 
           # Create GitHub Release with install files
           gh release create "$VERSION" \
