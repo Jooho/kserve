@@ -68,6 +68,8 @@ jobs:
         run: |
           PRIOR_VERSION="${{ inputs.prior_version }}"
           NEW_VERSION="${{ inputs.new_version }}"
+
+          # Extract minor version (e.g., 0.17.0-rc0 → 0.17)
           MINOR_VERSION=$(echo "$NEW_VERSION" | cut -d. -f1,2)
           RELEASE_BRANCH="release-${MINOR_VERSION}"
 
@@ -105,16 +107,18 @@ jobs:
           PRIOR_VERSION="${{ inputs.prior_version }}"
           NEW_VERSION="${{ inputs.new_version }}"
 
-          # Validate version format (basic check)
+          # Validate version format (must NOT start with 'v')
           if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$'; then
             echo "❌ Error: Invalid version format: $NEW_VERSION"
-            echo "   Expected: X.Y.Z or X.Y.Z-rcN"
+            echo "   Expected: X.Y.Z or X.Y.Z-rcN (e.g., 0.17.0-rc0)"
+            echo "   Do NOT include 'v' prefix"
             exit 1
           fi
 
           if ! echo "$PRIOR_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$'; then
             echo "❌ Error: Invalid version format: $PRIOR_VERSION"
-            echo "   Expected: X.Y.Z or X.Y.Z-rcN"
+            echo "   Expected: X.Y.Z or X.Y.Z-rcN (e.g., 0.17.0-rc0)"
+            echo "   Do NOT include 'v' prefix"
             exit 1
           fi
 
@@ -148,6 +152,38 @@ jobs:
           fi
 
           echo "✅ GitHub Release $VERSION does not exist (OK)"
+
+      - name: Check release branch existence
+        run: |
+          RELEASE_BRANCH="${{ steps.parse.outputs.release_branch }}"
+          RELEASE_TYPE="${{ steps.parse.outputs.release_type }}"
+
+          # Check if remote branch exists
+          if git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
+            BRANCH_EXISTS=true
+          else
+            BRANCH_EXISTS=false
+          fi
+
+          if [[ "$RELEASE_TYPE" == "rc0" ]]; then
+            # RC0: branch must NOT exist (we will create it)
+            if [[ "$BRANCH_EXISTS" == "true" ]]; then
+              echo "❌ Error: Release branch $RELEASE_BRANCH already exists!"
+              echo "   RC0 requires a new release branch."
+              echo "   If you want to create RC1+, use a different prior version."
+              exit 1
+            fi
+            echo "✅ Release branch $RELEASE_BRANCH does not exist (OK for RC0)"
+          else
+            # RC1+ or Official: branch MUST exist (created by RC0)
+            if [[ "$BRANCH_EXISTS" == "false" ]]; then
+              echo "❌ Error: Release branch $RELEASE_BRANCH does not exist!"
+              echo "   RC1+ and Official releases require an existing release branch."
+              echo "   Create RC0 first to initialize the release branch."
+              exit 1
+            fi
+            echo "✅ Release branch $RELEASE_BRANCH exists (OK for $RELEASE_TYPE)"
+          fi
 
   # ============================================================
   # Job 2: RC0 - Bump master and create release branch
@@ -185,7 +221,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           echo "Running prepare-for-release.sh..."
-          ./hack/release/prepare-for-release.sh ${{ inputs.prior_version }} ${{ inputs.new_version }} --execute
+          ./hack/release/prepare-for-release.sh "${{ inputs.prior_version }}" "${{ inputs.new_version }}" --execute
 
           echo "Committing changes..."
           git add .
@@ -320,7 +356,7 @@ jobs:
           git pull origin master
 
           echo "Running prepare-for-release.sh..."
-          ./hack/release/prepare-for-release.sh ${{ inputs.prior_version }} ${{ inputs.new_version }} --execute
+          ./hack/release/prepare-for-release.sh "${{ inputs.prior_version }}" "${{ inputs.new_version }}" --execute
 
           echo "Committing changes..."
           git add .
