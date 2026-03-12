@@ -1,0 +1,479 @@
+name: Release Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - rc0
+          - rc1+
+          - official
+      prior_version:
+        description: 'Prior version (e.g., 0.17.0-rc0) - Required for rc0/rc1+'
+        required: false
+        type: string
+      new_version:
+        description: 'New version (e.g., 0.17.0-rc1 or 0.17.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry-run mode (validate only, no changes)'
+        required: false
+        type: boolean
+        default: true
+
+# Prevent concurrent releases
+concurrency:
+  group: release-automation-${{ inputs.new_version }}
+  cancel-in-progress: false
+
+jobs:
+  # ============================================================
+  # Job 1: Validation
+  # ============================================================
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      minor_version: ${{ steps.parse.outputs.minor_version }}
+      release_branch: ${{ steps.parse.outputs.release_branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Check OWNERS permissions
+        run: |
+          echo "Checking permissions for user: ${{ github.actor }}"
+
+          ALLOWED_USERS=$(yq eval '.project-leads[], .approvers[], .reviewers[]' OWNERS)
+
+          if ! echo "$ALLOWED_USERS" | grep -q "^${{ github.actor }}$"; then
+            echo ""
+            echo "❌ Permission denied!"
+            echo "   Only users listed in OWNERS (reviewer+) can run this workflow."
+            echo "   Current user: ${{ github.actor }}"
+            echo ""
+            echo "Allowed users:"
+            echo "$ALLOWED_USERS"
+            exit 1
+          fi
+
+          echo "✅ Permission granted for ${{ github.actor }}"
+
+      - name: Parse version
+        id: parse
+        run: |
+          NEW_VERSION="${{ inputs.new_version }}"
+          MINOR_VERSION=$(echo "$NEW_VERSION" | cut -d. -f1,2)
+          RELEASE_BRANCH="release-${MINOR_VERSION}"
+
+          echo "minor_version=$MINOR_VERSION" >> $GITHUB_OUTPUT
+          echo "release_branch=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
+
+          echo "Parsed version info:"
+          echo "  New Version: $NEW_VERSION"
+          echo "  Minor Version: $MINOR_VERSION"
+          echo "  Release Branch: $RELEASE_BRANCH"
+
+      - name: Validate inputs
+        run: |
+          RELEASE_TYPE="${{ inputs.release_type }}"
+          PRIOR_VERSION="${{ inputs.prior_version }}"
+          NEW_VERSION="${{ inputs.new_version }}"
+
+          # RC0 and RC1+ require prior_version
+          if [[ "$RELEASE_TYPE" == "rc0" ]] || [[ "$RELEASE_TYPE" == "rc1+" ]]; then
+            if [[ -z "$PRIOR_VERSION" ]]; then
+              echo "❌ Error: prior_version is required for $RELEASE_TYPE"
+              exit 1
+            fi
+          fi
+
+          echo "✅ Input validation passed"
+
+      - name: Check if tag already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ inputs.new_version }}"
+
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "❌ Error: Tag $VERSION already exists!"
+            git show -s --format='%h %ci %s' "$VERSION"
+            exit 1
+          fi
+
+          echo "✅ Tag $VERSION does not exist (OK)"
+
+      - name: Check if GitHub release already exists
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ inputs.new_version }}"
+
+          if gh release view "$VERSION" --repo ${{ github.repository }} >/dev/null 2>&1; then
+            echo "❌ Error: GitHub Release $VERSION already exists!"
+            gh release view "$VERSION" --repo ${{ github.repository }} --json url,createdAt -q '"URL: " + .url + "\nCreated: " + .createdAt'
+            exit 1
+          fi
+
+          echo "✅ GitHub Release $VERSION does not exist (OK)"
+
+  # ============================================================
+  # Job 2: RC0 - Bump master and create release branch
+  # ============================================================
+  rc0-prepare:
+    needs: validate
+    if: inputs.release_type == 'rc0' && inputs.dry_run == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Bump version on master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          echo "Running prepare-for-release.sh..."
+          ./hack/release/prepare-for-release.sh ${{ inputs.prior_version }} ${{ inputs.new_version }} --execute
+
+          echo "Committing changes..."
+          git add .
+          git commit -S -s -m "release: prepare release v${{ inputs.new_version }}"
+
+          echo "Pushing to master..."
+          git push origin master
+
+          echo "✅ Master branch updated"
+
+      - name: Create release branch
+        run: |
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_branch }}"
+
+          echo "Creating release branch: $RELEASE_BRANCH"
+          git checkout -b "$RELEASE_BRANCH"
+          git push origin "$RELEASE_BRANCH"
+
+          echo "✅ Release branch $RELEASE_BRANCH created"
+
+  # ============================================================
+  # Job 3: RC1+ - Cherry-pick to release branch
+  # ============================================================
+  rc1-cherrypick:
+    needs: validate
+    if: inputs.release_type == 'rc1+' && inputs.dry_run == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup upstream remote
+        run: |
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_branch }}"
+
+          git remote add upstream https://github.com/${{ github.repository }}.git || true
+          git fetch upstream "$RELEASE_BRANCH" master
+
+          echo "✅ Upstream remote configured"
+
+      - name: Cherry-pick PRs to release branch
+        env:
+          KSERVE_VERSION: v${{ inputs.new_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_branch }}"
+
+          echo "Running batch-cherry-pick.sh..."
+          ./hack/release/batch-cherry-pick.sh --execute
+
+          # Get cherry-pick branch name
+          CHERRY_PICK_BRANCH=$(git branch --list 'cherry-pick-batch-*' --format='%(refname:short)' | head -1)
+
+          if [[ -z "$CHERRY_PICK_BRANCH" ]]; then
+            echo "⚠️  No cherry-pick branch found (no PRs to cherry-pick)"
+            exit 0
+          fi
+
+          echo "Cherry-pick branch: $CHERRY_PICK_BRANCH"
+
+          # Push directly to release branch (no PR)
+          echo "Pushing to $RELEASE_BRANCH..."
+          git push upstream "$CHERRY_PICK_BRANCH:$RELEASE_BRANCH"
+
+          echo "✅ Cherry-picks pushed to $RELEASE_BRANCH"
+
+      - name: Add cherry-picked labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_BRANCH }}"
+
+          # Get merge base
+          MERGE_BASE=$(git merge-base upstream/master upstream/$RELEASE_BRANCH)
+
+          # Get PR numbers from cherry-picked commits
+          CHERRY_PICKED_PRS=$(git log --oneline "$MERGE_BASE..upstream/$RELEASE_BRANCH" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
+
+          if [[ -z "$CHERRY_PICKED_PRS" ]]; then
+            echo "No PRs to label"
+            exit 0
+          fi
+
+          echo "Adding 'cherry-picked' label to PRs:"
+          for pr_num in $CHERRY_PICKED_PRS; do
+            echo "  - PR #$pr_num"
+            gh pr edit "$pr_num" --add-label "cherry-picked" --repo ${{ github.repository }} || true
+          done
+
+          echo "✅ Labels added"
+
+  # ============================================================
+  # Job 4: RC1+ - Bump master
+  # ============================================================
+  rc1-bump-master:
+    needs: [validate, rc1-cherrypick]
+    if: inputs.release_type == 'rc1+' && inputs.dry_run == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Bump version on master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout master
+          git pull origin master
+
+          echo "Running prepare-for-release.sh..."
+          ./hack/release/prepare-for-release.sh ${{ inputs.prior_version }} ${{ inputs.new_version }} --execute
+
+          echo "Committing changes..."
+          git add .
+          git commit -S -s -m "release: prepare release v${{ inputs.new_version }}"
+
+          echo "Pushing to master..."
+          git push origin master
+
+          echo "✅ Master branch updated"
+
+  # ============================================================
+  # Job 5: Create tag and draft release
+  # ============================================================
+  create-release:
+    needs: [validate, rc0-prepare, rc1-bump-master]
+    if: |
+      always() &&
+      inputs.dry_run == false &&
+      (
+        (inputs.release_type == 'rc0' && needs.rc0-prepare.result == 'success') ||
+        (inputs.release_type == 'rc1+' && needs.rc1-bump-master.result == 'success') ||
+        inputs.release_type == 'official'
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch release branch
+        run: |
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_branch }}"
+          git fetch origin "$RELEASE_BRANCH"
+          git checkout "$RELEASE_BRANCH"
+
+      - name: Create tag
+        run: |
+          VERSION="v${{ inputs.new_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          echo "Creating tag: $VERSION"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+          echo "✅ Tag $VERSION created"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="v${{ inputs.new_version }}"
+
+          if [[ -f "./hack/release/generate-release-notes.sh" ]]; then
+            NOTES=$(./hack/release/generate-release-notes.sh "$VERSION")
+          else
+            NOTES="Release $VERSION"
+          fi
+
+          # Save to file (multiline)
+          echo "$NOTES" > /tmp/release-notes.txt
+          echo "notes_file=/tmp/release-notes.txt" >> $GITHUB_OUTPUT
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ inputs.new_version }}"
+          NOTES_FILE="${{ steps.notes.outputs.notes_file }}"
+
+          # Determine if pre-release
+          if [[ "$VERSION" == *"-rc"* ]]; then
+            PRERELEASE="--prerelease"
+            echo "Creating draft pre-release for $VERSION"
+          else
+            PRERELEASE=""
+            echo "Creating draft final release for $VERSION"
+          fi
+
+          # Check if install files exist
+          if [[ -d "install/${VERSION}" ]]; then
+            INSTALL_FILES="install/${VERSION}/*"
+          else
+            INSTALL_FILES=""
+            echo "⚠️  Warning: install/${VERSION}/ not found, creating release without install files"
+          fi
+
+          # Create GitHub Release
+          if [[ -n "$INSTALL_FILES" ]]; then
+            gh release create "$VERSION" \
+              --title "KServe $VERSION" \
+              --notes-file "$NOTES_FILE" \
+              --draft \
+              $PRERELEASE \
+              --repo ${{ github.repository }} \
+              $INSTALL_FILES
+          else
+            gh release create "$VERSION" \
+              --title "KServe $VERSION" \
+              --notes-file "$NOTES_FILE" \
+              --draft \
+              $PRERELEASE \
+              --repo ${{ github.repository }}
+          fi
+
+          echo ""
+          echo "✅ GitHub Draft Release created successfully!"
+          echo ""
+          echo "Release details:"
+          echo "  Version: $VERSION"
+          echo "  Type: ${PRERELEASE:+Pre-release}${PRERELEASE:-Final release}"
+          echo "  Status: Draft (requires manual publish)"
+          echo ""
+          echo "Next steps:"
+          echo "  1. Review the draft release at:"
+          gh release view "$VERSION" --repo ${{ github.repository }} --json url -q .url
+          echo ""
+          echo "  2. When ready, publish the release to trigger:"
+          echo "     - Helm charts publication (helm-publish workflow)"
+          echo "     - Python packages publication (python-publish workflow)"
+
+  # ============================================================
+  # Dry-run summary
+  # ============================================================
+  dry-run-summary:
+    needs: validate
+    if: inputs.dry_run == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show dry-run summary
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "🔍 DRY-RUN MODE - Validation passed"
+          echo "=================================================="
+          echo ""
+          echo "Release Configuration:"
+          echo "  Type:           ${{ inputs.release_type }}"
+          echo "  Prior Version:  ${{ inputs.prior_version }}"
+          echo "  New Version:    ${{ inputs.new_version }}"
+          echo "  Release Branch: ${{ needs.validate.outputs.release_branch }}"
+          echo ""
+
+          if [[ "${{ inputs.release_type }}" == "rc0" ]]; then
+            echo "📋 RC0 Workflow Plan:"
+            echo "  1. ✅ Validate version and permissions"
+            echo "  2. Bump version on master"
+            echo "  3. Create release branch: ${{ needs.validate.outputs.release_branch }}"
+            echo "  4. Create tag: v${{ inputs.new_version }}"
+            echo "  5. Create draft GitHub release"
+          elif [[ "${{ inputs.release_type }}" == "rc1+" ]]; then
+            echo "📋 RC1+ Workflow Plan:"
+            echo "  1. ✅ Validate version and permissions"
+            echo "  2. Cherry-pick approved PRs to release branch"
+            echo "  3. Bump version on master"
+            echo "  4. Create tag: v${{ inputs.new_version }}"
+            echo "  5. Create draft GitHub release"
+          else
+            echo "📋 Official Release Workflow Plan:"
+            echo "  1. ✅ Validate version and permissions"
+            echo "  2. Create tag: v${{ inputs.new_version }} on ${{ needs.validate.outputs.release_branch }}"
+            echo "  3. Create draft GitHub release"
+          fi
+
+          echo ""
+          echo "=================================================="
+          echo "🚀 To execute this release:"
+          echo "=================================================="
+          echo ""
+          echo "Re-run this workflow with: dry_run = false"
+          echo ""
