@@ -225,7 +225,7 @@ jobs:
 
           echo "Committing changes..."
           git add .
-          git commit -S -s -m "release: prepare release v${{ inputs.new_version }}"
+          git commit -s -m "release: prepare release v${{ inputs.new_version }}"
 
           echo "Pushing to master..."
           git push origin master
@@ -292,7 +292,7 @@ jobs:
 
           echo "✅ Cherry-picks pushed to $RELEASE_BRANCH"
 
-      - name: Add cherry-picked labels
+      - name: Add cherrypicked labels
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -301,7 +301,7 @@ jobs:
           # Get merge base
           MERGE_BASE=$(git merge-base upstream/master upstream/$RELEASE_BRANCH)
 
-          # Get PR numbers from cherry-picked commits
+          # Get PR numbers from cherrypicked commits
           CHERRY_PICKED_PRS=$(git log --oneline "$MERGE_BASE..upstream/$RELEASE_BRANCH" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
 
           if [[ -z "$CHERRY_PICKED_PRS" ]]; then
@@ -309,10 +309,10 @@ jobs:
             exit 0
           fi
 
-          echo "Adding 'cherry-picked' label to PRs:"
+          echo "Adding 'cherrypicked' label to PRs:"
           for pr_num in $CHERRY_PICKED_PRS; do
             echo "  - PR #$pr_num"
-            gh pr edit "$pr_num" --add-label "cherry-picked" --repo ${{ github.repository }} || true
+            gh pr edit "$pr_num" --add-label "cherrypicked" --repo ${{ github.repository }} || true
           done
 
           echo "✅ Labels added"
@@ -360,7 +360,7 @@ jobs:
 
           echo "Committing changes..."
           git add .
-          git commit -S -s -m "release: prepare release v${{ inputs.new_version }}"
+          git commit -s -m "release: prepare release v${{ inputs.new_version }}"
 
           echo "Pushing to master..."
           git push origin master
@@ -482,51 +482,107 @@ jobs:
           echo "     - Python packages publication (python-publish workflow)"
 
   # ============================================================
-  # Dry-run summary
+  # Dry-run: RC0/RC1+ - Run scripts in dry-run mode
   # ============================================================
-  dry-run-summary:
+  dry-run-execute:
     needs: validate
-    if: inputs.dry_run == true
+    if: inputs.dry_run == true && (needs.validate.outputs.release_type == 'rc0' || needs.validate.outputs.release_type == 'rc1+')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show dry-run summary
-        run: |
-          RELEASE_TYPE="${{ needs.validate.outputs.release_type }}"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      - name: Show dry-run header
+        run: |
           echo ""
           echo "=================================================="
           echo "🔍 DRY-RUN MODE - Validation passed"
           echo "=================================================="
           echo ""
           echo "Release Configuration:"
-          echo "  Type:           $RELEASE_TYPE"
+          echo "  Type:           ${{ needs.validate.outputs.release_type }}"
           echo "  Prior Version:  ${{ inputs.prior_version }}"
           echo "  New Version:    ${{ inputs.new_version }}"
           echo "  Release Branch: ${{ needs.validate.outputs.release_branch }}"
           echo ""
+          echo "Running scripts in dry-run mode to show execution plan..."
+          echo ""
 
-          if [[ "$RELEASE_TYPE" == "rc0" ]]; then
-            echo "📋 RC0 Workflow Plan:"
-            echo "  1. ✅ Validate version and permissions"
-            echo "  2. Bump version on master"
-            echo "  3. Create release branch: ${{ needs.validate.outputs.release_branch }}"
-            echo "  4. Create tag: v${{ inputs.new_version }}"
-            echo "  5. Create draft GitHub release"
-          elif [[ "$RELEASE_TYPE" == "rc1+" ]]; then
-            echo "📋 RC1+ Workflow Plan:"
-            echo "  1. ✅ Validate version and permissions"
-            echo "  2. Cherry-pick approved PRs to release branch"
-            echo "  3. Bump version on master"
-            echo "  4. Create tag: v${{ inputs.new_version }}"
-            echo "  5. Create draft GitHub release"
-          else
-            echo "📋 Official Release Workflow Plan:"
-            echo "  1. ✅ Validate version and permissions"
-            echo "  2. Create tag: v${{ inputs.new_version }} on ${{ needs.validate.outputs.release_branch }}"
-            echo "  3. Create draft GitHub release"
-          fi
+      - name: RC0 - Dry-run prepare-for-release.sh
+        if: needs.validate.outputs.release_type == 'rc0'
+        run: |
+          echo "=================================================="
+          echo "RC0: Version Bump Dry-run"
+          echo "=================================================="
+          ./hack/release/prepare-for-release.sh "${{ inputs.prior_version }}" "${{ inputs.new_version }}"
 
+      - name: RC1+ - Dry-run batch-cherry-pick.sh
+        if: needs.validate.outputs.release_type == 'rc1+'
+        env:
+          KSERVE_VERSION: v${{ inputs.new_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "=================================================="
+          echo "RC1+: Cherry-pick Dry-run"
+          echo "=================================================="
+
+          # Setup upstream remote for batch-cherry-pick.sh
+          RELEASE_BRANCH="${{ needs.validate.outputs.release_branch }}"
+          git remote add upstream https://github.com/${{ github.repository }}.git || true
+          git fetch upstream "$RELEASE_BRANCH" master || echo "Note: Release branch may not exist yet for testing"
+
+          # Run in dry-run mode (default)
+          ./hack/release/batch-cherry-pick.sh || echo "Note: This may fail in test environment if release branch doesn't exist"
+
+      - name: RC1+ - Dry-run prepare-for-release.sh
+        if: needs.validate.outputs.release_type == 'rc1+'
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "RC1+: Version Bump Dry-run"
+          echo "=================================================="
+          ./hack/release/prepare-for-release.sh "${{ inputs.prior_version }}" "${{ inputs.new_version }}"
+
+      - name: Show execution instructions
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "🚀 To execute this release:"
+          echo "=================================================="
+          echo ""
+          echo "Re-run this workflow with: dry_run = false"
+          echo ""
+
+  # ============================================================
+  # Dry-run: Official - Show summary only
+  # ============================================================
+  dry-run-official:
+    needs: validate
+    if: inputs.dry_run == true && needs.validate.outputs.release_type == 'official'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show official release dry-run summary
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "🔍 DRY-RUN MODE - Validation passed"
+          echo "=================================================="
+          echo ""
+          echo "Release Configuration:"
+          echo "  Type:           Official Release"
+          echo "  Prior Version:  ${{ inputs.prior_version }}"
+          echo "  New Version:    ${{ inputs.new_version }}"
+          echo "  Release Branch: ${{ needs.validate.outputs.release_branch }}"
+          echo ""
+          echo "📋 Official Release Workflow Plan:"
+          echo "  1. ✅ Validate version and permissions"
+          echo "  2. Create tag: v${{ inputs.new_version }} on ${{ needs.validate.outputs.release_branch }}"
+          echo "  3. Generate release notes"
+          echo "  4. Create draft GitHub release"
           echo ""
           echo "=================================================="
           echo "🚀 To execute this release:"
