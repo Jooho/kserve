@@ -1,0 +1,153 @@
+# 이 파일을 테스트 repo의 .github/workflows/test-bot.yml 로 복사하세요.
+# 테스트 후 삭제해도 됩니다.
+name: Test KServe CI Bot App
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-tag:
+        description: "Test tag name (e.g., v0.0.1-test)"
+        required: true
+        default: "v0.0.1-test"
+
+permissions:
+  contents: write
+
+jobs:
+  test-bot-app:
+    runs-on: ubuntu-latest
+    steps:
+    # Step 1: App token 생성 테스트
+    - name: Generate App Token
+      id: bot
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.KSERVE_BOT_APP_ID }}
+        private-key: ${{ secrets.KSERVE_BOT_PRIVATE_KEY }}
+
+    - name: Verify token was generated
+      run: |
+        if [ -z "${{ steps.bot.outputs.token }}" ]; then
+          echo "::error::Failed to generate App token"
+          exit 1
+        fi
+        echo "App token generated successfully"
+
+    # Step 2: Tag 생성 테스트 (API 사용 - auto verified)
+    - name: Get latest commit SHA
+      id: get-sha
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+      run: |
+        SHA=$(gh api repos/${{ github.repository }}/commits/${{ github.ref_name }} --jq '.sha')
+        echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+        echo "Latest commit: $SHA"
+
+    - name: Create annotated tag via API (verified)
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+      run: |
+        TAG_NAME="${{ inputs.test-tag }}"
+        COMMIT_SHA="${{ steps.get-sha.outputs.sha }}"
+
+        echo "Creating annotated tag: $TAG_NAME -> $COMMIT_SHA"
+
+        # Create tag object
+        TAG_SHA=$(gh api repos/${{ github.repository }}/git/tags \
+          -f tag="$TAG_NAME" \
+          -f message="Test release $TAG_NAME" \
+          -f object="$COMMIT_SHA" \
+          -f type="commit" \
+          --jq '.sha')
+
+        echo "Tag object SHA: $TAG_SHA"
+
+        # Create tag ref
+        gh api repos/${{ github.repository }}/git/refs \
+          -f ref="refs/tags/$TAG_NAME" \
+          -f sha="$TAG_SHA"
+
+        echo "Tag '$TAG_NAME' created (should be verified)"
+
+    # Step 3: Release 생성 테스트 (다른 workflow 트리거 확인용)
+    - name: Create Release via API
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+      run: |
+        TAG_NAME="${{ inputs.test-tag }}"
+
+        echo "Creating release for tag: $TAG_NAME"
+
+        RELEASE_URL=$(gh api repos/${{ github.repository }}/releases \
+          -f tag_name="$TAG_NAME" \
+          -f name="Test Release $TAG_NAME" \
+          -f body="This is a test release created by kserve-ci-bot App.\n\nVerify:\n- [ ] Tag shows as 'Verified'\n- [ ] Release was created by the bot\n- [ ] Downstream workflows were triggered" \
+          -F draft=false \
+          -F prerelease=true \
+          -F generate_release_notes=false \
+          --jq '.html_url')
+
+        echo "Release created: $RELEASE_URL"
+
+    # Step 4: Branch 생성 테스트
+    - name: Create branch via API
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+      run: |
+        COMMIT_SHA="${{ steps.get-sha.outputs.sha }}"
+        BRANCH_NAME="test/bot-branch-$(date +%s)"
+
+        echo "Creating branch: $BRANCH_NAME -> $COMMIT_SHA"
+
+        gh api repos/${{ github.repository }}/git/refs \
+          -f ref="refs/heads/$BRANCH_NAME" \
+          -f sha="$COMMIT_SHA"
+
+        echo "Branch '$BRANCH_NAME' created"
+
+    - name: Summary
+      run: |
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Tag: \`${{ inputs.test-tag }}\` created (check for Verified badge)" >> $GITHUB_STEP_SUMMARY
+        echo "- Release: created as pre-release" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: test branch created" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Go to the **Tags** page and verify the tag shows a **Verified** badge" >> $GITHUB_STEP_SUMMARY
+        echo "2. Go to **Releases** and check the release was created by the bot" >> $GITHUB_STEP_SUMMARY
+        echo "3. Check **Actions** tab to see if any downstream workflows were triggered" >> $GITHUB_STEP_SUMMARY
+
+  # Cleanup job - 테스트 후 자동 정리
+  cleanup:
+    needs: test-bot-app
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Generate App Token
+      id: bot
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.KSERVE_BOT_APP_ID }}
+        private-key: ${{ secrets.KSERVE_BOT_PRIVATE_KEY }}
+
+    - name: Cleanup test tag and release
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+      run: |
+        TAG_NAME="${{ inputs.test-tag }}"
+
+        echo "Cleaning up test resources..."
+
+        # Delete release (if exists)
+        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG_NAME --jq '.id' 2>/dev/null || echo "")
+        if [ -n "$RELEASE_ID" ]; then
+          gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
+          echo "Deleted release: $RELEASE_ID"
+        fi
+
+        # Delete tag ref
+        gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/$TAG_NAME 2>/dev/null && \
+          echo "Deleted tag: $TAG_NAME" || echo "Tag already deleted or not found"
+
+        echo "Cleanup complete"
