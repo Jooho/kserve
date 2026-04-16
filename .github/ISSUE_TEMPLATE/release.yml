@@ -1,0 +1,21 @@
+name: Release
+description: Prepare a new KServe release (assign to Copilot for automated bump)
+labels: ["release"]
+body:
+  - type: input
+    id: new_version
+    attributes:
+      label: New Version
+      description: "Version to release without 'v' prefix. Agent auto-detects release type (rc0 creates release branch, rc1+ tags existing branch, no suffix is final) and prior version from the latest git tag. Validates against KSERVE_VERSION in kserve-deps.env."
+      placeholder: "0.18.0-rc0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: "Any special instructions for this release"
+      placeholder: "e.g., skip uv-lock, cherry-pick specific PRs first"
+    validations:
+      required: false
