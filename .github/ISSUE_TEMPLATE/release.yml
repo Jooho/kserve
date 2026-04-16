@@ -1,15 +1,14 @@
 name: Release
 description: Prepare a new KServe release
 labels: ["release"]
-assignees:
-  - Copilot
+title: "release: prepare release - agent will update version"
 body:
   - type: markdown
     attributes:
       value: |
         ## KServe Release
 
-        Assign this issue to **Copilot** to automatically prepare a version bump PR.
+        After creating this issue, click **Assignees → Assign to Agent** to start the automated release.
 
         ### What the agent will do
         1. Validate version format (X.Y.Z or X.Y.Z-rcN)
