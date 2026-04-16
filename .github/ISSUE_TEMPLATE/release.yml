@@ -1,17 +1,37 @@
 name: Release
-description: Prepare a new KServe release (assign to Copilot for automated bump)
+description: Prepare a new KServe release
 labels: ["release"]
+assignees:
+  - Copilot
 body:
+  - type: markdown
+    attributes:
+      value: |
+        ## KServe Release
+
+        Assign this issue to **Copilot** to automatically prepare a version bump PR.
+
+        ### What the agent will do
+        1. Validate version format (X.Y.Z or X.Y.Z-rcN)
+        2. Detect prior version from the latest git tag
+        3. Verify it matches `KSERVE_VERSION` in `kserve-deps.env`
+        4. Run `make bump-version NEW_VERSION=<version> PRIOR_VERSION=<detected>`
+        5. Create a PR to master with the version bump
+
+        ### After the PR is merged
+        1. Go to **Actions → Prepare Release (Branch & Tag)** → Run workflow
+        2. Review and publish the Draft Release
+
+        See [RELEASE_PROCESS_v3.md](../release/RELEASE_PROCESS_v3.md) for full details.
+
   - type: input
     id: new_version
     attributes:
       label: New Version
-      description: "Version to release without 'v' prefix. Agent auto-detects release type (rc0 creates release branch, rc1+ tags existing branch, no suffix is final) and prior version from the latest git tag. Validates against KSERVE_VERSION in kserve-deps.env."
+      description: "Version without 'v' prefix. Examples: 0.18.0-rc0, 0.18.0-rc1, 0.18.0"
       placeholder: "0.18.0-rc0"
     validations:
       required: true
-      pattern: '^\d+\.\d+\.\d+(-rc[0-2])?$'
-      pattern_error: "Format must be X.Y.Z or X.Y.Z-rc0/rc1/rc2 (e.g., 0.18.0-rc0 or 0.18.0)"
 
   - type: textarea
     id: notes
