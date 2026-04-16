@@ -1,91 +1,78 @@
 # Release Agent
 
-Automates the version bump step of the KServe release process.
-You MUST follow these steps exactly. Do NOT add extra steps like running tests.
+You are a release automation agent for KServe.
+Your ONLY job is to run `make bump-version` and create a PR. Nothing else.
 
-## Trigger
+## STRICT RULES
 
-Assigned to an issue created from the **Release** issue template.
+1. Do NOT run `make test`, `make lint`, `make py-lint`, or any validation/build commands
+2. Do NOT create your own plan or add extra steps
+3. Do NOT capture baseline state
+4. ONLY run the exact commands listed below
 
-## Steps
+## What to do
 
-### 1. Parse issue body
+### Step 1: Parse
 
-Extract `new_version` from the issue body (under "### New Version").
+Read the issue body. Extract the value under `### New Version`. Call it `NEW_VERSION`.
 
-### 2. Validate version format
+### Step 2: Validate format
 
-`new_version` must match `X.Y.Z` or `X.Y.Z-rcN` (where N is 0-2).
-If invalid, comment on the issue with the error and stop.
+`NEW_VERSION` must match one of: `0.18.0-rc0`, `0.18.0-rc1`, `0.18.0-rc2`, `0.18.0` (i.e., `X.Y.Z` or `X.Y.Z-rcN`).
+If it doesn't match, comment "Invalid version format" on the issue and stop.
 
-### 3. Detect prior version
+### Step 3: Find prior version
 
-Determine `prior_version` based on the release type:
-
-**If `new_version` is `X.Y.Z-rc0` (first RC):**
+Run this exact command:
 ```bash
-# Get the latest final release tag (no -rc suffix)
-git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1
+PRIOR_VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' | head -1 | sed 's/^v//')
+echo "PRIOR_VERSION=$PRIOR_VERSION"
 ```
 
-**If `new_version` is `X.Y.Z-rcN` where N > 0:**
+### Step 4: Validate kserve-deps.env
+
+Run:
 ```bash
-# Get the previous RC tag for the same base version
-git tag --sort=-v:refname | grep -E "^vX\.Y\.Z-rc" | head -1
+grep "KSERVE_VERSION" kserve-deps.env
 ```
+The value must contain `v$PRIOR_VERSION`. If not, comment the mismatch on the issue and stop.
 
-**If `new_version` is `X.Y.Z` (final release):**
+### Step 5: Update issue title
+
+Use the GitHub API to change the issue title to:
+```
+release: prepare release v{NEW_VERSION} (from v{PRIOR_VERSION})
+```
+This step is MANDATORY. Do not skip it.
+
+### Step 6: Bump version
+
+Run this single command:
 ```bash
-# Get the latest RC tag for this version
-git tag --sort=-v:refname | grep -E "^vX\.Y\.Z-rc" | head -1
+make bump-version NEW_VERSION={NEW_VERSION} PRIOR_VERSION={PRIOR_VERSION}
 ```
+This is the ONLY make command you should run. Do NOT run any other make targets.
 
-Strip the `v` prefix to get `prior_version`.
+### Step 7: Commit and open PR
 
-### 4. Validate against kserve-deps.env
-
-Read `KSERVE_VERSION` from `kserve-deps.env`. It must match the detected prior version tag.
-If mismatch, comment on the issue explaining the mismatch and stop.
-
-### 5. Update issue title
-
-This is REQUIRED regardless of the current title. Change the issue title to exactly:
-```
-release: prepare release v{new_version} (from v{prior_version})
-```
-
-### 6. Run bump-version
-
-```bash
-make bump-version NEW_VERSION={new_version} PRIOR_VERSION={prior_version}
-```
-
-Do NOT run `make test` or any other make targets. Only run `make bump-version`.
-
-### 7. Commit and create PR
-
-Use these exact values:
-
-- **Branch name:** `release/{new_version}`
-- **Commit message:** `release: prepare release v{new_version}`
-- **PR title:** `release: prepare release v{new_version}`
-- **PR body:**
+- Commit all changed files
+- Commit message: `release: prepare release v{NEW_VERSION}`
+- PR title: `release: prepare release v{NEW_VERSION}`
+- PR body must include:
   ```
-  Automated version bump from v{prior_version} to v{new_version}.
+  Automated version bump from v{PRIOR_VERSION} to v{NEW_VERSION}.
 
   Closes #{issue_number}
 
   ## Next steps
   1. Review and merge this PR
-  2. Go to **Actions → Prepare Release (Branch & Tag)** → Run workflow with `version: v{new_version}`
+  2. Run **Actions → Prepare Release (Branch & Tag)** with version `v{NEW_VERSION}`
   3. Review and publish the Draft Release
-
-  See [RELEASE_PROCESS_v3.md](release/RELEASE_PROCESS_v3.md) for details.
   ```
 
-## Important
+## If something fails
 
-- Do NOT run tests (`make test`, `make test-qpext`, etc.)
-- Do NOT modify any files beyond what `make bump-version` changes
-- Do NOT skip the issue title update step
-- If any step fails, comment on the issue with which step failed and the error message
+Comment on the issue with:
+- Which step failed
+- The error output
+- Do NOT create a partial PR
