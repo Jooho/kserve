@@ -164,14 +164,75 @@ Report pass/fail per item.
 
 **APPROVAL POINT**: "Run installation smoke test with kind? (y/n)"
 
-On approval, guide user:
+On approval, execute the following steps autonomously:
+
+**Step 1: Check image availability before proceeding**
+
+Check that the KServe controller image is available on Docker Hub:
+```bash
+docker manifest inspect docker.io/kserve/kserve-controller:v{VERSION}
+```
+- If image exists → proceed to Step 2
+- If image does not exist → notify user:
+  > "⏳ Docker images for v{VERSION} are not yet available (image build pipeline still running, typically takes a few hours after release publish).
+  > Please say **'smoke test 실행해줘'** when you're ready to run it later.
+  > You can also ask me to wait and poll automatically."
+
+  If user asks to wait/poll: re-check every 5 minutes, up to 4 hours, then notify when image is available and proceed automatically.
+
+**Step 2: Create kind cluster**
 ```bash
 ./hack/setup/dev/manage.kind-with-registry.sh
-./hack/kserve-install.sh --type kserve,localmodel,llmisvc --raw
-kubectl get pods -n kserve
 ```
 
-Report: all pods Running → "v{VERSION} release complete!"
+**Step 3: Install KServe**
+```bash
+./hack/kserve-install.sh --type kserve,localmodel,llmisvc --raw --kserve-version v{VERSION}
+```
+
+**Step 4: Test ISVC (sklearn-iris) — then cleanup before LLMIsvc**
+
+Deploy and wait for ISVC to be Ready (poll every 30s, timeout 10min):
+```bash
+kubectl apply -f docs/samples/v1beta1/sklearn/v1/sklearn.yaml -n kserve
+```
+Poll until Ready:
+```bash
+kubectl get isvc sklearn-iris -n kserve -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+```
+- If `True` → report "✅ ISVC sklearn-iris is Ready" then delete it:
+  ```bash
+  kubectl delete isvc sklearn-iris -n kserve
+  kubectl wait --for=delete pod -l serving.kserve.io/inferenceservice=sklearn-iris -n kserve --timeout=120s
+  ```
+- If timeout (10min) → report failure with:
+  ```bash
+  kubectl get pods -n kserve
+  kubectl describe isvc sklearn-iris -n kserve
+  ```
+  Ask: "ISVC smoke test timed out. Abort or wait longer? (abort/wait)"
+
+**Step 4: Test LLMIsvc (facebook-opt-125m) — after ISVC cleanup**
+
+Deploy and wait for LLMIsvc to be Ready (poll every 30s, timeout 20min):
+```bash
+kubectl apply -f docs/samples/llmisvc/opt-125m-cpu/llm-inference-service-facebook-opt-125m-cpu.yaml -n kserve
+```
+Poll until Ready:
+```bash
+kubectl get llmisvc facebook-opt-125m-single -n kserve -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+```
+- If `True` → report "✅ LLMIsvc facebook-opt-125m-single is Ready" then delete it:
+  ```bash
+  kubectl delete llmisvc facebook-opt-125m-single -n kserve
+  ```
+  Then notify user: "✅ Smoke test passed! ISVC and LLMIsvc both verified. v{VERSION} release complete!"
+- If timeout (20min) → report failure with:
+  ```bash
+  kubectl get pods -n kserve
+  kubectl describe llmisvc facebook-opt-125m-single -n kserve
+  ```
+  Ask: "LLMIsvc smoke test timed out. Abort or wait longer? (abort/wait)"
 
 To clean up: `./hack/setup/dev/manage.kind-with-registry.sh --uninstall`
 
