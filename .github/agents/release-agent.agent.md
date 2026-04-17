@@ -34,15 +34,7 @@ echo "PRIOR_VERSION=$PRIOR_VERSION"
 
 `PRIOR_VERSION` must not be empty. If empty, comment on the issue and stop.
 
-### Step 4: Update issue title
-
-Use the GitHub API to change the issue title to:
-```
-release: prepare release v{NEW_VERSION} (from v{PRIOR_VERSION})
-```
-This step is MANDATORY. Do not skip it.
-
-### Step 5: Bump version
+### Step 4: Bump version
 
 Run this single command:
 ```bash
@@ -50,7 +42,7 @@ make bump-version NEW_VERSION={NEW_VERSION} PRIOR_VERSION={PRIOR_VERSION}
 ```
 This is the ONLY make command you should run. Do NOT run any other make targets.
 
-### Step 6: Commit and open PR
+### Step 5: Commit and open PR
 
 - Commit all changed files
 - Commit message: `release: prepare release v{NEW_VERSION}`

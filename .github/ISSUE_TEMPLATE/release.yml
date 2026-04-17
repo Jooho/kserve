@@ -1,7 +1,7 @@
 name: Release
 description: Prepare a new KServe release
 labels: ["release"]
-title: "release: prepare release - agent will update version"
+title: "release: prepare release v"
 body:
   - type: markdown
     attributes:
