@@ -41,10 +41,12 @@ You guide the user through the entire release process step by step, asking for a
 
 ### Phase 2: Version Bump
 
-1. Get prior version:
+1. Get prior version and detect release type:
    ```bash
    PRIOR_VERSION=$(grep "KSERVE_VERSION=" kserve-deps.env | cut -d'=' -f2 | sed 's/^v//')
    ```
+   - If VERSION ends with `-rc0` → **RC0 flow**
+   - If VERSION ends with `-rc1`, `-rc2`, etc., or has no `-rcN` suffix → **RC1+ / Final flow**
 
 2. Run bump:
    ```bash
@@ -53,18 +55,60 @@ You guide the user through the entire release process step by step, asking for a
    This is the ONLY make command you should run.
 
 3. Commit and create PR:
-   - Commit all changed files
-   - Commit message: `release: prepare release v{VERSION}`
-   - Push to a new branch and create PR:
-     ```bash
-     git checkout -b release-bump-v{VERSION}
-     git add -A
-     git commit -S -s -m "release: prepare release v{VERSION}"
-     git push origin release-bump-v{VERSION}
-     gh pr create --repo {REPO} --base master \
-       --title "release: prepare release v{VERSION}" \
-       --body "Automated version bump from v{PRIOR_VERSION} to v{VERSION}."
-     ```
+   - **RC0**: title `release: prepare release v{VERSION}` (triggers `release-branch-tag.yml` on merge)
+   - **RC1+ / Final**: title `chore: bump version to v{VERSION}` (does NOT trigger `release-branch-tag.yml`)
+
+   ```bash
+   git checkout -b release-bump-v{VERSION}
+   git add -A
+   git commit -S -s -m "{TITLE}"
+   git push origin release-bump-v{VERSION}
+   gh pr create --repo {REPO} --base master \
+     --title "{TITLE}" \
+     --label release \
+     --label cherrypick-approved \
+     --body "Automated version bump from v{PRIOR_VERSION} to v{VERSION}."
+   ```
+
+### Phase 2B: Cherry-pick (RC1+ / Final only)
+
+Skip this phase for RC0. After the bump PR (Phase 2) merges to master:
+
+1. Find all PRs merged to master with `cherrypick-approved` label but NOT `cherrypicked`:
+   ```bash
+   gh pr list --repo {REPO} --state merged \
+     --label cherrypick-approved \
+     --json number,title,mergeCommit,mergedAt,labels \
+     --jq '[.[] | select(.labels | map(.name) | contains(["cherrypicked"]) | not)] | sort_by(.mergedAt)'
+   ```
+
+2. Fetch the release branch and create a cherry-pick branch:
+   ```bash
+   git fetch origin release-{MAJOR}.{MINOR}
+   git checkout -b cherrypick/v{VERSION} origin/release-{MAJOR}.{MINOR}
+   ```
+
+3. Cherry-pick each PR's merge commit in order (oldest first):
+   ```bash
+   git cherry-pick -x {MERGE_COMMIT_SHA}
+   ```
+   - On conflict: attempt auto-resolve
+   - If not confident: report conflict details and ask user to resolve, then `git cherry-pick --continue`
+
+4. Push and create PR targeting the release branch:
+   ```bash
+   git push origin cherrypick/v{VERSION}
+   gh pr create --repo {REPO} \
+     --base release-{MAJOR}.{MINOR} \
+     --head {GITHUB_USER}:cherrypick/v{VERSION} \
+     --title "release: prepare release v{VERSION}" \
+     --label release \
+     --body "Cherry-pick backport for v{VERSION}.\n\nPRs included:\n{PR_LIST}"
+   ```
+   > Title starts with `release: prepare` — merging this PR triggers `release-branch-tag.yml`
+
+5. Report: "Cherry-pick PR #{number} created: {URL}"
+6. → Continue to **Phase 3: Monitor CI** (for cherry-pick PR)
 
 ### Phase 3: Monitor CI
 
@@ -101,6 +145,16 @@ gh pr merge {PR_NUMBER} --repo {REPO} --squash
 Report: "PR #{PR_NUMBER} merged."
 
 ### Phase 5: Verify Branch & Tag
+
+**RC0**: workflow triggers automatically on bump PR merge.
+
+**RC1+ / Final**: cherry-pick PR targets `release-X.Y` (not master) → does NOT auto-trigger. Manually trigger:
+```bash
+gh workflow run release-branch-tag.yml \
+  --repo {REPO} \
+  -f version=v{VERSION} \
+  -f dry_run=false
+```
 
 1. Wait for `Prepare Release (Branch & Tag)` workflow (poll every 30s, max 10min):
    ```bash
@@ -164,14 +218,75 @@ Report pass/fail per item.
 
 **APPROVAL POINT**: "Run installation smoke test with kind? (y/n)"
 
-On approval, guide user:
+On approval, execute the following steps autonomously:
+
+**Step 1: Check image availability before proceeding**
+
+Check that the KServe controller image is available on Docker Hub:
+```bash
+docker manifest inspect docker.io/kserve/kserve-controller:v{VERSION}
+```
+- If image exists → proceed to Step 2
+- If image does not exist → notify user:
+  > "⏳ Docker images for v{VERSION} are not yet available (image build pipeline still running, typically takes a few hours after release publish).
+  > Please say **'smoke test 실행해줘'** when you're ready to run it later.
+  > You can also ask me to wait and poll automatically."
+
+  If user asks to wait/poll: re-check every 5 minutes, up to 4 hours, then notify when image is available and proceed automatically.
+
+**Step 2: Create kind cluster**
 ```bash
 ./hack/setup/dev/manage.kind-with-registry.sh
-./hack/kserve-install.sh --type kserve,localmodel,llmisvc --raw
-kubectl get pods -n kserve
 ```
 
-Report: all pods Running → "v{VERSION} release complete!"
+**Step 3: Install KServe**
+```bash
+./hack/kserve-install.sh --type kserve,localmodel,llmisvc --raw --kserve-version v{VERSION}
+```
+
+**Step 4: Test ISVC (sklearn-iris) — then cleanup before LLMIsvc**
+
+Deploy and wait for ISVC to be Ready (poll every 30s, timeout 10min):
+```bash
+kubectl apply -f docs/samples/v1beta1/sklearn/v1/sklearn.yaml -n kserve
+```
+Poll until Ready:
+```bash
+kubectl get isvc sklearn-iris -n kserve -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+```
+- If `True` → report "✅ ISVC sklearn-iris is Ready" then delete it:
+  ```bash
+  kubectl delete isvc sklearn-iris -n kserve
+  kubectl wait --for=delete pod -l serving.kserve.io/inferenceservice=sklearn-iris -n kserve --timeout=120s
+  ```
+- If timeout (10min) → report failure with:
+  ```bash
+  kubectl get pods -n kserve
+  kubectl describe isvc sklearn-iris -n kserve
+  ```
+  Ask: "ISVC smoke test timed out. Abort or wait longer? (abort/wait)"
+
+**Step 4: Test LLMIsvc (facebook-opt-125m) — after ISVC cleanup**
+
+Deploy and wait for LLMIsvc to be Ready (poll every 30s, timeout 20min):
+```bash
+kubectl apply -f docs/samples/llmisvc/opt-125m-cpu/llm-inference-service-facebook-opt-125m-cpu.yaml -n kserve
+```
+Poll until Ready:
+```bash
+kubectl get llmisvc facebook-opt-125m-single -n kserve -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+```
+- If `True` → report "✅ LLMIsvc facebook-opt-125m-single is Ready" then delete it:
+  ```bash
+  kubectl delete llmisvc facebook-opt-125m-single -n kserve
+  ```
+  Then notify user: "✅ Smoke test passed! ISVC and LLMIsvc both verified. v{VERSION} release complete!"
+- If timeout (20min) → report failure with:
+  ```bash
+  kubectl get pods -n kserve
+  kubectl describe llmisvc facebook-opt-125m-single -n kserve
+  ```
+  Ask: "LLMIsvc smoke test timed out. Abort or wait longer? (abort/wait)"
 
 To clean up: `./hack/setup/dev/manage.kind-with-registry.sh --uninstall`
 
