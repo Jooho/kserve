@@ -1,7 +1,7 @@
 name: Release
 description: Prepare a new KServe release
 labels: ["release"]
-title: "release: prepare release v"
+title: "release: prepare release"
 body:
   - type: markdown
     attributes:
@@ -21,7 +21,7 @@ body:
         1. Go to **Actions → Prepare Release (Branch & Tag)** → Run workflow
         2. Review and publish the Draft Release
 
-        See [RELEASE_PROCESS_v3.md](../release/RELEASE_PROCESS_v3.md) for full details.
+        See [RELEASE_PROCESS_v4.md](../release/RELEASE_PROCESS_v4.md) for full details.
 
   - type: input
     id: new_version
