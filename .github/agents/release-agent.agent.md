@@ -24,23 +24,17 @@ Read the issue body. Extract the value under `### New Version`. Call it `NEW_VER
 `NEW_VERSION` must match one of: `0.18.0-rc0`, `0.18.0-rc1`, `0.18.0-rc2`, `0.18.0` (i.e., `X.Y.Z` or `X.Y.Z-rcN`).
 If it doesn't match, comment "Invalid version format" on the issue and stop.
 
-### Step 3: Find prior version
-
-Run this exact command:
-```bash
-PRIOR_VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' | head -1 | sed 's/^v//')
-echo "PRIOR_VERSION=$PRIOR_VERSION"
-```
-
-### Step 4: Validate kserve-deps.env
+### Step 3: Get prior version from kserve-deps.env
 
 Run:
 ```bash
-grep "KSERVE_VERSION" kserve-deps.env
+PRIOR_VERSION=$(grep "KSERVE_VERSION=" kserve-deps.env | cut -d'=' -f2 | sed 's/^v//')
+echo "PRIOR_VERSION=$PRIOR_VERSION"
 ```
-The value must contain `v$PRIOR_VERSION`. If not, comment the mismatch on the issue and stop.
 
-### Step 5: Update issue title
+`PRIOR_VERSION` must not be empty. If empty, comment on the issue and stop.
+
+### Step 4: Update issue title
 
 Use the GitHub API to change the issue title to:
 ```
@@ -48,7 +42,7 @@ release: prepare release v{NEW_VERSION} (from v{PRIOR_VERSION})
 ```
 This step is MANDATORY. Do not skip it.
 
-### Step 6: Bump version
+### Step 5: Bump version
 
 Run this single command:
 ```bash
@@ -56,7 +50,7 @@ make bump-version NEW_VERSION={NEW_VERSION} PRIOR_VERSION={PRIOR_VERSION}
 ```
 This is the ONLY make command you should run. Do NOT run any other make targets.
 
-### Step 7: Commit and open PR
+### Step 6: Commit and open PR
 
 - Commit all changed files
 - Commit message: `release: prepare release v{NEW_VERSION}`
