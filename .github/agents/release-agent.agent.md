@@ -36,9 +36,9 @@ echo "PRIOR_VERSION=$PRIOR_VERSION"
 
 ### Step 4: Bump version
 
-Run this single command:
+Run this single command (the `yes ""` pipes Enter to skip the interactive confirmation prompt):
 ```bash
-make bump-version NEW_VERSION={NEW_VERSION} PRIOR_VERSION={PRIOR_VERSION}
+yes "" | make bump-version NEW_VERSION={NEW_VERSION} PRIOR_VERSION={PRIOR_VERSION}
 ```
 This is the ONLY make command you should run. Do NOT run any other make targets.
 
