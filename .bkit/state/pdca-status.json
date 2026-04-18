@@ -1,0 +1,87 @@
+{
+  "version": "3.0",
+  "lastUpdated": "2026-04-18T00:31:44.940Z",
+  "activeFeatures": [
+    "release"
+  ],
+  "primaryFeature": "release",
+  "features": {
+    "release": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-04-18T00:29:45.264Z",
+        "lastUpdated": "2026-04-18T00:31:44.939Z"
+      },
+      "lastFile": "/home/jooho/temp/20260119_all_prs/kserve-agent-release/kserve/hack/release/create-branch-tag.sh"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-04-17T23:55:55.463Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-04-18T00:31:44.940Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-04-18T00:29:45.265Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-18T00:29:56.646Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-18T00:30:23.553Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-18T00:31:28.419Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-18T00:31:36.628Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-04-18T00:31:44.940Z",
+      "feature": "release",
+      "phase": "do",
+      "action": "updated"
+    }
+  ],
+  "stateMachine": {
+    "defaultWorkflow": "default",
+    "activeWorkflows": {},
+    "totalTransitions": 0
+  },
+  "automation": {
+    "globalLevel": 2,
+    "trustScore": 40,
+    "pendingApprovals": 0,
+    "lastGateResult": null
+  },
+  "team": {
+    "enabled": true,
+    "stateFile": ".bkit/runtime/agent-state.json",
+    "eventsFile": ".bkit/runtime/agent-events.jsonl"
+  }
+}
