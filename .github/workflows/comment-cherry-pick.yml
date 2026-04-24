@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   validate:
@@ -49,6 +50,28 @@ jobs:
           PR_NUMBER="${{ github.event.issue.number }}"
           echo "Fetching PR #$PR_NUMBER commits"
           git fetch origin "pull/$PR_NUMBER/head:pr-$PR_NUMBER"
+
+      - name: Clean up existing cherry-pick branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract target branch from comment
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          TARGET_BRANCH=$(echo "$COMMENT_BODY" | awk '{print $2}' | tr -d '[:space:]')
+
+          # Get source branch name from PR
+          PR_NUMBER="${{ github.event.issue.number }}"
+          HEAD_BRANCH=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefName -q .headRefName)
+
+          # Calculate cherry-pick branch name (same logic as the action)
+          CHERRY_BRANCH="cherry/${TARGET_BRANCH}/${HEAD_BRANCH}"
+
+          echo "Attempting to delete existing cherry-pick branch: $CHERRY_BRANCH"
+
+          # Try to delete the remote branch if it exists (ignore errors)
+          git push origin ":$CHERRY_BRANCH" 2>/dev/null || echo "Branch $CHERRY_BRANCH not found or already deleted"
+
+          echo "Cleanup completed, ready for fresh cherry-pick"
 
       - name: Automatic Cherry Pick
         uses: hianhianhian/gha-cherry-pick@c88f57e55a9eabd96f94edba6d584b37633836d1
