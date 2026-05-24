@@ -3,6 +3,5 @@ kind: Kustomization
 
 resources:
   - serving.kserve.io_localmodelcaches.yaml
-  - serving.kserve.io_localmodelnamespacecaches.yaml
   - serving.kserve.io_localmodelnodegroups.yaml
   - serving.kserve.io_localmodelnodes.yaml

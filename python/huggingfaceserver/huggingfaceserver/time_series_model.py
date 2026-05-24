@@ -269,6 +269,7 @@ class HuggingFaceTimeSeriesModel(TimeSeriesModel):
         request: ForecastRequest,
         context: Optional[Dict[str, Any]] = None,
     ) -> Union[ForecastResponse, ErrorResponse]:
+
         if "timesfm" in request.model.lower():
             return await self._forecast_timesfm(request)
 

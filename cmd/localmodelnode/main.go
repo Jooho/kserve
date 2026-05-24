@@ -122,14 +122,12 @@ func main() {
 	localModelNodeEventBroadcaster := record.NewBroadcaster()
 	setupLog.Info("Setting up v1alpha1 LocalModelNode controller")
 	localModelNodeEventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientSet.CoreV1().Events("")})
-	reconciler := &localmodelnodecontroller.LocalModelNodeReconciler{
+	if err = (&localmodelnodecontroller.LocalModelNodeReconciler{
 		Client:    mgr.GetClient(),
 		Clientset: clientSet,
 		Log:       ctrl.Log.WithName("v1alpha1Controllers").WithName("LocalModelNode"),
 		Scheme:    mgr.GetScheme(),
-	}
-
-	if err = reconciler.SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "v1alpha1Controllers", "LocalModelNode")
 		os.Exit(1)
 	}

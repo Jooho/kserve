@@ -14,8 +14,6 @@ rules:
   - ""
   resources:
   - nodes
-  - secrets
-  - serviceaccounts
   verbs:
   - get
   - list

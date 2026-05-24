@@ -67,9 +67,7 @@ class TestTemplateEngine(unittest.TestCase):
 
     def test_read_template(self):
         """Test reading template from file."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".template", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.template', delete=False) as f:
             f.write("Test template {{VAR}}")
             temp_path = Path(f.name)
 
@@ -86,9 +84,7 @@ class TestTemplateEngine(unittest.TestCase):
 
     def test_generate_from_template(self):
         """Test complete template generation."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".template", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.template', delete=False) as f:
             f.write("Name: {{NAME}}\nVersion: {{VERSION}}")
             temp_path = Path(f.name)
 
@@ -100,5 +96,5 @@ class TestTemplateEngine(unittest.TestCase):
             temp_path.unlink()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

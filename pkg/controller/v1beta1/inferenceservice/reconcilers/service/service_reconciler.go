@@ -81,21 +81,27 @@ func createService(componentMeta metav1.ObjectMeta, componentExt *v1beta1.Compon
 	podSpec *corev1.PodSpec, multiNodeEnabled bool, serviceConfig *v1beta1.ServiceConfig,
 ) []*corev1.Service {
 	var svcList []*corev1.Service
+	var isWorkerContainer bool
+
+	if multiNodeEnabled {
+		for _, container := range podSpec.Containers {
+			if container.Name == constants.WorkerContainerName {
+				isWorkerContainer = true
+			}
+		}
+	}
 
 	if !multiNodeEnabled {
 		// If multiNodeEnabled is false, only defaultSvc will be created.
 		defaultSvc := createDefaultSvc(componentMeta, componentExt, podSpec, serviceConfig)
 		svcList = append(svcList, defaultSvc)
-	} else {
-		// If multiNodeEnabled is true, create defaultSvc, headSvc and workerSvc.
+	} else if multiNodeEnabled && !isWorkerContainer {
+		// If multiNodeEnabled is true, both defaultSvc and headSvc will be created.
 		defaultSvc := createDefaultSvc(componentMeta, componentExt, podSpec, serviceConfig)
 		svcList = append(svcList, defaultSvc)
 
 		headSvc := createHeadlessSvc(componentMeta)
 		svcList = append(svcList, headSvc)
-
-		workerSvc := createWorkerHeadlessSvc(componentMeta)
-		svcList = append(svcList, workerSvc)
 	}
 
 	return svcList
@@ -185,27 +191,6 @@ func createDefaultSvc(componentMeta metav1.ObjectMeta, componentExt *v1beta1.Com
 		service.Spec.ClusterIP = corev1.ClusterIPNone
 	}
 
-	return service
-}
-
-func createWorkerHeadlessSvc(componentMeta metav1.ObjectMeta) *corev1.Service {
-	workerComponentMeta := componentMeta.DeepCopy()
-	predictorSvcName := workerComponentMeta.Name
-	isvcGeneration := componentMeta.GetLabels()[constants.InferenceServiceGenerationPodLabelKey]
-	workerComponentMeta.Name = constants.GetWorkerServiceName(predictorSvcName, isvcGeneration)
-	workerComponentMeta.Labels[constants.MultiNodeRoleLabelKey] = constants.MultiNodeWorker
-
-	service := &corev1.Service{
-		ObjectMeta: *workerComponentMeta,
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app": constants.GetRawWorkerServiceLabel(predictorSvcName),
-				constants.InferenceServiceGenerationPodLabelKey: isvcGeneration,
-			},
-			ClusterIP:                "None",
-			PublishNotReadyAddresses: true,
-		},
-	}
 	return service
 }
 

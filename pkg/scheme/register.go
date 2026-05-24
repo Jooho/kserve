@@ -18,7 +18,6 @@ package scheme
 
 import (
 	kedav1alpha1 "github.com/kedacore/keda/v2/apis/keda/v1alpha1"
-	wvav1alpha1 "github.com/llm-d/llm-d-workload-variant-autoscaler/api/v1alpha1"
 	otelv1beta1 "github.com/open-telemetry/opentelemetry-operator/apis/v1beta1"
 	"github.com/pkg/errors"
 	istioclientv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -95,11 +94,6 @@ func AddKedaAPIs(s *runtime.Scheme) error {
 	return addAll(s, kedav1alpha1.AddToScheme)
 }
 
-// AddWVAAPIs registers WVA (Workload Variant Autoscaler) APIs.
-func AddWVAAPIs(s *runtime.Scheme) error {
-	return addAll(s, wvav1alpha1.AddToScheme)
-}
-
 // AddOpenTelemetryAPIs registers OpenTelemetry operator APIs.
 func AddOpenTelemetryAPIs(s *runtime.Scheme) error {
 	return addAll(s, otelv1beta1.AddToScheme)
@@ -116,11 +110,10 @@ func AddControllerAPIs(s *runtime.Scheme) error {
 // AddLLMISVCAPIs registers API groups required by the llmisvc manager.
 func AddLLMISVCAPIs(s *runtime.Scheme) error {
 	return addAll(s,
-		AddControllerAPIs,
+		AddKServeAPIs,
+		AddCoreKubernetesAPIs,
 		AddGatewayAPIs,
 		AddLeaderWorkerSetAPIs,
-		AddKedaAPIs,
-		AddWVAAPIs,
 	)
 }
 
@@ -133,7 +126,6 @@ func AddAll(s *runtime.Scheme) error {
 		AddKnativeAPIs,
 		AddIstioAPIs,
 		AddKedaAPIs,
-		AddWVAAPIs,
 		AddOpenTelemetryAPIs,
 	)
 }

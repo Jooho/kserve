@@ -42,9 +42,9 @@ def create_or_update_gateway(kserve_client, gateway, namespace=None):
             name,
         )
 
-        gateway.setdefault("metadata", {})["resourceVersion"] = existing_gateway[
-            "metadata"
-        ]["resourceVersion"]
+        gateway.setdefault("metadata", {})["resourceVersion"] = (
+            existing_gateway["metadata"]["resourceVersion"]
+        )
 
         outputs = kserve_client.api_instance.replace_namespaced_custom_object(
             "gateway.networking.k8s.io",
@@ -72,7 +72,9 @@ def create_or_update_gateway(kserve_client, gateway, namespace=None):
         raise
 
 
-def delete_gateway(kserve_client, name, namespace, version="v1"):
+def delete_gateway(
+    kserve_client, name, namespace, version="v1"
+):
     try:
         logger.info(f"Deleting Gateway {name} in namespace {namespace}")
         return kserve_client.api_instance.delete_namespaced_custom_object(
@@ -89,7 +91,9 @@ def delete_gateway(kserve_client, name, namespace, version="v1"):
         ) from e
 
 
-def get_gateway(kserve_client, name, namespace, version="v1"):
+def get_gateway(
+    kserve_client, name, namespace, version="v1"
+):
     try:
         return kserve_client.api_instance.get_namespaced_custom_object(
             "gateway.networking.k8s.io",
@@ -129,9 +133,9 @@ def create_or_update_route(kserve_client, route, namespace=None):
             name,
         )
 
-        route.setdefault("metadata", {})["resourceVersion"] = existing_route[
-            "metadata"
-        ]["resourceVersion"]
+        route.setdefault("metadata", {})["resourceVersion"] = (
+            existing_route["metadata"]["resourceVersion"]
+        )
 
         outputs = kserve_client.api_instance.replace_namespaced_custom_object(
             "gateway.networking.k8s.io",
@@ -159,7 +163,9 @@ def create_or_update_route(kserve_client, route, namespace=None):
         raise
 
 
-def delete_route(kserve_client, name, namespace, version="v1"):
+def delete_route(
+    kserve_client, name, namespace, version="v1"
+):
     try:
         logger.info(f"Deleting HttpRoute {name} in namespace {namespace}")
         return kserve_client.api_instance.delete_namespaced_custom_object(
@@ -176,7 +182,9 @@ def delete_route(kserve_client, name, namespace, version="v1"):
         ) from e
 
 
-def get_route(kserve_client, name, namespace, version="v1"):
+def get_route(
+    kserve_client, name, namespace, version="v1"
+):
     try:
         return kserve_client.api_instance.get_namespaced_custom_object(
             "gateway.networking.k8s.io",

@@ -14,6 +14,7 @@
 
 import asyncio
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import fnmatch
 from functools import partial
 import glob
@@ -133,20 +134,14 @@ class Storage(object):
         allow_patterns: Optional[List[str]] = None,
         ignore_patterns: Optional[List[str]] = None,
     ) -> list[str]:
-        for d in out_dirs:
-            if d:
-                os.makedirs(d, exist_ok=True)
         download_fn = partial(
             Storage.download,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_patterns,
         )
-        # Sequential: parallel snapshot_download of the same Hugging Face repo into
-        # different local_dir paths races on the process-wide HF cache (locks, temp files).
-        return [
-            download_fn(uri, out)
-            for uri, out in zip(source_uris, out_dirs, strict=True)
-        ]
+        with ThreadPoolExecutor() as executor:
+            model_dirs = list(executor.map(download_fn, source_uris, out_dirs))
+        return model_dirs
 
     @staticmethod
     def download(
@@ -180,7 +175,7 @@ class Storage(object):
                 model_dir = Storage._download_local(uri)
             else:
                 if not os.path.exists(out_dir):
-                    os.makedirs(out_dir, exist_ok=True)
+                    os.mkdir(out_dir)
                 model_dir = Storage._download_local(
                     uri, out_dir, allow_patterns, ignore_patterns
                 )
@@ -188,7 +183,7 @@ class Storage(object):
             if out_dir is None:
                 out_dir = tempfile.mkdtemp()
             elif not os.path.exists(out_dir):
-                os.makedirs(out_dir, exist_ok=True)
+                os.mkdir(out_dir)
 
             if uri.startswith(MODEL_MOUNT_DIRS):
                 # Don't need to download models if this InferenceService is running in the multi-model
@@ -382,8 +377,7 @@ class Storage(object):
             import boto3
 
             kwargs = Storage._get_s3_client_kwargs()
-            session = boto3.Session()
-            _worker_s3_resource = session.resource("s3", **kwargs)
+            _worker_s3_resource = boto3.resource("s3", **kwargs)
         except Exception as e:
             logger.error(f"Failed to initialize S3 worker: {e}")
             _worker_s3_resource = None

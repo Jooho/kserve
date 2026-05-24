@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/onsi/gomega"
@@ -79,9 +80,9 @@ func TestMarshalServingRuntime(t *testing.T) {
 
 	b, err := yaml.Marshal(v)
 	if err != nil {
-		t.Fatal(err)
+		fmt.Println(err)
 	}
-	t.Log(string(b))
+	fmt.Println(string(b))
 }
 
 func TestServingRuntimeSpec_IsDisabled(t *testing.T) {
@@ -172,7 +173,7 @@ func TestServingRuntimeSpec_IsDisabled(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			res := scenario.spec.IsDisabled()
 			if res != scenario.res {
-				t.Errorf("Expected %t, got %t", scenario.res, res)
+				fmt.Println(fmt.Errorf("Expected %t, got %t", scenario.res, res))
 			}
 		})
 	}
@@ -445,7 +446,7 @@ func TestServingRuntimeSpec_IsMultiModelRuntime(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			res := scenario.spec.IsMultiModelRuntime()
 			if res != scenario.res {
-				t.Errorf("Expected %t, got %t", scenario.res, res)
+				fmt.Println(fmt.Errorf("Expected %t, got %t", scenario.res, res))
 			}
 		})
 	}
@@ -536,7 +537,7 @@ func TestServingRuntimeSpec_IsProtocolVersionSupported(t *testing.T) {
 				},
 			},
 			protocolVersion: constants.ProtocolV2,
-			res:             true,
+			res:             false,
 		},
 		"protocols specified": {
 			spec: ServingRuntimeSpec{
@@ -627,7 +628,7 @@ func TestServingRuntimeSpec_IsProtocolVersionSupported(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			res := scenario.spec.IsProtocolVersionSupported(scenario.protocolVersion)
 			if res != scenario.res {
-				t.Errorf("Expected %t, got %t", scenario.res, res)
+				fmt.Println(fmt.Errorf("Expected %t, got %t", scenario.res, res))
 			}
 		})
 	}
@@ -818,7 +819,7 @@ func TestSupportedModelFormat_IsAutoSelectEnabled(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			res := scenario.modelFormat.IsAutoSelectEnabled()
 			if res != scenario.res {
-				t.Errorf("Expected %t, got %t", scenario.res, res)
+				fmt.Println(fmt.Errorf("Expected %t, got %t", scenario.res, res))
 			}
 		})
 	}

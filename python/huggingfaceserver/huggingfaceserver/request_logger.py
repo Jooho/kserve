@@ -18,6 +18,7 @@ from kserve.logging import trace_logger
 
 
 class RequestLogger:
+
     def __init__(self, *, max_log_len: Optional[int]) -> None:
         super().__init__()
 

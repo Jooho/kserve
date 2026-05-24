@@ -95,7 +95,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			want: true,
@@ -110,7 +109,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				},
 				Data: map[string][]byte{
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			want: true,
@@ -125,27 +123,9 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				},
 				Data: map[string][]byte{
 					"tls.key": validKey,
-					"ca.crt":  validCert,
 				},
 			},
 			want: true,
-		},
-		{
-			name: "missing ca.crt - no recreation needed, will be added on next cert renewal",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						llmisvc.DefaultExpirationAnnotations[0]: time.Now().Add(24 * time.Hour).Format(time.RFC3339),
-					},
-				},
-				Data: map[string][]byte{
-					"tls.key": validKey,
-					"tls.crt": validCert,
-				},
-			},
-			expectedDNSNames: []string{"localhost"},
-			expectedIPs:      []string{"127.0.0.1"},
-			want:             false,
 		},
 		{
 			name: "invalid cert PEM",
@@ -158,7 +138,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": []byte("not-a-pem"),
-					"ca.crt":  validCert,
 				},
 			},
 			want: true,
@@ -174,7 +153,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": []byte("not-a-pem"),
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			want: true,
@@ -190,7 +168,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			expectedDNSNames: []string{"localhost", "svc.cluster.local", "new-dns-name.example.com"},
@@ -208,7 +185,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			expectedDNSNames: []string{"localhost"},
@@ -226,7 +202,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			expectedDNSNames: []string{"localhost"},
@@ -244,7 +219,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 				Data: map[string][]byte{
 					"tls.key": validKey,
 					"tls.crt": validCert,
-					"ca.crt":  validCert,
 				},
 			},
 			expectedDNSNames: []string{"localhost"},
@@ -304,7 +278,6 @@ func TestShouldRecreateCertificate(t *testing.T) {
 					Data: map[string][]byte{
 						"tls.key": key,
 						"tls.crt": cert,
-						"ca.crt":  cert,
 					},
 				}
 			}(),

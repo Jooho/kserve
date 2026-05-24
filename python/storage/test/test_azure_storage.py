@@ -130,6 +130,7 @@ def test_cleanup():
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
 def test_blob(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+
     # given
     blob_path = "https://kfserving.blob.core.windows.net/triton/simple_string/"
     paths = ["simple_string/1/model.graphdef", "simple_string/config.pbtxt"]
@@ -152,7 +153,10 @@ def test_blob(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
 
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
-def test_blob_file_direct(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+def test_blob_file_direct(
+    mock_storage, mock_makedirs
+):  # pylint: disable=unused-argument
+
     # given
     blob_path = "https://accountname.blob.core.windows.net/container/somefile.text"
     paths = ["somefile.text"]
@@ -172,7 +176,10 @@ def test_blob_file_direct(mock_storage, mock_makedirs):  # pylint: disable=unuse
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch(STORAGE_MODULE + ".Storage._get_azure_storage_token")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
-def test_secure_blob(mock_storage, mock_get_token, mock_makedirs):  # pylint: disable=unused-argument
+def test_secure_blob(
+    mock_storage, mock_get_token, mock_makedirs
+):  # pylint: disable=unused-argument
+
     # given
     blob_path = "https://kfsecured.blob.core.windows.net/triton/simple_string/"
     mock_get_token.return_value = "some_token"
@@ -195,6 +202,7 @@ def test_secure_blob(mock_storage, mock_get_token, mock_makedirs):  # pylint: di
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
 def test_deep_blob(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+
     # given
     blob_path = (
         "https://accountname.blob.core.windows.net/container/some/deep/blob/path"
@@ -218,6 +226,7 @@ def test_deep_blob(mock_storage, mock_makedirs):  # pylint: disable=unused-argum
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
 def test_blob_file(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+
     # given
     blob_path = "https://accountname.blob.core.windows.net/container/somefile.text"
     paths = ["somefile"]
@@ -236,6 +245,7 @@ def test_blob_file(mock_storage, mock_makedirs):  # pylint: disable=unused-argum
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
 def test_blob_fq_file(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+
     # given
     blob_path = (
         "https://accountname.blob.core.windows.net/container/folder/somefile.text"
@@ -256,6 +266,7 @@ def test_blob_fq_file(mock_storage, mock_makedirs):  # pylint: disable=unused-ar
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch("azure.storage.blob.aio.BlobServiceClient")
 def test_blob_no_prefix(mock_storage, mock_makedirs):  # pylint: disable=unused-argument
+
     # given
     blob_path = "https://accountname.blob.core.windows.net/container/"
     paths = ["somefile.text", "somefolder/somefile.text"]
@@ -274,7 +285,10 @@ def test_blob_no_prefix(mock_storage, mock_makedirs):  # pylint: disable=unused-
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch(STORAGE_MODULE + ".Storage._get_azure_storage_access_key")
 @mock.patch("azure.storage.fileshare.ShareServiceClient")
-def test_file_share(mock_storage, mock_get_access_key, mock_makedirs):  # pylint: disable=unused-argument
+def test_file_share(
+    mock_storage, mock_get_access_key, mock_makedirs
+):  # pylint: disable=unused-argument
+
     # given
     file_share_path = "https://kfserving.file.core.windows.net/triton/simple_string/"
     mock_get_access_key.return_value = "some_token"
@@ -307,7 +321,10 @@ def test_file_share(mock_storage, mock_get_access_key, mock_makedirs):  # pylint
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch(STORAGE_MODULE + ".Storage._get_azure_storage_access_key")
 @mock.patch("azure.storage.fileshare.ShareServiceClient")
-def test_deep_file_share(mock_storage, mock_get_access_key, mock_makedirs):  # pylint: disable=unused-argument
+def test_deep_file_share(
+    mock_storage, mock_get_access_key, mock_makedirs
+):  # pylint: disable=unused-argument
+
     file_share_path = (
         "https://accountname.file.core.windows.net/container/some/deep/blob/path"
     )
@@ -352,7 +369,10 @@ def test_deep_file_share(mock_storage, mock_get_access_key, mock_makedirs):  # p
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch(STORAGE_MODULE + ".Storage._get_azure_storage_access_key")
 @mock.patch("azure.storage.fileshare.ShareServiceClient")
-def test_file_share_fq_file(mock_storage, mock_get_access_key, mock_makedirs):  # pylint: disable=unused-argument
+def test_file_share_fq_file(
+    mock_storage, mock_get_access_key, mock_makedirs
+):  # pylint: disable=unused-argument
+
     # given
     file_share_path = "https://accountname.file.core.windows.net/container/folder/"
     paths = ["somefile.text"]
@@ -380,7 +400,10 @@ def test_file_share_fq_file(mock_storage, mock_get_access_key, mock_makedirs):  
 @mock.patch(STORAGE_MODULE + ".os.makedirs")
 @mock.patch(STORAGE_MODULE + ".Storage._get_azure_storage_access_key")
 @mock.patch("azure.storage.fileshare.ShareServiceClient")
-def test_file_share_no_prefix(mock_storage, mock_get_access_key, mock_makedirs):  # pylint: disable=unused-argument
+def test_file_share_no_prefix(
+    mock_storage, mock_get_access_key, mock_makedirs
+):  # pylint: disable=unused-argument
+
     # given
     file_share_path = "https://accountname.file.core.windows.net/container/"
     paths = ["somefile.text", "somefolder/somefile.text"]
