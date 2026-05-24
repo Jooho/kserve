@@ -18,7 +18,6 @@ package logger
 
 import (
 	"net/url"
-	"time"
 )
 
 type LogRequest struct {
@@ -36,5 +35,4 @@ type LogRequest struct {
 	Annotations      map[string]string   `json:"annotations,omitempty"`
 	CertName         string              `json:"certName,omitempty"`
 	TlsSkipVerify    bool                `json:"tlsSkipVerify,omitempty"`
-	OccurrenceTime   time.Time           `json:"occurrenceTime"`
 }

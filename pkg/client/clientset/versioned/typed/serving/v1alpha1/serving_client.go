@@ -33,7 +33,6 @@ type ServingV1alpha1Interface interface {
 	InferenceGraphsGetter
 	LLMInferenceServicesGetter
 	LocalModelCachesGetter
-	LocalModelNamespaceCachesGetter
 	LocalModelNodesGetter
 	LocalModelNodeGroupsGetter
 	ServingRuntimesGetter
@@ -63,10 +62,6 @@ func (c *ServingV1alpha1Client) LLMInferenceServices(namespace string) LLMInfere
 
 func (c *ServingV1alpha1Client) LocalModelCaches(namespace string) LocalModelCacheInterface {
 	return newLocalModelCaches(c, namespace)
-}
-
-func (c *ServingV1alpha1Client) LocalModelNamespaceCaches(namespace string) LocalModelNamespaceCacheInterface {
-	return newLocalModelNamespaceCaches(c, namespace)
 }
 
 func (c *ServingV1alpha1Client) LocalModelNodes(namespace string) LocalModelNodeInterface {

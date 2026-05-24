@@ -258,6 +258,7 @@ class OpenAIProxyModel(OpenAIGenerativeModel):
         request: CompletionRequest,
         raw_request: Optional[Request] = None,
     ) -> httpx.Request:
+
         if raw_request and "upstream_headers" in raw_request:
             headers = httpx.Headers(raw_request["upstream_headers"])
         else:

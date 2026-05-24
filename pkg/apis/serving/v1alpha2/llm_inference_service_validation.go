@@ -74,9 +74,6 @@ func (l *LLMInferenceServiceValidator) ValidateUpdate(ctx context.Context, oldOb
 	if err != nil {
 		return nil, err
 	}
-	if llmSvc.GetDeletionTimestamp() != nil {
-		return nil, nil
-	}
 
 	return l.validate(ctx, prev, llmSvc)
 }
@@ -100,7 +97,6 @@ func (l *LLMInferenceServiceValidator) validate(ctx context.Context, prev *LLMIn
 	allErrs = append(allErrs, l.validateSchedulerConfig(llmSvc)...)
 
 	allErrs = append(allErrs, l.validateScaling(llmSvc)...)
-	allErrs = append(allErrs, l.validateLoRAAdapters(llmSvc)...)
 
 	allErrs = append(allErrs, l.validateImmutable(prev, llmSvc)...)
 
@@ -187,39 +183,32 @@ func (l *LLMInferenceServiceValidator) validateRouterCrossFieldConstraints(llmSv
 
 // parentRefsMatchGatewayRefs checks whether the parentRefs on an HTTPRoute are
 // consistent with the gateway refs. A parentRef matches a gateway ref if the
-// name, namespace, and sectionName are equal (Group and Kind are always Gateway).
+// name and namespace are equal (Group and Kind are always Gateway).
 // Both slices are sorted before comparison so order does not matter.
-func parentRefsMatchGatewayRefs(parentRefs []gwapiv1.ParentReference, gatewayRefs []GatewayObjectReference) bool {
+func parentRefsMatchGatewayRefs(parentRefs []gwapiv1.ParentReference, gatewayRefs []UntypedObjectReference) bool {
 	if len(parentRefs) != len(gatewayRefs) {
 		return false
 	}
 
 	// Build comparable keys and sort so that order-independent matching works.
-	type key struct{ ns, name, sectionName string }
-	toKey := func(name gwapiv1.ObjectName, ns gwapiv1.Namespace, sn *gwapiv1.SectionName) key {
-		sectionName := ""
-		if sn != nil {
-			sectionName = string(*sn)
-		}
-		return key{ns: string(ns), name: string(name), sectionName: sectionName}
+	type key struct{ ns, name string }
+	toKey := func(name gwapiv1.ObjectName, ns gwapiv1.Namespace) key {
+		return key{ns: string(ns), name: string(name)}
 	}
 	cmpKey := func(a, b key) int {
 		if c := cmp.Compare(a.ns, b.ns); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(a.name, b.name); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.sectionName, b.sectionName)
+		return cmp.Compare(a.name, b.name)
 	}
 
 	pKeys := make([]key, len(parentRefs))
 	for i, ref := range parentRefs {
-		pKeys[i] = toKey(ref.Name, ptr.Deref(ref.Namespace, ""), ref.SectionName)
+		pKeys[i] = toKey(ref.Name, ptr.Deref(ref.Namespace, ""))
 	}
 	gKeys := make([]key, len(gatewayRefs))
 	for i, ref := range gatewayRefs {
-		gKeys[i] = toKey(ref.Name, ref.Namespace, ref.SectionName)
+		gKeys[i] = toKey(ref.Name, ref.Namespace)
 	}
 
 	slices.SortFunc(pKeys, cmpKey)
@@ -404,75 +393,6 @@ func (l *LLMInferenceServiceValidator) validateSchedulerConfig(svc *LLMInference
 	return allErrs
 }
 
-func (l *LLMInferenceServiceValidator) validateLoRAAdapters(llmSvc *LLMInferenceService) field.ErrorList {
-	var allErrs field.ErrorList
-
-	if llmSvc.Spec.Model.LoRA == nil {
-		return allErrs
-	}
-
-	loraPath := field.NewPath("spec").Child("model", "lora")
-	loraSpec := llmSvc.Spec.Model.LoRA
-
-	if loraSpec.MaxRank != nil && *loraSpec.MaxRank < 1 {
-		allErrs = append(allErrs, field.Invalid(loraPath.Child("maxRank"), *loraSpec.MaxRank, "maxRank must be at least 1"))
-	}
-	if loraSpec.MaxAdapters != nil && *loraSpec.MaxAdapters < 1 {
-		allErrs = append(allErrs, field.Invalid(loraPath.Child("maxAdapters"), *loraSpec.MaxAdapters, "maxAdapters must be at least 1"))
-	}
-	if loraSpec.MaxCpuAdapters != nil && *loraSpec.MaxCpuAdapters < 1 {
-		allErrs = append(allErrs, field.Invalid(loraPath.Child("maxCpuAdapters"), *loraSpec.MaxCpuAdapters, "maxCpuAdapters must be at least 1"))
-	}
-
-	if len(llmSvc.Spec.Model.LoRA.Adapters) == 0 {
-		return allErrs
-	}
-
-	adaptersPath := loraPath.Child("adapters")
-	baseModelName := ptr.Deref(llmSvc.Spec.Model.Name, llmSvc.Name)
-	seen := make(map[string]int, len(llmSvc.Spec.Model.LoRA.Adapters))
-
-	for i, adapter := range llmSvc.Spec.Model.LoRA.Adapters {
-		namePath := adaptersPath.Index(i).Child("name")
-
-		if adapter.Name == nil || *adapter.Name == "" {
-			allErrs = append(allErrs, field.Required(namePath, "adapter name is required"))
-			continue
-		}
-
-		adapterName := *adapter.Name
-
-		if adapterName == "." || adapterName == ".." {
-			allErrs = append(allErrs, field.Invalid(
-				namePath,
-				adapterName,
-				"adapter name must not include \".\" or \"..\" (path traversal risk)",
-			))
-			continue
-		}
-
-		if prevIdx, dup := seen[adapterName]; dup {
-			allErrs = append(allErrs, field.Invalid(
-				namePath,
-				adapterName,
-				fmt.Sprintf("duplicate name (same as adapters[%d])", prevIdx),
-			))
-		} else {
-			seen[adapterName] = i
-		}
-
-		if adapterName == baseModelName {
-			allErrs = append(allErrs, field.Invalid(
-				namePath,
-				adapterName,
-				fmt.Sprintf("adapter name must differ from base model name %q", baseModelName),
-			))
-		}
-	}
-
-	return allErrs
-}
-
 func (l *LLMInferenceServiceValidator) validateScaling(llmSvc *LLMInferenceService) field.ErrorList {
 	var allErrs field.ErrorList
 
@@ -484,64 +404,7 @@ func (l *LLMInferenceServiceValidator) validateScaling(llmSvc *LLMInferenceServi
 		allErrs = append(allErrs, ValidateWorkloadScaling(field.NewPath("spec").Child("prefill"), llmSvc.Spec.Prefill)...)
 	}
 
-	allErrs = append(allErrs, l.validateActuatorConsistency(llmSvc)...)
-
 	return allErrs
-}
-
-func (l *LLMInferenceServiceValidator) validateActuatorConsistency(llmSvc *LLMInferenceService) field.ErrorList {
-	return ValidateActuatorConsistency(&llmSvc.Spec.WorkloadSpec, llmSvc.Spec.Prefill)
-}
-
-// ValidateActuatorConsistency ensures that when both decode and prefill workloads
-// have autoscaling configured, they use the same actuator backend (both HPA or both KEDA).
-// Mixing backends is not supported because:
-//   - HPA requires a Prometheus Adapter to expose metrics to the Kubernetes Metrics API
-//   - KEDA queries Prometheus directly without an adapter
-//
-// Using different backends forces operators to maintain two different metric pipelines
-// and results in independent, unsynchronised scaling decisions across the two sides
-// of a disaggregated deployment.
-//
-// It is exported so that v1alpha1 can reuse it via conversion.
-func ValidateActuatorConsistency(decode *WorkloadSpec, prefill *WorkloadSpec) field.ErrorList {
-	if prefill == nil {
-		return nil
-	}
-
-	// Both sides must have scaling.wva configured for a mismatch to be possible.
-	decodeScaling := decode.Scaling
-	prefillScaling := prefill.Scaling
-	if decodeScaling == nil || decodeScaling.WVA == nil || prefillScaling == nil || prefillScaling.WVA == nil {
-		return nil
-	}
-
-	decodeUsesHPA := decodeScaling.WVA.HPA != nil
-	prefillUsesHPA := prefillScaling.WVA.HPA != nil
-
-	if decodeUsesHPA == prefillUsesHPA {
-		return nil
-	}
-
-	decodeBackend := "keda"
-	prefillBackend := "hpa"
-	if decodeUsesHPA {
-		decodeBackend = "hpa"
-		prefillBackend = "keda"
-	}
-
-	return field.ErrorList{
-		field.Invalid(
-			field.NewPath("spec").Child("prefill", "scaling", "wva"),
-			prefillScaling.WVA,
-			fmt.Sprintf(
-				"decode and prefill must use the same actuator backend; "+
-					"decode uses %s but prefill uses %s — "+
-					"mixing backends requires two separate metric pipelines and leads to independent, unsynchronised scaling decisions",
-				decodeBackend, prefillBackend,
-			),
-		),
-	}
 }
 
 // ValidateWorkloadScaling validates the scaling configuration of a single workload
@@ -565,13 +428,23 @@ func ValidateWorkloadScaling(basePath *field.Path, workload *WorkloadSpec) field
 		))
 	}
 
-	// Validate replica bounds
-	if scaling.MinReplicas != nil && *scaling.MinReplicas > scaling.MaxReplicas {
-		allErrs = append(allErrs, field.Invalid(
-			scalingPath.Child("minReplicas"),
-			*scaling.MinReplicas,
-			fmt.Sprintf("minReplicas (%d) cannot exceed maxReplicas (%d)", *scaling.MinReplicas, scaling.MaxReplicas),
+	// MaxReplicas is required when scaling is configured
+	if scaling.MaxReplicas == nil {
+		allErrs = append(allErrs, field.Required(
+			scalingPath.Child("maxReplicas"),
+			"maxReplicas is required when scaling is configured",
 		))
+	}
+
+	// Validate replica bounds
+	if scaling.MinReplicas != nil && scaling.MaxReplicas != nil {
+		if *scaling.MinReplicas > *scaling.MaxReplicas {
+			allErrs = append(allErrs, field.Invalid(
+				scalingPath.Child("minReplicas"),
+				*scaling.MinReplicas,
+				fmt.Sprintf("minReplicas (%d) cannot exceed maxReplicas (%d)", *scaling.MinReplicas, *scaling.MaxReplicas),
+			))
+		}
 	}
 
 	// WVA is required when scaling is configured — it provides the scaling mechanism

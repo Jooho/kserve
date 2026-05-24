@@ -37,7 +37,6 @@ from pkg import script_builder
 # Main Generation
 # ============================================================================
 
-
 def generate_script(definition_file: Path, output_dir: Path):
     """Main script generation function.
 
@@ -54,15 +53,11 @@ def generate_script(definition_file: Path, output_dir: Path):
     logger.log_info(f"Description: {config['description']}")
     if config["tools"]:
         logger.log_info(f"Tools ({len(config['tools'])}): {', '.join(config['tools'])}")
-    logger.log_info(
-        f"Components ({len(config['components'])}): {', '.join([c['name'] for c in config['components']])}"
-    )
+    logger.log_info(f"Components ({len(config['components'])}): {', '.join([c['name'] for c in config['components']])}")
 
     # Find directories
     script_dir = Path(__file__).parent
-    setup_dir = (
-        script_dir.parent.parent
-    )  # scripts/install-script-generator -> scripts -> setup
+    setup_dir = script_dir.parent.parent  # scripts/install-script-generator -> scripts -> setup
     infra_dir = setup_dir / "infra"
     cli_dir = setup_dir / "cli"
     repo_root = file_reader.find_git_root(script_dir)
@@ -84,16 +79,12 @@ def generate_script(definition_file: Path, output_dir: Path):
             # Extract install function
             install_raw = bash_parser.extract_bash_function(tool_script, "install")
             if not install_raw:
-                logger.log_warning(
-                    f"    → install() function not found in {tool_script}"
-                )
+                logger.log_warning(f"    → install() function not found in {tool_script}")
                 continue
 
             # Rename function
             func_name = f"install_{tool.replace('-', '_')}"
-            install_code = bash_parser.rename_bash_function(
-                install_raw, "install", func_name
-            )
+            install_code = bash_parser.rename_bash_function(install_raw, "install", func_name)
 
             # Create component-like structure
             tool_comp = {
@@ -104,7 +95,7 @@ def generate_script(definition_file: Path, output_dir: Path):
                 "uninstall_code": "",
                 "variables": [],
                 "include_section": [],
-                "env": {},
+                "env": {}
             }
             logger.log_info(f"    → {func_name}()")
             components.append(tool_comp)
@@ -116,7 +107,7 @@ def generate_script(definition_file: Path, output_dir: Path):
             comp_config,
             infra_dir,
             config["method"],
-            embed_templates=config.get("embed_templates", True),
+            embed_templates=config.get("embed_templates", True)
         )
         logger.log_info(f"    → {comp['install_func']}(), {comp['uninstall_func']}()")
         if comp.get("has_templates"):
@@ -125,12 +116,8 @@ def generate_script(definition_file: Path, output_dir: Path):
 
     # Generate content
     if config["embed_manifests"]:
-        logger.log_info(
-            "EMBED_MANIFESTS mode enabled - generating embedded KServe manifests and component templates..."
-        )
-    content = script_builder.generate_script_content(
-        definition_file, config, components, repo_root
-    )
+        logger.log_info("EMBED_MANIFESTS mode enabled - generating embedded KServe manifests and component templates...")
+    content = script_builder.generate_script_content(definition_file, config, components, repo_root)
 
     # Determine output file name
     # RELEASE controls whether to add method suffix to filename
@@ -156,7 +143,6 @@ def generate_script(definition_file: Path, output_dir: Path):
 # ============================================================================
 # CLI
 # ============================================================================
-
 
 def print_help():
     """Print help message."""
@@ -195,9 +181,7 @@ def parse_arguments() -> tuple[Path, Optional[Path]]:
         Tuple of (input_path, output_dir)
     """
     script_dir = Path(__file__).parent
-    setup_dir = (
-        script_dir.parent.parent
-    )  # scripts/install-script-generator -> scripts -> setup
+    setup_dir = script_dir.parent.parent  # scripts/install-script-generator -> scripts -> setup
     default_input_dir = setup_dir / "quick-install/definitions"
     default_output_dir = setup_dir / "quick-install"
 
@@ -220,9 +204,7 @@ def parse_arguments() -> tuple[Path, Optional[Path]]:
     return input_path, output_dir
 
 
-def collect_definition_files(
-    input_path: Path, output_dir: Optional[Path]
-) -> tuple[list[Path], Path]:
+def collect_definition_files(input_path: Path, output_dir: Optional[Path]) -> tuple[list[Path], Path]:
     """Collect definition files from input path.
 
     Args:
@@ -275,7 +257,6 @@ def main():
         except Exception as e:
             logger.log_error(f"Generation failed for {definition_file}: {e}")
             import traceback
-
             traceback.print_exc()
             failed += 1
 

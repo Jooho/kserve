@@ -103,29 +103,17 @@ func (e *Config) WithManagerOptions(opts ...ManagerOption) *Config {
 	return e
 }
 
-// SetupTestLogger configures the controller-runtime logger for test suites.
-// By default, it sets the log level to warn so that only errors and warnings are visible,
-// suppressing verbose controller reconciliation logs.
-// Set the TEST_LOG_LEVEL env var to override (e.g. "debug", "info", "error").
-func SetupTestLogger() {
-	level := zapcore.WarnLevel
-	if envLevel := os.Getenv("TEST_LOG_LEVEL"); envLevel != "" {
-		if err := level.UnmarshalText([]byte(envLevel)); err != nil {
-			level = zapcore.WarnLevel
-		}
-	}
+// Start wires controller-runtime manager with controllers which are subject of the tests
+// and starts Kubernetes EnvTest to verify their behavior.
+func (e *Config) Start(ctx context.Context) *Client {
+	ctx, cancel := context.WithCancel(ctx)
 
 	opts := zap.Options{
-		Level:       level,
+		Development: true,
 		TimeEncoder: zapcore.TimeEncoderOfLayout(time.RFC3339),
 	}
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseFlagOptions(&opts)))
-}
 
-// BuildEnvironment constructs the envtest.Environment from the configured options
-// without starting it. This is intended for TestMain-based suites that manage
-// the environment lifecycle directly, since Start() depends on Ginkgo.
-func (e *Config) BuildEnvironment() *envtest.Environment {
 	envTest := &envtest.Environment{
 		CRDInstallOptions: envtest.CRDInstallOptions{
 			ErrorIfPathMissing: true,
@@ -141,18 +129,6 @@ func (e *Config) BuildEnvironment() *envtest.Environment {
 	for _, opt := range e.envTestOptions {
 		opt(envTest)
 	}
-
-	return envTest
-}
-
-// Start wires controller-runtime manager with controllers which are subject of the tests
-// and starts Kubernetes EnvTest to verify their behavior.
-func (e *Config) Start(ctx context.Context) *Client {
-	SetupTestLogger()
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	envTest := e.BuildEnvironment()
 
 	// Take exclusive ownership of SIGINT/SIGTERM so that envtest child
 	// processes (etcd, kube-apiserver) are force-killed before the test

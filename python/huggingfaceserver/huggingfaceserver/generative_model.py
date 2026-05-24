@@ -140,7 +140,9 @@ class CompletionStreamer:
         )
 
 
-class HuggingfaceGenerativeModel(OpenAIChatAdapterModel):  # pylint:disable=c-extension-no-member
+class HuggingfaceGenerativeModel(
+    OpenAIChatAdapterModel
+):  # pylint:disable=c-extension-no-member
     model_config: PretrainedConfig
     model_id_or_path: Union[pathlib.Path, str]
     task: MLTask
@@ -463,6 +465,7 @@ class HuggingfaceGenerativeModel(OpenAIChatAdapterModel):  # pylint:disable=c-ex
                 and "tool_calls" in message
                 and isinstance(message["tool_calls"], list)
             ):
+
                 for item in message["tool_calls"]:
                     item["function"]["arguments"] = json.loads(
                         item["function"]["arguments"]
@@ -509,7 +512,9 @@ class HuggingfaceGenerativeModel(OpenAIChatAdapterModel):  # pylint:disable=c-ex
     def apply_chat_template(
         self,
         request: ChatCompletionRequest,
-    ) -> ChatPrompt:  # TODO: Does not supprot multi-modal, also does not solve mistral tokenizer issue.
+    ) -> (
+        ChatPrompt
+    ):  # TODO: Does not supprot multi-modal, also does not solve mistral tokenizer issue.
         """
         Given a list of chat completion messages, convert them to a prompt.
         """

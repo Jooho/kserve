@@ -166,7 +166,6 @@ var (
 	PredictorHostAnnotationKey                       = InferenceServiceInternalAnnotationsPrefix + "/predictor-host"
 	PredictorProtocolAnnotationKey                   = InferenceServiceInternalAnnotationsPrefix + "/predictor-protocol"
 	LocalModelLabel                                  = InferenceServiceInternalAnnotationsPrefix + "/localmodel"
-	LocalModelNamespaceLabel                         = InferenceServiceInternalAnnotationsPrefix + "/localmodel-namespace"
 	LocalModelSourceUriAnnotationKey                 = InferenceServiceInternalAnnotationsPrefix + "/localmodel-sourceuri"
 	LocalModelPVCNameAnnotationKey                   = InferenceServiceInternalAnnotationsPrefix + "/localmodel-pvc-name"
 )
@@ -343,10 +342,7 @@ var (
 	IstioMeshGateway = "mesh"
 )
 
-const (
-	WorkerNodeSuffix       = "worker"
-	WorkerNodeSuffixPlural = "workers"
-)
+const WorkerNodeSuffix = "worker"
 
 // InferenceService Component enums
 const (
@@ -429,20 +425,6 @@ const (
 	LLMComponentWorkloadWorkerPrefill = "llminferenceservice-workload-worker-prefill"
 	LLMComponentWorkloadLeaderPrefill = "llminferenceservice-workload-leader-prefill"
 	LLMComponentInference             = "inference" // used in sample/template resources
-)
-
-// LLMInferenceService constants
-const (
-	// LLMISVCRoutingSidecarContainerName is the name of the routing sidecar container
-	// that handles prefill disaggregation routing.
-	LLMISVCRoutingSidecarContainerName = "llm-d-routing-sidecar"
-
-	LLMISVCDefaultServiceAccountName = "default"
-
-	// LLMISVCSchedulerAttachesLoRA controls whether the scheduler's tokenizer sidecar
-	// receives LoRA adapter artifacts. The tokenizer only performs tokenization and does
-	// not run inference, so LoRA weights are never needed.
-	LLMISVCSchedulerAttachesLoRA = false
 )
 
 // InferenceService canary constants
@@ -700,18 +682,10 @@ const (
 	DefaultPipelineParallelSize = 1
 )
 
-// MultiNode executor backend annotation
-// If not set, defaults to ray
-const (
-	MultiNodeExecutorBackendAnnotationKey = "multinode/executor-backend"
-	MultiNodeExecutorBackendMp            = "mp"
-)
-
 // Multi Node Labels
 var (
 	MultiNodeRoleLabelKey = "multinode/role"
 	MultiNodeHead         = "head"
-	MultiNodeWorker       = "worker"
 )
 
 // GetRawServiceLabel generate native service label
@@ -728,12 +702,6 @@ func GetRawWorkerServiceLabel(service string) string {
 func GetHeadServiceName(service string, isvcGeneration string) string {
 	isvcName := strings.TrimSuffix(service, "-predictor")
 	return isvcName + "-" + MultiNodeHead + "-" + isvcGeneration
-}
-
-// GetWorkerServiceName generate worker headless service name
-func GetWorkerServiceName(service string, isvcGeneration string) string {
-	isvcName := strings.TrimSuffix(service, "-predictor")
-	return isvcName + "-" + WorkerNodeSuffixPlural + "-" + isvcGeneration
 }
 
 func (e InferenceServiceComponent) String() string {

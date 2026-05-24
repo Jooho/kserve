@@ -45,7 +45,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_env_file_basic(self):
         """Test reading basic env file."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("VAR1=value1\n")
             f.write("VAR2=value2\n")
             temp_path = Path(f.name)
@@ -58,7 +58,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_env_file_with_comments(self):
         """Test reading env file with comments."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("# This is a comment\n")
             f.write("VAR1=value1\n")
             f.write("# Another comment\n")
@@ -73,7 +73,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_env_file_skip_empty(self):
         """Test reading env file skipping empty lines."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("VAR1=value1\n")
             f.write("\n")
             f.write("VAR2=value2\n")
@@ -88,7 +88,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_env_file_require_assignment(self):
         """Test reading env file requiring assignment."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("VAR1=value1\n")
             f.write("JUST_TEXT\n")
             f.write("VAR2=value2\n")
@@ -107,7 +107,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_yaml_file_simple(self):
         """Test reading simple YAML file."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             yaml.dump({"key1": "value1", "key2": "value2"}, f)
             temp_path = Path(f.name)
 
@@ -119,8 +119,11 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_yaml_file_nested(self):
         """Test reading nested YAML file."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            data = {"COMPONENTS": ["comp1", "comp2"], "GLOBAL_ENV": {"VAR": "value"}}
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            data = {
+                "COMPONENTS": ["comp1", "comp2"],
+                "GLOBAL_ENV": {"VAR": "value"}
+            }
             yaml.dump(data, f)
             temp_path = Path(f.name)
 
@@ -133,7 +136,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_read_yaml_file_empty(self):
         """Test reading empty YAML file."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             f.write("")
             temp_path = Path(f.name)
 
@@ -145,7 +148,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_extract_marked_section_simple(self):
         """Test extracting marked section."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
             f.write("# VARIABLES\n")
             f.write("VAR1=value1\n")
             f.write("VAR2=value2\n")
@@ -154,7 +157,9 @@ class TestFileReader(unittest.TestCase):
 
         try:
             lines = file_reader.extract_marked_section(
-                temp_path, "# VARIABLES", "# VARIABLES END"
+                temp_path,
+                "# VARIABLES",
+                "# VARIABLES END"
             )
             self.assertEqual(lines, ["VAR1=value1", "VAR2=value2"])
         finally:
@@ -162,7 +167,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_extract_marked_section_preserve_indent(self):
         """Test extracting marked section with preserved indentation."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
             f.write("# START\n")
             f.write("    indented line 1\n")
             f.write("    indented line 2\n")
@@ -171,7 +176,10 @@ class TestFileReader(unittest.TestCase):
 
         try:
             lines = file_reader.extract_marked_section(
-                temp_path, "# START", "# END", preserve_indent=True
+                temp_path,
+                "# START",
+                "# END",
+                preserve_indent=True
             )
             self.assertEqual(lines, ["    indented line 1", "    indented line 2"])
         finally:
@@ -179,7 +187,7 @@ class TestFileReader(unittest.TestCase):
 
     def test_extract_marked_section_skip_empty(self):
         """Test extracting marked section skipping empty lines."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
             f.write("# START\n")
             f.write("line1\n")
             f.write("\n")
@@ -189,7 +197,10 @@ class TestFileReader(unittest.TestCase):
 
         try:
             lines = file_reader.extract_marked_section(
-                temp_path, "# START", "# END", skip_empty=True
+                temp_path,
+                "# START",
+                "# END",
+                skip_empty=True
             )
             self.assertEqual(lines, ["line1", "line2"])
         finally:
@@ -197,18 +208,20 @@ class TestFileReader(unittest.TestCase):
 
     def test_extract_marked_section_not_found(self):
         """Test extracting marked section when markers not found."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
             f.write("some content\n")
             temp_path = Path(f.name)
 
         try:
             lines = file_reader.extract_marked_section(
-                temp_path, "# NOTFOUND", "# NOTFOUND END"
+                temp_path,
+                "# NOTFOUND",
+                "# NOTFOUND END"
             )
             self.assertEqual(lines, [])
         finally:
             temp_path.unlink()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

@@ -29,6 +29,7 @@ from test.test_server import DummyModel
 
 @pytest.mark.asyncio
 class TestInferenceRESTClient:
+
     @pytest_asyncio.fixture(scope="class")
     async def app(self, server):
         model = DummyModel("TestModel")
@@ -112,6 +113,7 @@ class TestInferenceRESTClient:
                     timeout=1.3,
                 )
         else:
+
             # Ready model
             assert (
                 await rest_client.is_model_ready(

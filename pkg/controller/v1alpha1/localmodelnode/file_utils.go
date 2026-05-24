@@ -17,8 +17,6 @@ limitations under the License.
 package localmodelnode
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -51,14 +49,7 @@ func (f *FileSystemHelper) removeModel(modelName string) error {
 }
 
 func (f *FileSystemHelper) getModelFolders() ([]os.DirEntry, error) {
-	entries, err := os.ReadDir(f.modelsRootFolder)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return entries, nil
+	return os.ReadDir(f.modelsRootFolder)
 }
 
 func (f *FileSystemHelper) hasModelFolder(modelName string) (bool, error) {

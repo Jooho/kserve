@@ -77,9 +77,6 @@ func (l *LLMInferenceServiceConfigValidator) ValidateUpdate(ctx context.Context,
 	if err != nil {
 		return warnings, err
 	}
-	if newConfig.GetDeletionTimestamp() != nil {
-		return warnings, nil
-	}
 
 	// Warn if modifying a well-known config
 	if l.WellKnownConfigChecker != nil && l.WellKnownConfigChecker(oldConfig.Name) &&

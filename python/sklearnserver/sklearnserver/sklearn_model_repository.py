@@ -18,6 +18,7 @@ from sklearnserver import SKLearnModel
 
 
 class SKLearnModelRepository(ModelRepository):
+
     def __init__(self, model_dir: str = MODEL_MOUNT_DIRS):
         super().__init__(model_dir)
         self.load_models()

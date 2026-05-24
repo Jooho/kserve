@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Fixture factory - not called explicitly, but must be imported for pytest to discover it.
-from .fixtures import test_case  # noqa: F401
-
 
 # This hook is used to ensure that the test names are unique and to ensure that
 # the test names are consistent with the cluster marks.
@@ -44,14 +41,3 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "llminferenceservice: mark test as an LLM inference service test"
     )
-    config.addinivalue_line("markers", "autoscaling: mark test as an autoscaling test")
-    config.addinivalue_line(
-        "markers", "autoscaling_hpa: mark test as an HPA autoscaling test"
-    )
-    config.addinivalue_line(
-        "markers", "autoscaling_keda: mark test as a KEDA autoscaling test"
-    )
-    config.addinivalue_line(
-        "markers", "model_routing: mark test as a model-based routing test"
-    )
-    config.addinivalue_line("markers", "lora: mark test as a LoRA adapter test")

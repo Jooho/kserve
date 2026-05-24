@@ -66,7 +66,6 @@ func TestDiscoverURLs(t *testing.T) {
 		gateways           []*gwapiv1.Gateway
 		services           []*corev1.Service
 		preferredUrlScheme string
-		modelRoutingHeader string
 		assert             func(g Gomega, urls []string, err error)
 	}{
 		// ===== Basic address resolution =====
@@ -281,116 +280,6 @@ func TestDiscoverURLs(t *testing.T) {
 			),
 			gateways: []*gwapiv1.Gateway{HTTPGateway("empty-rules-gateway", "test-ns", "203.0.113.1")},
 			assert:   expectURLs("http://203.0.113.1/"),
-		},
-
-		// ===== Model-based routing path extraction =====
-		{
-			name: "model-based routing - discovers both path-based and header-based URLs",
-			route: HTTPRoute("mbr-route",
-				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-				WithParentRef(GatewayRef("mbr-gateway", RefInNamespace("test-ns"))),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name/v1/completions")),
-					WithBackendRefs(BackendRefInferencePool("pool")),
-				),
-				WithHTTPRule(
-					Matches(ExactPathWithHeaderMatch("/v1/completions", "X-Gateway-Model-Name", "publishers/ns/models/m")),
-					WithBackendRefs(BackendRefInferencePool("pool")),
-				),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-				WithHTTPRule(
-					Matches(HeaderOnlyMatch("X-Gateway-Model-Name", "publishers/ns/models/m")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-			),
-			gateways: []*gwapiv1.Gateway{
-				Gateway("mbr-gateway",
-					InNamespace[*gwapiv1.Gateway]("test-ns"),
-					WithListener(gwapiv1.HTTPProtocolType),
-					WithAddresses("203.0.113.1"),
-				),
-			},
-			modelRoutingHeader: "X-Gateway-Model-Name",
-			assert:             expectURLs("http://203.0.113.1/", "http://203.0.113.1/ns/name"),
-		},
-		{
-			name: "model-based routing - ignores user-provided header matches",
-			route: HTTPRoute("user-header-route",
-				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-				WithParentRef(GatewayRef("user-header-gateway", RefInNamespace("test-ns"))),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-				WithHTTPRule(
-					Matches(ExactPathWithHeaderMatch("/custom", "X-Custom-Header", "val")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-			),
-			gateways: []*gwapiv1.Gateway{
-				Gateway("user-header-gateway",
-					InNamespace[*gwapiv1.Gateway]("test-ns"),
-					WithListener(gwapiv1.HTTPProtocolType),
-					WithAddresses("203.0.113.1"),
-				),
-			},
-			modelRoutingHeader: "X-Gateway-Model-Name",
-			assert:             expectURLs("http://203.0.113.1/ns/name"),
-		},
-		{
-			name: "model-based routing - empty header config includes all paths",
-			route: HTTPRoute("no-header-config-route",
-				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-				WithParentRef(GatewayRef("no-header-config-gw", RefInNamespace("test-ns"))),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-				WithHTTPRule(
-					Matches(HeaderOnlyMatch("X-Gateway-Model-Name", "publishers/ns/models/m")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-			),
-			gateways: []*gwapiv1.Gateway{
-				Gateway("no-header-config-gw",
-					InNamespace[*gwapiv1.Gateway]("test-ns"),
-					WithListener(gwapiv1.HTTPProtocolType),
-					WithAddresses("203.0.113.1"),
-				),
-			},
-			modelRoutingHeader: "",
-			assert:             expectURLs("http://203.0.113.1/ns/name"),
-		},
-		{
-			name: "model-based routing - backward compat: path-only rules unchanged",
-			route: HTTPRoute("compat-route",
-				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-				WithParentRef(GatewayRef("compat-gateway", RefInNamespace("test-ns"))),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name/v1/completions")),
-					WithBackendRefs(BackendRefInferencePool("pool")),
-				),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name/v1/chat/completions")),
-					WithBackendRefs(BackendRefInferencePool("pool")),
-				),
-				WithHTTPRule(
-					Matches(PathPrefixMatch("/ns/name")),
-					WithBackendRefs(BackendRefService("svc")),
-				),
-			),
-			gateways: []*gwapiv1.Gateway{
-				Gateway("compat-gateway",
-					InNamespace[*gwapiv1.Gateway]("test-ns"),
-					WithListener(gwapiv1.HTTPProtocolType),
-					WithAddresses("203.0.113.1"),
-				),
-			},
-			modelRoutingHeader: "X-Gateway-Model-Name",
-			assert:             expectURLs("http://203.0.113.1/ns/name"),
 		},
 
 		// ===== Scheme from listener =====
@@ -1327,38 +1216,6 @@ func TestDiscoverURLs(t *testing.T) {
 			),
 		},
 		{
-			name: "ClusterIP-backed gateway - no duplicate when status address matches backing service hostname",
-			route: HTTPRoute("test-route",
-				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-				WithParentRef(GatewayRef("my-gateway", RefInNamespace("gateway-ns"))),
-			),
-			gateways: []*gwapiv1.Gateway{
-				Gateway("my-gateway",
-					InNamespace[*gwapiv1.Gateway]("gateway-ns"),
-					WithListeners(gwapiv1.Listener{
-						Name:     "https",
-						Protocol: gwapiv1.HTTPSProtocolType,
-						Port:     443,
-					}),
-					WithHostnameAddresses("gateway-service.gateway-ns.svc.cluster.local"),
-				),
-			},
-			services: []*corev1.Service{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "gateway-service",
-						Namespace: "gateway-ns",
-						Labels: map[string]string{
-							"gateway.networking.k8s.io/gateway-name": "my-gateway",
-						},
-					},
-				},
-			},
-			assert: expectURLs(
-				"https://gateway-service.gateway-ns.svc.cluster.local/",
-			),
-		},
-		{
 			name: "no internal URL without backing service",
 			route: HTTPRoute("test-route",
 				InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
@@ -1499,112 +1356,30 @@ func TestDiscoverURLs(t *testing.T) {
 				WithObjects(objects...).
 				Build()
 
-			gateways, gwErr := llmisvc.DiscoverGateways(ctx, fakeClient, tt.route)
-			if gwErr != nil {
-				tt.assert(g, nil, gwErr)
-				return
-			}
-
-			urls, err := llmisvc.DiscoverURLs(ctx, fakeClient, gateways, tt.route, llmisvc.Config{UrlScheme: tt.preferredUrlScheme, ModelBasedRoutingHeaderName: tt.modelRoutingHeader})
+			urls, err := llmisvc.DiscoverURLs(ctx, fakeClient, tt.route, tt.preferredUrlScheme)
 
 			var actualURLs []string
 			for _, url := range urls {
-				actualURLs = append(actualURLs, url.URL.String())
+				actualURLs = append(actualURLs, url.String())
 			}
 
 			tt.assert(g, actualURLs, err)
 		})
 	}
-
-	t.Run("Origin tracks the source gateway for each discovered URL", func(t *testing.T) {
-		g := NewWithT(t)
-		ctx := t.Context()
-
-		scheme := runtime.NewScheme()
-		g.Expect(gwapiv1.Install(scheme)).To(Succeed())
-		g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-
-		route := HTTPRoute("test-route",
-			InNamespace[*gwapiv1.HTTPRoute]("test-ns"),
-			WithParentRefs(
-				gwapiv1.ParentReference{
-					Name:      "gateway-a",
-					Namespace: ptr.To(gwapiv1.Namespace("gw-ns")),
-					Group:     ptr.To(gwapiv1.Group("gateway.networking.k8s.io")),
-					Kind:      ptr.To(gwapiv1.Kind("Gateway")),
-				},
-				gwapiv1.ParentReference{
-					Name:      "gateway-b",
-					Namespace: ptr.To(gwapiv1.Namespace("gw-ns")),
-					Group:     ptr.To(gwapiv1.Group("gateway.networking.k8s.io")),
-					Kind:      ptr.To(gwapiv1.Kind("Gateway")),
-				},
-			),
-		)
-
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(
-				route,
-				Gateway("gateway-a",
-					InNamespace[*gwapiv1.Gateway]("gw-ns"),
-					WithListeners(gwapiv1.Listener{
-						Name:     "https",
-						Protocol: gwapiv1.HTTPSProtocolType,
-						Port:     443,
-					}),
-					WithAddresses("gw-a.example.com"),
-				),
-				Gateway("gateway-b",
-					InNamespace[*gwapiv1.Gateway]("gw-ns"),
-					WithListeners(gwapiv1.Listener{
-						Name:     "http",
-						Protocol: gwapiv1.HTTPProtocolType,
-						Port:     80,
-					}),
-					WithAddresses("gw-b.example.com"),
-				),
-				DefaultGatewayClass(),
-			).
-			Build()
-
-		gateways, gwErr := llmisvc.DiscoverGateways(ctx, fakeClient, route)
-		g.Expect(gwErr).ToNot(HaveOccurred())
-		discovered, err := llmisvc.DiscoverURLs(ctx, fakeClient, gateways, route, llmisvc.Config{})
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(discovered).ToNot(BeEmpty())
-
-		for _, d := range discovered {
-			g.Expect(d.Origin).ToNot(BeNil(), "Origin must be set for URL %s", d.URL.String())
-			g.Expect(string(d.Origin.Kind)).To(Equal("Gateway"))
-			g.Expect(string(d.Origin.Group)).To(Equal(gwapiv1.GroupName))
-			g.Expect(string(ptr.Deref(d.Origin.Namespace, ""))).To(Equal("gw-ns"))
-
-			host := d.URL.URL().Hostname()
-			switch host {
-			case "gw-a.example.com":
-				g.Expect(string(d.Origin.Name)).To(Equal("gateway-a"))
-			case "gw-b.example.com":
-				g.Expect(string(d.Origin.Name)).To(Equal("gateway-b"))
-			default:
-				t.Errorf("unexpected host %s", host)
-			}
-		}
-	})
 }
 
 func TestFilterURLs(t *testing.T) {
-	toDiscoveredURLs := func(urls []string) ([]llmisvc.DiscoveredURL, error) {
-		discovered := make([]llmisvc.DiscoveredURL, 0, len(urls))
+	convertToURLs := func(urls []string) ([]*apis.URL, error) {
+		var parsedURLs []*apis.URL
 		for _, urlStr := range urls {
-			u, err := apis.ParseURL(urlStr)
+			url, err := apis.ParseURL(urlStr)
 			if err != nil {
 				return nil, err
 			}
-			discovered = append(discovered, llmisvc.DiscoveredURL{URL: u})
+			parsedURLs = append(parsedURLs, url)
 		}
 
-		return discovered, nil
+		return parsedURLs, nil
 	}
 	t.Run("mixed internal and external URLs", func(t *testing.T) {
 		g := NewGomegaWithT(t)
@@ -1627,20 +1402,20 @@ func TestFilterURLs(t *testing.T) {
 			"http://203.0.113.1/",
 		}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1662,20 +1437,20 @@ func TestFilterURLs(t *testing.T) {
 			"https://secure.example.com:8443/",
 		}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1699,20 +1474,20 @@ func TestFilterURLs(t *testing.T) {
 			"http://api.example.com/",
 		}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1731,20 +1506,20 @@ func TestFilterURLs(t *testing.T) {
 		}
 		expectedExternal := []string{}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1763,20 +1538,20 @@ func TestFilterURLs(t *testing.T) {
 			"http://203.0.113.1/",
 		}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1787,20 +1562,20 @@ func TestFilterURLs(t *testing.T) {
 		expectedInternal := []string{}
 		expectedExternal := []string{}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1820,20 +1595,20 @@ func TestFilterURLs(t *testing.T) {
 			"http://api.example.com/api/v1/models",
 		}
 
-		discovered, err := toDiscoveredURLs(inputURLs)
+		parsedURLs, err := convertToURLs(inputURLs)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		internalURLs := llmisvc.FilterInternalURLs(discovered)
+		internalURLs := llmisvc.FilterInternalURLs(parsedURLs)
 		actualInternal := make([]string, 0, len(internalURLs))
 		for _, url := range internalURLs {
-			actualInternal = append(actualInternal, url.URL.String())
+			actualInternal = append(actualInternal, url.String())
 		}
 		g.Expect(actualInternal).To(Equal(expectedInternal))
 
-		externalURLs := llmisvc.FilterExternalURLs(discovered)
+		externalURLs := llmisvc.FilterExternalURLs(parsedURLs)
 		actualExternal := make([]string, 0, len(externalURLs))
 		for _, url := range externalURLs {
-			actualExternal = append(actualExternal, url.URL.String())
+			actualExternal = append(actualExternal, url.String())
 		}
 		g.Expect(actualExternal).To(Equal(expectedExternal))
 	})
@@ -1866,48 +1641,33 @@ func TestFilterURLs(t *testing.T) {
 		}{
 			{
 				name:     "external hostname",
-				url:      "https://api.example.com/ns/name",
+				url:      "https://api.example.com/",
 				expected: "gateway-external",
 			},
 			{
 				name:     "external IP",
-				url:      "http://203.0.113.1/ns/name",
+				url:      "http://203.0.113.1/",
 				expected: "gateway-external",
 			},
 			{
 				name:     "private IP",
-				url:      "http://192.168.1.100/ns/name",
+				url:      "http://192.168.1.100/",
 				expected: "internal",
 			},
 			{
 				name:     "localhost",
-				url:      "http://localhost/ns/name",
+				url:      "http://localhost/",
 				expected: "internal",
 			},
 			{
 				name:     "cluster-local service",
-				url:      "http://my-service.default.svc.cluster.local/ns/name",
+				url:      "http://my-service.default.svc.cluster.local/",
 				expected: "gateway-internal",
 			},
 			{
 				name:     "cluster-local with port",
-				url:      "http://gateway.ns.svc.cluster.local:8080/ns/name",
+				url:      "http://gateway.ns.svc.cluster.local:8080/",
 				expected: "gateway-internal",
-			},
-			{
-				name:     "external hostname model routing",
-				url:      "https://api.example.com/",
-				expected: "gateway-external-model-routing",
-			},
-			{
-				name:     "cluster-local model routing",
-				url:      "http://my-service.default.svc.cluster.local/",
-				expected: "gateway-internal-model-routing",
-			},
-			{
-				name:     "internal model routing",
-				url:      "http://localhost/",
-				expected: "internal-model-routing",
 			},
 		}
 

@@ -86,8 +86,7 @@ data:
         "pathTemplate": "{{ .Values.kserve.controller.gateway.pathTemplate }}",
         "urlScheme": "{{ .Values.kserve.controller.gateway.urlScheme }}",
         "disableIstioVirtualHost": {{ .Values.kserve.controller.gateway.disableIstioVirtualHost }},
-        "disableIngressCreation": {{ .Values.kserve.controller.gateway.disableIngressCreation }},
-        "disableHTTPRouteTimeout": {{ .Values.kserve.controller.gateway.disableHTTPRouteTimeout }}
+        "disableIngressCreation": {{ .Values.kserve.controller.gateway.disableIngressCreation }}
     }
   logger: |-
     {

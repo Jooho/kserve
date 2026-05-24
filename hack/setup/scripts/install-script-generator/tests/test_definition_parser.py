@@ -186,7 +186,6 @@ COMPONENTS:
 # Unit Tests for Helper Functions
 # ============================================================================
 
-
 def test_resolve_definition_path_relative(tmp_path):
     """Test resolving relative path."""
     base_file = tmp_path / "subdir" / "main.definition"
@@ -205,9 +204,7 @@ def test_resolve_definition_path_parent_dir(tmp_path):
     base_file.parent.mkdir(parents=True)
     base_file.touch()
 
-    result = definition_parser.resolve_definition_path(
-        "../common/base.definition", base_file
-    )
+    result = definition_parser.resolve_definition_path("../common/base.definition", base_file)
     expected = (tmp_path / "common" / "base.definition").resolve()
 
     assert result == expected
@@ -258,8 +255,13 @@ def test_merge_tools_case_insensitive():
 
 def test_merge_components_no_duplicates():
     """Test merging components without duplicates."""
-    base = [{"name": "cert-manager", "env": {}}, {"name": "istio", "env": {}}]
-    new = [{"name": "kserve-helm", "env": {}}]
+    base = [
+        {"name": "cert-manager", "env": {}},
+        {"name": "istio", "env": {}}
+    ]
+    new = [
+        {"name": "kserve-helm", "env": {}}
+    ]
 
     result = definition_parser.merge_components(base, new)
 
@@ -274,7 +276,7 @@ def test_merge_components_with_duplicates():
     base = [
         {"name": "cert-manager", "env": {}},
         {"name": "kserve-helm", "env": {"NAMESPACE": "kserve"}},
-        {"name": "istio", "env": {}},
+        {"name": "istio", "env": {}}
     ]
     new = [
         {"name": "kserve-helm", "env": {"NAMESPACE": "custom"}}  # duplicate - override
@@ -292,8 +294,12 @@ def test_merge_components_with_duplicates():
 
 def test_merge_components_overwrites_env():
     """Test that merging components overwrites env (last-wins)."""
-    base = [{"name": "component-a", "env": {"VAR1": "base-value", "VAR2": "keep"}}]
-    new = [{"name": "component-a", "env": {"VAR1": "new-value", "VAR3": "added"}}]
+    base = [
+        {"name": "component-a", "env": {"VAR1": "base-value", "VAR2": "keep"}}
+    ]
+    new = [
+        {"name": "component-a", "env": {"VAR1": "new-value", "VAR3": "added"}}
+    ]
 
     result = definition_parser.merge_components(base, new)
 
@@ -306,7 +312,6 @@ def test_merge_components_overwrites_env():
 # ============================================================================
 # Integration Tests for INCLUDE_DEFINITIONS
 # ============================================================================
-
 
 def test_include_single_file(tmp_path):
     """Test including a single definition file."""
@@ -386,11 +391,7 @@ TOOLS:
     # Check merged results
     assert result["tools"] == ["helm", "kubectl", "kustomize"]
     assert len(result["components"]) == 3
-    assert [c["name"] for c in result["components"]] == [
-        "cert-manager",
-        "istio",
-        "kserve-helm",
-    ]
+    assert [c["name"] for c in result["components"]] == ["cert-manager", "istio", "kserve-helm"]
 
 
 def test_include_nested_files(tmp_path):
@@ -427,11 +428,7 @@ COMPONENTS:
 
     # Check that all components are included in order
     assert len(result["components"]) == 3
-    assert [c["name"] for c in result["components"]] == [
-        "cert-manager",
-        "istio",
-        "kserve-helm",
-    ]
+    assert [c["name"] for c in result["components"]] == ["cert-manager", "istio", "kserve-helm"]
 
 
 def test_include_cycle_detection(tmp_path):

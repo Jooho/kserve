@@ -6,18 +6,13 @@ repos:
         args:
           - --chart-search-root=charts
           - --output-file=README.md
-  - repo: local
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
     hooks:
-      - id: pinact
-        name: Verify GitHub Actions are pinned to SHA
-        entry: bash -c 'make verify-pinned-actions'
-        language: system
-        files: '\.github/workflows/.*\.ya?ml$'
-        pass_filenames: false
+      - id: black
+        args: [--config, python/pyproject.toml]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.13
     hooks:
-      - id: ruff-format
-        args: [--config, ruff.toml]
       - id: ruff
         args: [--config, ruff.toml]

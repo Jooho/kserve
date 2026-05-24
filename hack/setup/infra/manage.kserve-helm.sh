@@ -142,22 +142,11 @@ if [ "${SET_KSERVE_VERSION}" != "" ]; then
 fi
 
 # Build chart arrays based on ENABLE_* flags
-# When a specific version is set, override imagePullPolicy to IfNotPresent
-# to match kustomize version-template overlay behavior for dev/test scenarios
-PULL_POLICY_KSERVE=""
-PULL_POLICY_LLMISVC=""
-PULL_POLICY_LOCALMODEL=""
-if [ -n "${SET_KSERVE_VERSION}" ]; then
-    PULL_POLICY_KSERVE="--set kserve.controller.imagePullPolicy=IfNotPresent"
-    PULL_POLICY_LLMISVC="--set kserve.llmisvc.controller.imagePullPolicy=IfNotPresent"
-    PULL_POLICY_LOCALMODEL="--set kserve.localmodel.controller.imagePullPolicy=IfNotPresent --set kserve.localmodelnode.controller.imagePullPolicy=IfNotPresent"
-fi
-
 if is_positive "${ENABLE_KSERVE}"; then
     log_info "KServe is enabled"
     CRD_CHARTS+=("kserve-crd")
     RESOURCE_CHARTS+=("kserve-resources")
-    RESOURCE_EXTRA_ARGS_LIST+=("${KSERVE_EXTRA_ARGS:-} ${PULL_POLICY_KSERVE}")
+    RESOURCE_EXTRA_ARGS_LIST+=("${KSERVE_EXTRA_ARGS:-}")
     TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager")
 fi
 
@@ -165,7 +154,7 @@ if is_positive "${ENABLE_LLMISVC}"; then
     log_info "LLMIsvc is enabled"
     CRD_CHARTS+=("kserve-llmisvc-crd")
     RESOURCE_CHARTS+=("kserve-llmisvc-resources")
-    RESOURCE_EXTRA_ARGS_LIST+=("${LLMISVC_EXTRA_ARGS:-} ${PULL_POLICY_LLMISVC}")
+    RESOURCE_EXTRA_ARGS_LIST+=("${LLMISVC_EXTRA_ARGS:-}")
     TARGET_DEPLOYMENT_NAMES+=("llmisvc-controller-manager")
 fi
 
@@ -173,38 +162,10 @@ if is_positive "${ENABLE_LOCALMODEL}"; then
     log_info "LocalModel is enabled"
     CRD_CHARTS+=("kserve-localmodel-crd")
     RESOURCE_CHARTS+=("kserve-localmodel-resources")
-    RESOURCE_EXTRA_ARGS_LIST+=("${LOCALMODEL_EXTRA_ARGS:-} ${PULL_POLICY_LOCALMODEL}")
+    RESOURCE_EXTRA_ARGS_LIST+=("${LOCALMODEL_EXTRA_ARGS:-}")
     TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
 fi
 # INCLUDE_IN_GENERATED_SCRIPT_END
-
-# Adopt pre-existing CRDs into a Helm release so that `helm upgrade -i` can manage them.
-# This handles the case where CRDs were previously installed outside of Helm (e.g. via kubectl apply)
-# and would otherwise cause "invalid ownership metadata" errors.
-adopt_existing_crds_for_release() {
-    local release_name="$1"
-    local namespace="$2"
-    shift 2
-    local crds=("$@")
-
-    for crd in "${crds[@]}"; do
-        if kubectl get crd "$crd" &>/dev/null; then
-            log_info "Adopting existing CRD ${crd} into Helm release ${release_name}"
-            kubectl label crd "$crd" app.kubernetes.io/managed-by=Helm --overwrite
-            kubectl annotate crd "$crd" meta.helm.sh/release-name="${release_name}" --overwrite
-            kubectl annotate crd "$crd" meta.helm.sh/release-namespace="${namespace}" --overwrite
-        fi
-    done
-}
-
-# GIE CRDs that are bundled in the kserve-llmisvc-resources chart
-GIE_CRDS=(
-    "inferencemodelrewrites.inference.networking.x-k8s.io"
-    "inferenceobjectives.inference.networking.x-k8s.io"
-    "inferencepoolimports.inference.networking.x-k8s.io"
-    "inferencepools.inference.networking.k8s.io"
-    "inferencepools.inference.networking.x-k8s.io"
-)
 
 uninstall() {
     log_info "Uninstalling KServe..."
@@ -255,9 +216,9 @@ install() {
         fi
 
         if is_positive "${ENABLE_LOCALMODEL}"; then
-            config_args+=(--set "kserve.localmodel.enabled=true")
-            config_args+=(--set "kserve.localmodel.defaultJobImage=kserve/storage-initializer")
-            config_args+=(--set "kserve.localmodel.defaultJobImageTag=${KSERVE_VERSION}")
+            config_args+=(--set "kserve.localModel.enabled=true")
+            config_args+=(--set "kserve.localModel.defaultJobImage=kserve/storage-initializer")
+            config_args+=(--set "kserve.localModel.defaultJobImageTag=${KSERVE_VERSION}")
         fi
         # Add custom configurations if provided
         if [ -n "${KSERVE_CUSTOM_ISVC_CONFIGS}" ]; then
@@ -310,7 +271,7 @@ install() {
     # Build chart version flag (only for remote charts, skip for 'latest')
     local VERSION_FLAG=""
     if ! is_positive "${USE_LOCAL_CHARTS}"; then
-        VERSION_FLAG="--version ${KSERVE_VERSION}"
+        VERSION_FLAG="--version ${KSERVE_VERSION}"       
     fi
 
     # Install CRD charts
@@ -326,11 +287,6 @@ install() {
 
     # Build configuration arguments for KServe/LLMIsvc
     readarray -t helm_config_args < <(build_helm_config_args)
-
-    # Adopt any pre-existing GIE CRDs into the llmisvc-resources Helm release
-    if is_positive "${ENABLE_LLMISVC}"; then
-        adopt_existing_crds_for_release "kserve-llmisvc-resources" "${KSERVE_NAMESPACE}" "${GIE_CRDS[@]}"
-    fi
 
     # Install resource charts
     for i in "${!RESOURCE_CHARTS[@]}"; do
@@ -381,7 +337,6 @@ install() {
             --namespace "${KSERVE_NAMESPACE}" \
             --create-namespace \
             --wait \
-            ${VERSION_FLAG} \
             --set kserve.version="${KSERVE_VERSION}" \
             --set kserve.servingruntime.enabled=${INSTALL_RUNTIMES} \
             --set kserve.llmisvcConfigs.enabled=${INSTALL_LLMISVC_CONFIGS}

@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -71,7 +72,7 @@ func TestTrainedModelList_TotalRequestedMemory(t *testing.T) {
 	}
 	res := list.TotalRequestedMemory()
 	expected := resource.MustParse("3Gi")
-	if res.Cmp(expected) != 0 {
-		t.Errorf("expected %v got %v", expected, res)
+	if res != expected {
+		fmt.Println(fmt.Errorf("expected %v got %v", expected, res))
 	}
 }

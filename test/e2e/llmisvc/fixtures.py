@@ -14,16 +14,16 @@
 
 import hashlib
 import os
-import re
-
 import pytest
 from ..common.gw_api import (
     create_or_update_gateway,
     create_or_update_route,
+    delete_gateway,
+    delete_route,
 )
 from kserve import KServeClient, constants, V1alpha1LLMInferenceService
 from kubernetes import client, config
-from typing import List, Optional
+from typing import List
 
 from .logging import logger
 
@@ -34,42 +34,35 @@ KSERVE_TEST_NAMESPACE = "kserve-ci-e2e-test"
 SCHEDULER_CONFIGMAP_NAME = "scheduler-config-e2e"
 SCHEDULER_CONFIGMAP_KEY = "epp"
 
-# Vanilla Kubernetes rejects runAsNonRoot-only containers when the image does not declare a USER.
-# Keep the templates OpenShift-safe and use an explicit non-root UID only in upstream CI test overrides.
-UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT = {
-    "runAsNonRoot": True,
-    "runAsUser": 1000,
-}
-
-UPSTREAM_K8S_VLLM_ENV_OVERRIDES = [
-    {"name": "USER", "value": "nonroot"},
-    {"name": "TORCHINDUCTOR_CACHE_DIR", "value": "/tmp/torchinductor-cache"},
-]
-
-LLMD_SIMULATOR_SECURITY_CONTEXT = {
-    "runAsNonRoot": True,
-    "runAsUser": 65532,
-    "runAsGroup": 65532,
-}
-
 LLMINFERENCESERVICE_CONFIGS = {
     "workload-single-cpu": {
         "template": {
             "containers": [
                 {
                     "name": "main",
-                    "image": "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0",
-                    "env": [
-                        {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
-                        {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
-                        {"name": "VLLM_USE_V1", "value": "0"},
-                        *UPSTREAM_K8S_VLLM_ENV_OVERRIDES,
-                    ],
+                    "image": "quay.io/pierdipi/vllm-cpu:latest",
+                    "env": [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}],
                     "resources": {
                         "limits": {"cpu": "2", "memory": "7Gi"},
                         "requests": {"cpu": "200m", "memory": "2Gi"},
                     },
-                    "securityContext": UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT.copy(),
+                    "livenessProbe": {
+                        "initialDelaySeconds": 180,
+                        "periodSeconds": 30,
+                        "timeoutSeconds": 30,
+                        "failureThreshold": 8,
+                    },
+                    "readinessProbe": {
+                        "httpGet": {"path": "/health", "port": 8000},
+                        "initialDelaySeconds": 30,
+                        "periodSeconds": 10,
+                        "timeoutSeconds": 5,
+                        "failureThreshold": 3,
+                    },
+                    "securityContext": {
+                        "runAsNonRoot": False,
+                        "runAsUser": 0,
+                    },
                 }
             ]
         },
@@ -79,18 +72,12 @@ LLMINFERENCESERVICE_CONFIGS = {
             "containers": [
                 {
                     "name": "main",
-                    "image": "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0",
-                    "env": [
-                        {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
-                        {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
-                        {"name": "VLLM_USE_V1", "value": "0"},
-                        *UPSTREAM_K8S_VLLM_ENV_OVERRIDES,
-                    ],
+                    "image": "quay.io/pierdipi/vllm-cpu:latest",
+                    "env": [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}],
                     "resources": {
                         "limits": {"cpu": "2", "memory": "7Gi"},
                         "requests": {"cpu": "200m", "memory": "2Gi"},
                     },
-                    "securityContext": UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT.copy(),
                     "livenessProbe": {
                         "httpGet": {"path": "/health", "port": 8000},
                         "initialDelaySeconds": 180,
@@ -105,6 +92,10 @@ LLMINFERENCESERVICE_CONFIGS = {
                         "timeoutSeconds": 5,
                         "failureThreshold": 3,
                     },
+                    "securityContext": {
+                        "runAsNonRoot": False,
+                        "runAsUser": 0,
+                    },
                 }
             ]
         },
@@ -113,13 +104,8 @@ LLMINFERENCESERVICE_CONFIGS = {
                 "containers": [
                     {
                         "name": "main",
-                        "image": "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0",
-                        "env": [
-                            {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
-                            {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
-                            {"name": "VLLM_USE_V1", "value": "0"},
-                            *UPSTREAM_K8S_VLLM_ENV_OVERRIDES,
-                        ],
+                        "image": "quay.io/pierdipi/vllm-cpu:latest",
+                        "env": [{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}],
                         "resources": {
                             "limits": {"cpu": "2", "memory": "7Gi"},
                             "requests": {"cpu": "200m", "memory": "2Gi"},
@@ -138,7 +124,10 @@ LLMINFERENCESERVICE_CONFIGS = {
                             "timeoutSeconds": 5,
                             "failureThreshold": 3,
                         },
-                        "securityContext": UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT.copy(),
+                        "securityContext": {
+                            "runAsNonRoot": False,
+                            "runAsUser": 0,
+                        },
                     }
                 ]
             }
@@ -147,51 +136,10 @@ LLMINFERENCESERVICE_CONFIGS = {
     "model-fb-opt-125m": {
         "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
     },
-    "model-qwen2.5-0.5b": {
-        "model": {
-            "uri": "hf://Qwen/Qwen2.5-0.5B-Instruct",
-            "name": "Qwen/Qwen2.5-0.5B-Instruct",
-        },
-    },
     "model-deepseek-v2-lite": {
         "model": {
             "uri": "hf://deepseek-ai/DeepSeek-V2-Lite-Chat",
             "name": "deepseek-ai/DeepSeek-V2-Lite-Chat",
-        },
-    },
-    "model-fb-opt-125m-with-lora-hf": {
-        "model": {
-            "uri": "hf://facebook/opt-125m",
-            "name": "facebook/opt-125m",
-            "lora": {
-                "adapters": [
-                    {
-                        "name": "lora-adapter-1",
-                        "uri": "hf://edbeeching/opt-125m-lora",
-                    }
-                ]
-            },
-        },
-    },
-    "model-fb-opt-125m-with-multiple-lora": {
-        "model": {
-            "uri": "hf://facebook/opt-125m",
-            "name": "facebook/opt-125m",
-            "lora": {
-                "adapters": [
-                    {
-                        "name": "lora-adapter-1",
-                        "uri": "hf://edbeeching/opt-125m-lora",
-                    },
-                    {
-                        "name": "lora-adapter-2",
-                        "uri": "hf://edbeeching/opt-125m-lora",
-                    },
-                ],
-                "maxRank": 64,
-                "maxAdapters": 2,
-                "maxCpuAdapters": 4,
-            },
         },
     },
     "workload-dp-ep-gpu": {
@@ -383,24 +331,42 @@ LLMINFERENCESERVICE_CONFIGS = {
             "containers": [
                 {
                     "name": "main",
-                    "image": "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0",
+                    "image": "quay.io/pierdipi/vllm-cpu:latest",
                     "command": ["vllm", "serve", "/mnt/models"],
                     "args": [
                         "--served-model-name",
                         "{{ .Spec.Model.Name }}",
                         "--port",
                         "8000",
-                    ],
-                    "env": [
-                        {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
-                        {"name": "VLLM_USE_V1", "value": "0"},
-                        *UPSTREAM_K8S_VLLM_ENV_OVERRIDES,
+                        # SSL disabled to match HTTP-only Gateway setup
+                        # "--enable-ssl-refresh",
+                        # "--ssl-certfile",
+                        # "/var/run/kserve/tls/tls.crt",
+                        # "--ssl-keyfile",
+                        # "/var/run/kserve/tls/tls.key",
                     ],
                     "resources": {
                         "limits": {"cpu": "2", "memory": "7Gi"},
                         "requests": {"cpu": "200m", "memory": "2Gi"},
                     },
-                    "securityContext": UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT.copy(),
+                    "livenessProbe": {
+                        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTP"},
+                        "initialDelaySeconds": 180,
+                        "periodSeconds": 30,
+                        "timeoutSeconds": 30,
+                        "failureThreshold": 8,
+                    },
+                    "readinessProbe": {
+                        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTP"},
+                        "initialDelaySeconds": 30,
+                        "periodSeconds": 10,
+                        "timeoutSeconds": 5,
+                        "failureThreshold": 3,
+                    },
+                    "securityContext": {
+                        "runAsNonRoot": False,
+                        "runAsUser": 0,
+                    },
                 }
             ]
         },
@@ -408,24 +374,41 @@ LLMINFERENCESERVICE_CONFIGS = {
             "containers": [
                 {
                     "name": "main",
-                    "image": "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0",
+                    "image": "quay.io/pierdipi/vllm-cpu:latest",
                     "command": ["vllm", "serve", "/mnt/models"],
                     "args": [
                         "--served-model-name",
                         "{{ .Spec.Model.Name }}",
                         "--port",
                         "8000",
-                    ],
-                    "env": [
-                        {"name": "VLLM_CPU_KVCACHE_SPACE", "value": "1"},
-                        {"name": "VLLM_USE_V1", "value": "0"},
-                        *UPSTREAM_K8S_VLLM_ENV_OVERRIDES,
+                        "--enable-ssl-refresh",
+                        "--ssl-certfile",
+                        "/var/run/kserve/tls/tls.crt",
+                        "--ssl-keyfile",
+                        "/var/run/kserve/tls/tls.key",
                     ],
                     "resources": {
                         "limits": {"cpu": "2", "memory": "7Gi"},
                         "requests": {"cpu": "200m", "memory": "2Gi"},
                     },
-                    "securityContext": UPSTREAM_K8S_NON_ROOT_SECURITY_CONTEXT.copy(),
+                    "livenessProbe": {
+                        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTP"},
+                        "initialDelaySeconds": 180,
+                        "periodSeconds": 30,
+                        "timeoutSeconds": 30,
+                        "failureThreshold": 8,
+                    },
+                    "readinessProbe": {
+                        "httpGet": {"path": "/health", "port": 8000, "scheme": "HTTP"},
+                        "initialDelaySeconds": 30,
+                        "periodSeconds": 10,
+                        "timeoutSeconds": 5,
+                        "failureThreshold": 3,
+                    },
+                    "securityContext": {
+                        "runAsNonRoot": False,
+                        "runAsUser": 0,
+                    },
                 }
             ]
         },
@@ -436,74 +419,6 @@ LLMINFERENCESERVICE_CONFIGS = {
                 "http": {
                     "spec": {
                         "rules": [
-                            {
-                                "timeouts": {
-                                    "request": "30s",
-                                    "backendRequest": "30s",
-                                },
-                                "matches": [
-                                    {
-                                        "path": {
-                                            "type": "PathPrefix",
-                                            "value": "/kserve-ci-e2e-test/custom-route-timeout-test/v1/completions",
-                                        },
-                                    },
-                                ],
-                                "filters": [
-                                    {
-                                        "type": "URLRewrite",
-                                        "urlRewrite": {
-                                            "path": {
-                                                "replacePrefixMatch": "/v1/completions",
-                                                "type": "ReplacePrefixMatch",
-                                            },
-                                        },
-                                    },
-                                ],
-                                "backendRefs": [
-                                    {
-                                        "group": "inference.networking.k8s.io",
-                                        "kind": "InferencePool",
-                                        "name": "custom-route-timeout-test-inference-pool",
-                                        "namespace": KSERVE_TEST_NAMESPACE,
-                                        "port": 8000,
-                                    }
-                                ],
-                            },
-                            {
-                                "timeouts": {
-                                    "request": "30s",
-                                    "backendRequest": "30s",
-                                },
-                                "matches": [
-                                    {
-                                        "path": {
-                                            "type": "PathPrefix",
-                                            "value": "/kserve-ci-e2e-test/custom-route-timeout-test/v1/chat/completions",
-                                        },
-                                    },
-                                ],
-                                "filters": [
-                                    {
-                                        "type": "URLRewrite",
-                                        "urlRewrite": {
-                                            "path": {
-                                                "replacePrefixMatch": "/v1/chat/completions",
-                                                "type": "ReplacePrefixMatch",
-                                            },
-                                        },
-                                    },
-                                ],
-                                "backendRefs": [
-                                    {
-                                        "group": "inference.networking.k8s.io",
-                                        "kind": "InferencePool",
-                                        "name": "custom-route-timeout-test-inference-pool",
-                                        "namespace": KSERVE_TEST_NAMESPACE,
-                                        "port": 8000,
-                                    }
-                                ],
-                            },
                             {
                                 "timeouts": {
                                     "request": "30s",
@@ -530,9 +445,9 @@ LLMINFERENCESERVICE_CONFIGS = {
                                 ],
                                 "backendRefs": [
                                     {
-                                        "group": "",
-                                        "kind": "Service",
-                                        "name": "custom-route-timeout-test-kserve-workload-svc",
+                                        "group": "inference.networking.k8s.io",
+                                        "kind": "InferencePool",
+                                        "name": "custom-route-timeout-test-inference-pool",
                                         "namespace": KSERVE_TEST_NAMESPACE,
                                         "port": 8000,
                                     }
@@ -560,74 +475,6 @@ LLMINFERENCESERVICE_CONFIGS = {
                                     {
                                         "path": {
                                             "type": "PathPrefix",
-                                            "value": "/kserve-ci-e2e-test/custom-route-timeout-pd-test/v1/completions",
-                                        },
-                                    },
-                                ],
-                                "filters": [
-                                    {
-                                        "type": "URLRewrite",
-                                        "urlRewrite": {
-                                            "path": {
-                                                "replacePrefixMatch": "/v1/completions",
-                                                "type": "ReplacePrefixMatch",
-                                            },
-                                        },
-                                    },
-                                ],
-                                "backendRefs": [
-                                    {
-                                        "group": "inference.networking.k8s.io",
-                                        "kind": "InferencePool",
-                                        "name": "custom-route-timeout-pd-test-inference-pool",
-                                        "namespace": KSERVE_TEST_NAMESPACE,
-                                        "port": 8000,
-                                    }
-                                ],
-                            },
-                            {
-                                "timeouts": {
-                                    "request": "30s",
-                                    "backendRequest": "30s",
-                                },
-                                "matches": [
-                                    {
-                                        "path": {
-                                            "type": "PathPrefix",
-                                            "value": "/kserve-ci-e2e-test/custom-route-timeout-pd-test/v1/chat/completions",
-                                        },
-                                    },
-                                ],
-                                "filters": [
-                                    {
-                                        "type": "URLRewrite",
-                                        "urlRewrite": {
-                                            "path": {
-                                                "replacePrefixMatch": "/v1/chat/completions",
-                                                "type": "ReplacePrefixMatch",
-                                            },
-                                        },
-                                    },
-                                ],
-                                "backendRefs": [
-                                    {
-                                        "group": "inference.networking.k8s.io",
-                                        "kind": "InferencePool",
-                                        "name": "custom-route-timeout-pd-test-inference-pool",
-                                        "namespace": KSERVE_TEST_NAMESPACE,
-                                        "port": 8000,
-                                    }
-                                ],
-                            },
-                            {
-                                "timeouts": {
-                                    "request": "30s",
-                                    "backendRequest": "30s",
-                                },
-                                "matches": [
-                                    {
-                                        "path": {
-                                            "type": "PathPrefix",
                                             "value": "/kserve-ci-e2e-test/custom-route-timeout-pd-test",
                                         },
                                     },
@@ -645,9 +492,9 @@ LLMINFERENCESERVICE_CONFIGS = {
                                 ],
                                 "backendRefs": [
                                     {
-                                        "group": "",
-                                        "kind": "Service",
-                                        "name": "custom-route-timeout-pd-test-kserve-workload-svc",
+                                        "group": "inference.networking.k8s.io",
+                                        "kind": "InferencePool",
+                                        "name": "custom-route-timeout-pd-test-inference-pool",
                                         "namespace": KSERVE_TEST_NAMESPACE,
                                         "port": 8000,
                                     }
@@ -727,62 +574,6 @@ LLMINFERENCESERVICE_CONFIGS = {
             },
         },
     },
-    "scheduler-with-precise-prefix-cache-inline-config": {
-        "router": {
-            "scheduler": {
-                "config": {
-                    "inline": {
-                        "apiVersion": "inference.networking.x-k8s.io/v1alpha1",
-                        "kind": "EndpointPickerConfig",
-                        "plugins": [
-                            {"type": "single-profile-handler"},
-                            {
-                                "type": "precise-prefix-cache-scorer",
-                                "parameters": {
-                                    "tokenProcessorConfig": {
-                                        "blockSize": 16,
-                                        "hashSeed": "42",
-                                    },
-                                    "kvEventsConfig": {
-                                        "zmqEndpoint": "tcp://*:5557",
-                                    },
-                                    "indexerConfig": {
-                                        "tokenizersPoolConfig": {
-                                            "modelName": "facebook/opt-125m",
-                                        },
-                                        "kvBlockIndexConfig": {
-                                            "enableMetrics": True,
-                                            "metricsLoggingInterval": 60000000000,
-                                        },
-                                    },
-                                },
-                            },
-                            {"type": "queue-scorer"},
-                            {"type": "kv-cache-utilization-scorer"},
-                            {"type": "max-score-picker"},
-                        ],
-                        "schedulingProfiles": [
-                            {
-                                "name": "default",
-                                "plugins": [
-                                    {"pluginRef": "queue-scorer", "weight": 2},
-                                    {
-                                        "pluginRef": "kv-cache-utilization-scorer",
-                                        "weight": 2,
-                                    },
-                                    {
-                                        "pluginRef": "precise-prefix-cache-scorer",
-                                        "weight": 3,
-                                    },
-                                    {"pluginRef": "max-score-picker"},
-                                ],
-                            },
-                        ],
-                    },
-                },
-            },
-        },
-    },
     "scheduler-with-configmap-ref": {
         "router": {
             "scheduler": {
@@ -802,101 +593,6 @@ LLMINFERENCESERVICE_CONFIGS = {
             },
         },
     },
-    "scheduler-with-custom-template": {
-        "router": {
-            "scheduler": {
-                "template": {
-                    "containers": [
-                        {
-                            "name": "main",
-                            "env": [
-                                {
-                                    "name": "TOKENIZER_CACHE_DIR",
-                                    "value": "/tmp/tokenizer-cache",
-                                },
-                                {
-                                    "name": "HF_HOME",
-                                    "value": "/tmp/tokenizer-cache",
-                                },
-                                {
-                                    "name": "TRANSFORMERS_CACHE",
-                                    "value": "/tmp/tokenizer-cache",
-                                },
-                                {"name": "XDG_CACHE_HOME", "value": "/tmp"},
-                            ],
-                            "args": [
-                                "--cert-path",
-                                "/var/run/kserve/tls",
-                                "--pool-group",
-                                "inference.networking.x-k8s.io",
-                                "--pool-name",
-                                "{{ ChildName .ObjectMeta.Name `-inference-pool` }}",
-                                "--pool-namespace",
-                                "{{ .ObjectMeta.Namespace }}",
-                                "--zap-encoder",
-                                "json",
-                                "--grpc-port",
-                                "9002",
-                                "--grpc-health-port",
-                                "9003",
-                                "--secure-serving",
-                                "--model-server-metrics-scheme",
-                                "https",
-                                "--kv-cache-usage-percentage-metric",
-                                "vllm:kv_cache_usage_perc",
-                                "--config-text",
-                                (
-                                    "apiVersion: inference.networking.x-k8s.io/v1alpha1\n"
-                                    "kind: EndpointPickerConfig\n"
-                                    "plugins:\n"
-                                    "- type: single-profile-handler\n"
-                                    "- type: queue-scorer\n"
-                                    "- type: active-request-scorer\n"
-                                    "- type: prefix-cache-scorer\n"
-                                    "schedulingProfiles:\n"
-                                    "- name: default\n"
-                                    "  plugins:\n"
-                                    "  - pluginRef: queue-scorer\n"
-                                    "    weight: 2\n"
-                                    "  - pluginRef: active-request-scorer\n"
-                                    "    weight: 2\n"
-                                    "  - pluginRef: prefix-cache-scorer\n"
-                                    "    weight: 3\n"
-                                ),
-                            ],
-                            "volumeMounts": [
-                                {
-                                    "name": "tokenizer-cache",
-                                    "mountPath": "/tmp/tokenizer-cache",
-                                },
-                                {
-                                    "name": "cachi2-cache",
-                                    "mountPath": "/cachi2",
-                                },
-                            ],
-                        }
-                    ],
-                    "volumes": [
-                        {"name": "tokenizer-cache", "emptyDir": {}},
-                        {"name": "cachi2-cache", "emptyDir": {}},
-                    ],
-                },
-            },
-        },
-    },
-    "router-with-gateway-section-name": {
-        "router": {
-            "gateway": {
-                "refs": [
-                    {
-                        "name": "router-gateway-1",
-                        "namespace": KSERVE_TEST_NAMESPACE,
-                        "sectionName": "http",
-                    },
-                ],
-            },
-        },
-    },
     "router-with-gateway-ref": {
         "router": {
             "gateway": {
@@ -912,12 +608,11 @@ LLMINFERENCESERVICE_CONFIGS = {
     "workload-llmd-simulator": {
         "replicas": 1,
         "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
-        "storageInitializer": {"enabled": False},
         "template": {
             "containers": [
                 {
                     "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
+                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.5.1",
                     "command": ["/app/llm-d-inference-sim"],
                     "args": [
                         "--port",
@@ -926,290 +621,15 @@ LLMINFERENCESERVICE_CONFIGS = {
                         "{{ .Spec.Model.Name }}",
                         "--mode",
                         "random",
+                        # "--ssl-certfile",
+                        # "/var/run/kserve/tls/tls.crt",
+                        # "--ssl-keyfile",
+                        # "/var/run/kserve/tls/tls.key",
                     ],
                     "resources": {
                         "limits": {"cpu": "1", "memory": "2Gi"},
                         "requests": {"cpu": "200m", "memory": "2Gi"},
                     },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                }
-            ]
-        },
-    },
-    "workload-llmd-simulator-no-replicas": {
-        "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
-        "storageInitializer": {"enabled": False},
-        "template": {
-            "containers": [
-                {
-                    "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "{{ .Spec.Model.Name }}",
-                        "--mode",
-                        "random",
-                    ],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi"},
-                        "requests": {"cpu": "200m", "memory": "2Gi"},
-                    },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                }
-            ]
-        },
-    },
-    "workload-llmd-simulator-lws": {
-        "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
-        "parallelism": {
-            "data": 2,
-            "dataLocal": 1,
-            "expert": True,
-            "tensor": 1,
-        },
-        "storageInitializer": {"enabled": False},
-        "template": {
-            "containers": [
-                {
-                    "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "{{ .Spec.Model.Name }}",
-                        "--mode",
-                        "random",
-                    ],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi"},
-                        "requests": {"cpu": "200m", "memory": "2Gi"},
-                    },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                }
-            ]
-        },
-        "worker": {
-            "containers": [
-                {
-                    "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "{{ .Spec.Model.Name }}",
-                        "--mode",
-                        "random",
-                    ],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi"},
-                        "requests": {"cpu": "200m", "memory": "2Gi"},
-                    },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                }
-            ]
-        },
-    },
-    "workload-llmd-simulator-pd": {
-        "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
-        "storageInitializer": {"enabled": False},
-        "template": {
-            "containers": [
-                {
-                    "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "{{ .Spec.Model.Name }}",
-                        "--mode",
-                        "random",
-                    ],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi"},
-                        "requests": {"cpu": "200m", "memory": "2Gi"},
-                    },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                }
-            ]
-        },
-        "prefill": {
-            "template": {
-                "containers": [
-                    {
-                        "name": "main",
-                        "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                        "command": ["/app/llm-d-inference-sim"],
-                        "args": [
-                            "--port",
-                            "8000",
-                            "--model",
-                            "{{ .Spec.Model.Name }}",
-                            "--mode",
-                            "random",
-                        ],
-                        "resources": {
-                            "limits": {"cpu": "1", "memory": "2Gi"},
-                            "requests": {"cpu": "200m", "memory": "2Gi"},
-                        },
-                        "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
-                    }
-                ]
-            }
-        },
-    },
-    "prometheus-scrape": {
-        "annotations": {
-            "prometheus.io/scrape": "true",
-            "prometheus.io/port": "8000",
-            "prometheus.io/path": "/metrics",
-        },
-    },
-    "scaling-hpa": {
-        "scaling": {
-            "minReplicas": 1,
-            "maxReplicas": 3,
-            "wva": {
-                "hpa": {
-                    "behavior": {
-                        "scaleDown": {
-                            "stabilizationWindowSeconds": 10,
-                            "policies": [
-                                {
-                                    "type": "Percent",
-                                    "value": 100,
-                                    "periodSeconds": 10,
-                                }
-                            ],
-                        },
-                        "scaleUp": {
-                            "stabilizationWindowSeconds": 0,
-                            "policies": [
-                                {
-                                    "type": "Percent",
-                                    "value": 100,
-                                    "periodSeconds": 10,
-                                }
-                            ],
-                        },
-                    }
-                }
-            },
-        }
-    },
-    "scaling-keda": {
-        "scaling": {
-            "minReplicas": 1,
-            "maxReplicas": 3,
-            "wva": {
-                "keda": {
-                    "pollingInterval": 5,
-                    "cooldownPeriod": 10,
-                    "initialCooldownPeriod": 0,
-                }
-            },
-        }
-    },
-    "scaling-prefill-hpa": {
-        "prefill": {
-            "scaling": {
-                "minReplicas": 1,
-                "maxReplicas": 3,
-                "wva": {
-                    "hpa": {
-                        "behavior": {
-                            "scaleDown": {
-                                "stabilizationWindowSeconds": 10,
-                                "policies": [
-                                    {
-                                        "type": "Percent",
-                                        "value": 100,
-                                        "periodSeconds": 10,
-                                    }
-                                ],
-                            },
-                            "scaleUp": {
-                                "stabilizationWindowSeconds": 0,
-                                "policies": [
-                                    {
-                                        "type": "Percent",
-                                        "value": 100,
-                                        "periodSeconds": 10,
-                                    }
-                                ],
-                            },
-                        }
-                    }
-                },
-            }
-        }
-    },
-    "scaling-prefill-keda": {
-        "prefill": {
-            "scaling": {
-                "minReplicas": 1,
-                "maxReplicas": 3,
-                "wva": {
-                    "keda": {
-                        "pollingInterval": 5,
-                        "cooldownPeriod": 10,
-                        "initialCooldownPeriod": 0,
-                    }
-                },
-            }
-        }
-    },
-    "workload-llmd-simulator-kvcache": {
-        "replicas": 2,
-        "model": {"uri": "hf://facebook/opt-125m", "name": "facebook/opt-125m"},
-        # Important: storage initializer is required for precise-prefix-scorer
-        "template": {
-            "containers": [
-                {
-                    "name": "main",
-                    "image": "ghcr.io/llm-d/llm-d-inference-sim:v0.8.2",
-                    "command": ["/app/llm-d-inference-sim"],
-                    "args": [
-                        "--port",
-                        "8000",
-                        "--model",
-                        "{{ .Spec.Model.Name }}",
-                        "--mode",
-                        "random",
-                        "--enable-kvcache",
-                        "--block-size",
-                        "16",
-                        "--zmq-endpoint",
-                        "tcp://{{ ChildName .ObjectMeta.Name `-epp-service` }}:5557",
-                        "--hash-seed",
-                        "42",
-                        "--event-batch-size",
-                        "1",
-                    ],
-                    "env": [
-                        {
-                            "name": "POD_IP",
-                            "valueFrom": {
-                                "fieldRef": {
-                                    "apiVersion": "v1",
-                                    "fieldPath": "status.podIP",
-                                },
-                            },
-                        },
-                    ],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi"},
-                        "requests": {"cpu": "20m", "memory": "20Mi"},
-                    },
-                    "securityContext": LLMD_SIMULATOR_SECURITY_CONTEXT.copy(),
                 }
             ]
         },
@@ -1217,62 +637,10 @@ LLMINFERENCESERVICE_CONFIGS = {
 }
 
 
-def _setup_test_case_service(kserve_client, tc, test_node_name, peer_index=None):
-    """Create LLMInferenceServiceConfigs and build the LLMInferenceService for a TestCase.
-
-    Returns a list of created config names for cleanup tracking.
-    """
-    missing_refs = [
-        ref for ref in tc.base_refs if ref not in LLMINFERENCESERVICE_CONFIGS
-    ]
-    if missing_refs:
-        raise ValueError(
-            f"Missing base_refs in LLMINFERENCESERVICE_CONFIGS: {missing_refs}"
-        )
-    if not tc.service_name:
-        suffix = f"-peer-{peer_index}" if peer_index is not None else ""
-        tc.service_name = generate_service_name(test_node_name + suffix, tc.base_refs)
-    if tc.model_name == "default/model":
-        tc.model_name = _get_model_name_from_configs(tc.base_refs)
-
-    created_configs = []
-    unique_base_refs = []
-    for base_ref in tc.base_refs:
-        unique_config_name = generate_k8s_safe_suffix(base_ref, [tc.service_name])
-        unique_base_refs.append(unique_config_name)
-
-        unique_config_body = {
-            "apiVersion": "serving.kserve.io/v1alpha1",
-            "kind": "LLMInferenceServiceConfig",
-            "metadata": {
-                "name": unique_config_name,
-                "namespace": KSERVE_TEST_NAMESPACE,
-            },
-            "spec": LLMINFERENCESERVICE_CONFIGS[base_ref],
-        }
-
-        _create_or_update_llmisvc_config(
-            kserve_client, unique_config_body, KSERVE_TEST_NAMESPACE
-        )
-        created_configs.append(unique_config_name)
-
-    tc.llm_service = V1alpha1LLMInferenceService(
-        api_version="serving.kserve.io/v1alpha1",
-        kind="LLMInferenceService",
-        metadata=client.V1ObjectMeta(
-            name=tc.service_name, namespace=KSERVE_TEST_NAMESPACE
-        ),
-        spec={
-            "baseRefs": [{"name": base_ref} for base_ref in unique_base_refs],
-        },
-    )
-
-    return created_configs
-
-
 @pytest.fixture(scope="function")
 def test_case(request):
     tc = request.param
+    created_configs = []
 
     inject_k8s_proxy()
 
@@ -1291,11 +659,51 @@ def test_case(request):
         ) from before_test_error
 
     try:
-        _setup_test_case_service(kserve_client, tc, request.node.name)
-        for i, peer in enumerate(tc.peers):
-            _setup_test_case_service(
-                kserve_client, peer, request.node.name, peer_index=i
+        # Validate base_refs defined in the test fixture exist in LLMINFERENCESERVICE_CONFIGS
+        missing_refs = [
+            ref for ref in tc.base_refs if ref not in LLMINFERENCESERVICE_CONFIGS
+        ]
+        if missing_refs:
+            raise ValueError(
+                f"Missing base_refs in LLMINFERENCESERVICE_CONFIGS: {missing_refs}"
             )
+        if not tc.service_name:
+            tc.service_name = generate_service_name(request.node.name, tc.base_refs)
+        tc.model_name = _get_model_name_from_configs(tc.base_refs)
+
+        # Create unique configs for this test
+        unique_base_refs = []
+        for base_ref in tc.base_refs:
+            unique_config_name = generate_k8s_safe_suffix(base_ref, [tc.service_name])
+            unique_base_refs.append(unique_config_name)
+
+            original_spec = LLMINFERENCESERVICE_CONFIGS[base_ref]
+
+            unique_config_body = {
+                "apiVersion": "serving.kserve.io/v1alpha1",
+                "kind": "LLMInferenceServiceConfig",
+                "metadata": {
+                    "name": unique_config_name,
+                    "namespace": KSERVE_TEST_NAMESPACE,
+                },
+                "spec": original_spec,
+            }
+
+            _create_or_update_llmisvc_config(
+                kserve_client, unique_config_body, KSERVE_TEST_NAMESPACE
+            )
+            created_configs.append(unique_config_name)
+
+        tc.llm_service = V1alpha1LLMInferenceService(
+            api_version="serving.kserve.io/v1alpha1",
+            kind="LLMInferenceService",
+            metadata=client.V1ObjectMeta(
+                name=tc.service_name, namespace=KSERVE_TEST_NAMESPACE
+            ),
+            spec={
+                "baseRefs": [{"name": base_ref} for base_ref in unique_base_refs],
+            },
+        )
 
         yield tc
 
@@ -1304,39 +712,54 @@ def test_case(request):
             logger.info("Skipping resource deletion after test execution.")
             return  # noqa: B012
 
+        # Execute after test hooks
         for func in tc.after_test:
             try:
                 func()
             except Exception as after_test_error:
                 logger.warning(f"Failed to execute after test hook: {after_test_error}")
 
+        # Cleanup created configs
+        for config_name in created_configs:
+            try:
+                logger.info(
+                    f"Cleaning up unique LLMInferenceServiceConfig {config_name}"
+                )
+
+                if os.getenv("SKIP_RESOURCE_DELETION", "False").lower() in (
+                    "false",
+                    "0",
+                    "f",
+                ):
+                    _delete_llmisvc_config(
+                        kserve_client, config_name, KSERVE_TEST_NAMESPACE
+                    )
+                logger.info(f"✓ Deleted unique LLMInferenceServiceConfig {config_name}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to cleanup LLMInferenceServiceConfig {config_name}: {e}"
+                )
+
 
 def _get_model_name_from_configs(config_names):
-    """Extract the model name from model configs (last wins, matching config layering)."""
-    model_name = "default/model"
+    """Extract the model name from model config."""
     for config_name in config_names:
         config = LLMINFERENCESERVICE_CONFIGS[config_name]
         if "model" in config and "name" in config["model"]:
-            model_name = config["model"]["name"]
-    return model_name
+            return config["model"]["name"]
+    return "default-model"
 
 
-_NON_DNS_CHARS = re.compile(r"[^a-z0-9]+")
-
-
-def _sanitize_for_dns(s: str) -> str:
-    """Replace non-DNS characters with hyphens, mirrors sanitizeForDNS in test_namespace.go."""
-    return _NON_DNS_CHARS.sub("-", s.lower()).strip("-")
-
-
-def generate_k8s_safe_suffix(
-    base_name: str, extra_parts: Optional[List[str]] = None
-) -> str:
+def generate_k8s_safe_suffix(base_name: str, extra_parts: List[str] = None) -> str:
     """Generate a Kubernetes-safe name suffix with hash."""
-    raw = f"{base_name}-{'-'.join(sorted(extra_parts))}" if extra_parts else base_name
-    full_name = _sanitize_for_dns(raw)
+    if extra_parts:
+        full_name = f"{base_name}-{'-'.join(sorted(extra_parts))}"
+    else:
+        full_name = base_name
 
-    name_hash = hashlib.sha256(full_name.encode()).hexdigest()[:8]
+    full_name = full_name.lower().replace("_", "-")
+
+    name_hash = hashlib.md5(full_name.encode()).hexdigest()[:8]
 
     # TODO: we can't use the real maximum (63), LWS and STS add additional suffixes (ie `-0`) and don't handle that case.
     max_total = 40
@@ -1350,9 +773,7 @@ def generate_k8s_safe_suffix(
 def generate_service_name(test_name: str, base_refs: List[str]) -> str:
     base_name = test_name.split("[", 1)[0]
     base_name = base_name.replace("test_llm_inference_service", "llmisvc")
-    # Include the full pytest node name (with parametrize index) in the hash
-    # so that tests sharing the same base_refs get unique service names.
-    return generate_k8s_safe_suffix(base_name, [test_name] + base_refs)
+    return generate_k8s_safe_suffix(base_name, base_refs)
 
 
 def generate_test_id(test_case) -> str:
@@ -1361,33 +782,64 @@ def generate_test_id(test_case) -> str:
 
 
 def create_router_resources(gateways, routes=None, kserve_client=None):
-    """Create router resources (gateways and routes). These resources are shared and not deleted.
-
-    The create_or_update functions are idempotent, so multiple tests creating the same
-    resource will not cause errors.
-    """
     if not kserve_client:
         kserve_client = KServeClient(
             config_file=os.environ.get("KUBECONFIG", "~/.kube/config")
         )
 
-    for gateway in gateways:
-        gateway_name = gateway.get("metadata", {}).get("name", "unknown")
-        try:
+    gateways_created = []
+    routes_created = []
+
+    try:
+        for gateway in gateways:
             create_or_update_gateway(kserve_client, gateway)
-            logger.info(f"✓ Created/updated Gateway {gateway_name}")
-        except Exception as e:
-            logger.error(f"❌ Failed to create Gateway {gateway_name}: {e}")
-            raise
+            gateways_created.append(gateway)
+        for route in routes or []:
+            create_or_update_route(kserve_client, route)
+            routes_created.append(route)
+    except Exception as e:
+        logger.warning(f"Failed to create LLMInferenceService router resources: {e}")
+        delete_router_resources(gateways_created, routes_created, kserve_client)
+        raise
+
+
+def delete_router_resources(gateways, routes=None, kserve_client=None):
+    if not kserve_client:
+        kserve_client = KServeClient(
+            config_file=os.environ.get("KUBECONFIG", "~/.kube/config")
+        )
 
     for route in routes or []:
-        route_name = route.get("metadata", {}).get("name", "unknown")
         try:
-            create_or_update_route(kserve_client, route)
-            logger.info(f"✓ Created/updated HTTPRoute {route_name}")
+            logger.info(
+                f"Cleaning up HttpRoute {route.get('metadata', {}).get('name')}"
+            )
+            delete_route(
+                kserve_client,
+                route.get("metadata", {}).get("name"),
+                route.get("metadata", {}).get("namespace", "default"),
+            )
+            logger.info(f"✓ Deleted HttpRoute {route.get('metadata', {}).get('name')}")
         except Exception as e:
-            logger.error(f"❌ Failed to create HTTPRoute {route_name}: {e}")
-            raise
+            logger.warning(
+                f"Failed to cleanup HttpRoute {route.get('metadata', {}).get('name')}: {e}"
+            )
+
+    for gateway in gateways:
+        try:
+            logger.info(
+                f"Cleaning up Gateway {gateway.get('metadata', {}).get('name')}"
+            )
+            delete_gateway(
+                kserve_client,
+                gateway.get("metadata", {}).get("name"),
+                gateway.get("metadata", {}).get("namespace", "default"),
+            )
+            logger.info(f"✓ Deleted Gateway {gateway.get('metadata', {}).get('name')}")
+        except Exception as e:
+            logger.warning(
+                f"Failed to cleanup Gateway {gateway.get('metadata', {}).get('name')}: {e}"
+            )
 
 
 def _create_or_update_llmisvc_config(kserve_client, llm_config, namespace=None):
@@ -1443,6 +895,43 @@ def _create_or_update_llmisvc_config(kserve_client, llm_config, namespace=None):
             raise RuntimeError(
                 f"Failed to get/create LLMInferenceServiceConfig {name}: {e}"
             ) from e
+
+
+def _delete_llmisvc_config(
+    kserve_client, name, namespace, version=constants.KSERVE_V1ALPHA1_VERSION
+):
+    try:
+        print(f"Deleting LLMInferenceServiceConfig {name} in namespace {namespace}")
+        return kserve_client.api_instance.delete_namespaced_custom_object(
+            constants.KSERVE_GROUP,
+            version,
+            namespace,
+            KSERVE_PLURAL_LLMINFERENCESERVICECONFIG,
+            name,
+        )
+    except client.rest.ApiException as e:
+        raise RuntimeError(
+            f"Exception when calling CustomObjectsApi->"
+            f"delete_namespaced_custom_object for LLMInferenceServiceConfig: {e}"
+        ) from e
+
+
+def _get_llmisvc_config(
+    kserve_client, name, namespace, version=constants.KSERVE_V1ALPHA1_VERSION
+):
+    try:
+        return kserve_client.api_instance.get_namespaced_custom_object(
+            constants.KSERVE_GROUP,
+            version,
+            namespace,
+            KSERVE_PLURAL_LLMINFERENCESERVICECONFIG,
+            name,
+        )
+    except client.rest.ApiException as e:
+        raise RuntimeError(
+            f"Exception when calling CustomObjectsApi->"
+            f"get_namespaced_custom_object for LLMInferenceServiceConfig: {e}"
+        ) from e
 
 
 def inject_k8s_proxy():
