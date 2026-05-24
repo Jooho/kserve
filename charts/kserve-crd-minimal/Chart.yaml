@@ -1,7 +1,7 @@
 apiVersion: v2
 name: kserve-crd-minimal
-version: v0.17.1
-appVersion: v0.17.1
+version: v0.17.2
+appVersion: v0.17.2
 description: Helm chart for deploying minimal kserve crds without validation
 type: application
 keywords:
