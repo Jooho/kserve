@@ -30,19 +30,23 @@ Extract the version from the issue's **New Version** field.
 - Must match `X.Y.Z` or `X.Y.Z-rcN` format (no `v` prefix)
 - If invalid, comment on the issue explaining the expected format and stop
 
-### 2. Validate Base Branch
+### 2. Determine Target Branch
 
-Parse the version to determine the correct base branch:
+Parse the version to determine the correct target branch for the PR:
 
-| Condition | Base Branch | Example |
-|-----------|-------------|---------|
-| Z > 0 and no `-rcN` suffix | `release-X.Y` | `0.17.1` → `release-0.17` |
+| Condition | Target Branch | Example |
+|-----------|---------------|---------|
+| Z > 0 and no `-rcN` suffix | `release-X.Y` | `0.17.2` → `release-0.17` |
 | Everything else (RC0, RC1+, Final with Z=0) | `master` | `0.18.0-rc0`, `0.18.0` → `master` |
 
-If the current base branch does not match the expected one, comment on the issue:
-> "This version requires base branch `{expected}`. Please re-assign with the correct base branch."
+Verify the target branch exists in the repository. If it does not exist, comment on the issue:
+> "Target branch `{target_branch}` does not exist. Please create the branch first."
 
 Then stop.
+
+Use this target branch as both:
+- The base ref to branch from (your `copilot/*` branch must be based on this branch)
+- The PR base branch in Step 6
 
 ### 3. Detect and Verify Prior Version
 
@@ -83,6 +87,7 @@ Stage any formatting changes before committing.
 
 ### 6. Commit and PR
 
+- **PR base branch**: Use the base branch determined in Step 2 (`master` or `release-X.Y`)
 - Commit message: `release: prepare release v{VERSION}`
 - PR title: `release: prepare release v{VERSION}`
 - PR body:
