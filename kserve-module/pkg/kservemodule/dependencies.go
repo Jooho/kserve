@@ -41,6 +41,7 @@ type dependencyCheck struct {
 	name             string
 	checkType        checkType
 	groupKind        schema.GroupKind        // CRD check
+	crdName          string                  // explicit CRD name for irregular plurals
 	subscriptionName string                  // Subscription check
 	operatorGVK      schema.GroupVersionKind // Operator CR GVK
 	operatorCRName   string                  // Operator CR name (empty = list first)
@@ -61,6 +62,17 @@ func crdDep(name, group, kind, platform string, critical bool) dependencyCheck {
 		name:      name,
 		checkType: checkCRD,
 		groupKind: schema.GroupKind{Group: group, Kind: kind},
+		platform:  platform,
+		critical:  critical,
+	}
+}
+
+func crdDepExplicit(name, crdName, group, kind, platform string, critical bool) dependencyCheck {
+	return dependencyCheck{
+		name:      name,
+		checkType: checkCRD,
+		groupKind: schema.GroupKind{Group: group, Kind: kind},
+		crdName:   crdName,
 		platform:  platform,
 		critical:  critical,
 	}
@@ -97,14 +109,14 @@ var kserveDependencies = []dependencyCheck{
 	crdDep("istio-envoyfilter", "networking.istio.io", "EnvoyFilter", "xks", false),
 	crdDep("istio-gateway", "networking.istio.io", "Gateway", "xks", false),
 	crdDep("istio-proxyconfig", "networking.istio.io", "ProxyConfig", "xks", false),
-	crdDep("istio-serviceentry", "networking.istio.io", "ServiceEntry", "xks", false),
+	crdDepExplicit("istio-serviceentry", "serviceentries.networking.istio.io", "networking.istio.io", "ServiceEntry", "xks", false),
 	crdDep("istio-sidecar", "networking.istio.io", "Sidecar", "xks", false),
-	crdDep("istio-workloadentry", "networking.istio.io", "WorkloadEntry", "xks", false),
+	crdDepExplicit("istio-workloadentry", "workloadentries.networking.istio.io", "networking.istio.io", "WorkloadEntry", "xks", false),
 	crdDep("istio-workloadgroup", "networking.istio.io", "WorkloadGroup", "xks", false),
-	crdDep("istio-authorizationpolicy", "security.istio.io", "AuthorizationPolicy", "xks", false),
+	crdDepExplicit("istio-authorizationpolicy", "authorizationpolicies.security.istio.io", "security.istio.io", "AuthorizationPolicy", "xks", false),
 	crdDep("istio-peerauthentication", "security.istio.io", "PeerAuthentication", "xks", false),
 	crdDep("istio-requestauthentication", "security.istio.io", "RequestAuthentication", "xks", false),
-	crdDep("istio-telemetry", "telemetry.istio.io", "Telemetry", "xks", false),
+	crdDepExplicit("istio-telemetry", "telemetries.telemetry.istio.io", "telemetry.istio.io", "Telemetry", "xks", false),
 	crdDep("istio-wasmplugin", "extensions.istio.io", "WasmPlugin", "xks", false),
 
 	// cert-manager CRDs
@@ -184,14 +196,51 @@ func (r *KserveModuleReconciler) checkDependencies(ctx context.Context) dependen
 }
 
 func (r *KserveModuleReconciler) checkCRD(ctx context.Context, dep dependencyCheck) []string {
-  	// Skip checks when context is cancelled to avoid false-positive dependency errors.
+	// Skip checks when context is cancelled to avoid false-positive dependency errors.
 	if ctx.Err() != nil {
 		return nil
 	}
+
+	if dep.crdName != "" {
+		if err := crdExistsByName(ctx, r.Client, dep.crdName); err != nil {
+			return []string{fmt.Sprintf("%s CRD not found (%s)", dep.name, dep.groupKind)}
+		}
+		return nil
+	}
+
 	if err := cluster.CustomResourceDefinitionExists(ctx, r.Client, dep.groupKind); err != nil {
 		return []string{fmt.Sprintf("%s CRD not found (%s)", dep.name, dep.groupKind)}
 	}
 	return nil
+}
+
+func crdExistsByName(ctx context.Context, cli client.Reader, name string) error {
+	crd := &unstructured.Unstructured{}
+	crd.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "apiextensions.k8s.io",
+		Version: "v1",
+		Kind:    "CustomResourceDefinition",
+	})
+	if err := cli.Get(ctx, client.ObjectKey{Name: name}, crd); err != nil {
+		return err
+	}
+
+	conditions, found, err := unstructured.NestedSlice(crd.Object, "status", "conditions")
+	if err != nil || !found {
+		return fmt.Errorf("CRD %s not yet established", name)
+	}
+
+	for _, c := range conditions {
+		condMap, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		if condMap["type"] == "Established" && condMap["status"] == "True" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("CRD %s not yet established", name)
 }
 
 func (r *KserveModuleReconciler) checkSubscription(ctx context.Context, dep dependencyCheck) []string {
