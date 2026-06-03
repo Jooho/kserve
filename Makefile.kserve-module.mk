@@ -7,6 +7,7 @@ E2E_IMG ?=
 	test-kserve-module setup-envtest-kserve-module precommit-km \
 	e2e-setup-kserve-module e2e-cleanup-kserve-module e2e-kserve-module check-km
 
+
 docker-build-kserve-module:
 	${ENGINE} buildx build ${ARCH} --load \
 		-t ${KO_DOCKER_REPO}/${KSERVE_MODULE_IMG}:${TAG} \
