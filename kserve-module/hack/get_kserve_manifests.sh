@@ -1,11 +1,63 @@
 #!/usr/bin/env bash
 set -e
 
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [DST_DIR] [OPTIONS]
+
+Gather kserve and odh-model-controller manifests for the kserve-module image build.
+
+Arguments:
+  DST_DIR                          Output directory (default: kserve-module/opt/manifests)
+
+Options:
+  --local-kserve                   Use local repo config/ instead of cloning from remote
+  --<component>=org:repo:ref:path  Override a component source (e.g. --kserve=opendatahub-io:kserve:master:config)
+  -h, --help                       Show this help
+
+Environment:
+  ODH_PLATFORM_TYPE   OpenDataHub (default) or RHOAI — selects manifest set
+
+Examples:
+  # Default: clone from remote repos (ODH)
+  $(basename "$0")
+
+  # Use local kserve config/ (for CI/dev)
+  $(basename "$0") --local-kserve
+
+  # Override modelcontroller source
+  $(basename "$0") --modelcontroller=opendatahub-io:odh-model-controller:main:config
+
+  # RHOAI manifests
+  ODH_PLATFORM_TYPE=RHOAI $(basename "$0")
+EOF
+}
+
 GITHUB_URL="https://github.com"
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${MODULE_DIR}/.." && pwd)"
-DST_MANIFESTS_DIR="${1:-${MODULE_DIR}/opt/manifests}"
+
+USE_LOCAL_KSERVE=false
+DST_MANIFESTS_DIR=""
+EXTRA_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)       usage; exit 0 ;;
+        --local-kserve)  USE_LOCAL_KSERVE=true ;;
+        --*)             EXTRA_ARGS+=("$arg") ;;
+        *)
+            if [ -z "${DST_MANIFESTS_DIR}" ]; then
+                DST_MANIFESTS_DIR="$arg"
+            else
+                EXTRA_ARGS+=("$arg")
+            fi
+            ;;
+    esac
+done
+
+DST_MANIFESTS_DIR="${DST_MANIFESTS_DIR:-${MODULE_DIR}/opt/manifests}"
 
 # ODH Component Manifests
 # Format: "repo-org:repo-name:ref-name:source-folder"
@@ -41,25 +93,23 @@ fi
 
 # Allow overwriting repo using flags component=repo
 pattern="^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+:([a-zA-Z0-9_./-]+|[a-zA-Z0-9_./-]+@[a-f0-9]{7,40}):[a-zA-Z0-9_./-]+$"
-if [ "$#" -ge 2 ]; then
-    for arg in "${@:2}"; do
-        if [[ $arg == --* ]]; then
-            arg="${arg:2}"
-            IFS="=" read -r key value <<< "$arg"
-            if [[ -n "${COMPONENT_MANIFESTS[$key]}" ]]; then
-                if [[ ! $value =~ $pattern ]]; then
-                    echo "ERROR: The value '$value' does not match the expected format 'repo-org:repo-name:ref-name:source-folder'."
-                    continue
-                fi
-                COMPONENT_MANIFESTS["$key"]=$value
-            else
-                echo "ERROR: '$key' does not exist in COMPONENT_MANIFESTS, it will be skipped."
-                echo "Available components are: [${!COMPONENT_MANIFESTS[@]}]"
-                exit 1
+for arg in "${EXTRA_ARGS[@]}"; do
+    if [[ $arg == --* ]]; then
+        arg="${arg:2}"
+        IFS="=" read -r key value <<< "$arg"
+        if [[ -n "${COMPONENT_MANIFESTS[$key]+x}" ]]; then
+            if [[ ! $value =~ $pattern ]]; then
+                echo "ERROR: The value '$value' does not match the expected format 'repo-org:repo-name:ref-name:source-folder'."
+                continue
             fi
+            COMPONENT_MANIFESTS["$key"]=$value
+        else
+            echo "ERROR: '$key' does not exist in COMPONENT_MANIFESTS, it will be skipped."
+            echo "Available components are: [${!COMPONENT_MANIFESTS[@]}]"
+            exit 1
         fi
-    done
-fi
+    fi
+done
 
 TMP_DIR=$(mktemp -d -t "kserve-manifests.XXXXXXXXXX")
 trap '{ rm -rf -- "$TMP_DIR"; }' EXIT
@@ -130,8 +180,8 @@ for key in "${!COMPONENT_MANIFESTS[@]}"; do
 
     echo -e "\033[32mCloning \033[33m${key}\033[32m:\033[0m ${COMPONENT_MANIFESTS[$key]}"
 
-    if [[ "${repo_name}" == "kserve" && -d "${REPO_ROOT}/${source_path}" ]]; then
-        echo "  Using local kserve config"
+    if [[ "${USE_LOCAL_KSERVE}" == "true" && "${repo_name}" == "kserve" && -d "${REPO_ROOT}/${source_path}" ]]; then
+        echo "  Using local kserve config (--local-kserve)"
         mkdir -p "${DST_MANIFESTS_DIR}/${key}"
         cp -rf "${REPO_ROOT}/${source_path}"/* "${DST_MANIFESTS_DIR}/${key}/"
         rm -rf "${DST_MANIFESTS_DIR}/${key}/kserve-module"
