@@ -4,7 +4,7 @@ E2E_IMG ?=
 
 .PHONY: docker-build-kserve-module docker-push-kserve-module deploy-kserve-module \
 	kustomize-build-kserve-module generate-kserve-module manifests-kserve-module \
-	test-kserve-module setup-envtest-kserve-module precommit-km \
+	test-kserve-module setup-envtest-kserve-module bats-kserve-module precommit-km \
 	e2e-setup-kserve-module e2e-cleanup-kserve-module e2e-kserve-module check-km
 
 
@@ -43,6 +43,10 @@ test-kserve-module: envtest
 setup-envtest-kserve-module: envtest
 	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path
 
+bats-kserve-module:
+	@command -v bats >/dev/null 2>&1 || bash kserve-module/hack/setup/cli/install-bats.sh
+	$(LOCALBIN)/bats kserve-module/hack/*.bats
+
 e2e-setup-kserve-module:
 	bash kserve-module/tests/scripts/setup-cluster.sh --platform $(PLATFORM) \
 		$(if $(E2E_IMG),--image $(E2E_IMG))
@@ -53,7 +57,7 @@ e2e-cleanup-kserve-module:
 e2e-kserve-module:
 	cd kserve-module/tests/e2e && python -m pytest -v
 
-precommit-km: fmt go-lint generate-kserve-module manifests-kserve-module test-kserve-module
+precommit-km: fmt go-lint generate-kserve-module manifests-kserve-module test-kserve-module bats-kserve-module
 	cd kserve-module && go mod tidy && go vet ./... && go build ./...
 
 check-km: precommit-km
