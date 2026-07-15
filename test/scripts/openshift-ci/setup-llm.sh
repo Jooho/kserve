@@ -94,6 +94,7 @@ if [ "${KSERVE_DEPLOY}" == "true" ]; then
   kubectl kustomize config/crd/ | kubectl apply --server-side=true -f -
   wait_for_crd  llminferenceserviceconfigs.serving.kserve.io  90s
 
+  kustomize build config/overlays/odh-crds | kubectl apply --server-side=true --force-conflicts -f -
   kustomize build config/overlays/odh | kubectl apply  --server-side=true --force-conflicts -f -
   wait_for_pod_ready "opendatahub" "control-plane=kserve-controller-manager" 300s
 fi
