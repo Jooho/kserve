@@ -113,6 +113,10 @@ type ResourceDeployer interface {
 
 type KserveModuleReconciler struct {
 	client.Client
+	// APIReader is a non-cached reader used for resources that are only read
+	// during CR deletion (e.g. LLMInferenceServiceConfig), avoiding a permanent
+	// informer for a teardown-only type and giving fresh reads.
+	APIReader             client.Reader
 	Scheme                *runtime.Scheme
 	ManifestsTemplatePath string
 	Deployer              ResourceDeployer
@@ -141,10 +145,31 @@ func (r *KserveModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if !kserve.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(kserve, ModuleFinalizerName) {
+			return ctrl.Result{}, nil
+		}
+
+		// Check whether config deletion is blocked before running any destructive
+		// cleanup, so a blocked deletion does not tear down still-running operands.
+		outcome, err := r.cleanupLLMISVCConfigsOnDelete(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("cleaning up LLMInferenceServiceConfigs: %w", err)
+		}
+		if !outcome.done {
+			if err := r.setDeletionBlocked(ctx, kserve, outcome.blockers); err != nil {
+				return ctrl.Result{}, err
+			}
+			if outcome.blocked {
+				log.Info("Kserve CR deletion blocked", "blockers", outcome.blockers)
+			}
+			return ctrl.Result{RequeueAfter: deletionRequeueInterval}, nil
+		}
+
 		if cleanupErr := r.cleanupOnDelete(ctx); cleanupErr != nil {
 			log.Error(cleanupErr, "component extra-cleanup failed during CR deletion")
 			return ctrl.Result{}, cleanupErr
 		}
+
 		if controllerutil.RemoveFinalizer(kserve, ModuleFinalizerName) {
 			if err := r.Update(ctx, kserve); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing module finalizer: %w", err)

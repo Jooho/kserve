@@ -26,18 +26,19 @@ const (
 	ConsoleDashboardsComponentName  = "console-dashboards"
 
 	// Manifest source paths
-	KserveManifestSourcePath        = "overlays/odh"
-	KserveManifestSourcePathXKS     = "overlays/odh-xks"
-	KserveCRDManifestSourcePath     = "overlays/odh-crds"
-	ModelCacheManifestSourcePath    = "overlays/odh-modelcache"
-	ModelControllerSourcePath       = "overlays/odh"
-	WVAManifestSourcePathOCP        = "overlays/namespace-scoped/openshift"
-	ObservabilityManifestSourcePath      = "monitoring/llmisvc/dashboards"
+	KserveManifestSourcePath            = "overlays/odh"
+	KserveManifestSourcePathXKS         = "overlays/odh-xks"
+	KserveCRDManifestSourcePath         = "overlays/odh-crds"
+	ModelCacheManifestSourcePath        = "overlays/odh-modelcache"
+	ModelControllerSourcePath           = "overlays/odh"
+	WVAManifestSourcePathOCP            = "overlays/namespace-scoped/openshift"
+	ObservabilityManifestSourcePath     = "monitoring/llmisvc/dashboards"
 	ConsoleDashboardsManifestSourcePath = "monitoring/llmisvc/dashboards-odc"
 
 	// Deployment names
 	kserveControllerDeployment     = "kserve-controller-manager"
 	llmISVCControllerDeployment    = "llmisvc-controller-manager"
+	llmISVCManagerContainer        = "manager"
 	localmodelControllerDeployment = "kserve-localmodel-controller-manager"
 	odhModelControllerDeployment   = "odh-model-controller"
 	wvaControllerDeployment        = "workload-variant-autoscaler-controller-manager"
@@ -67,6 +68,11 @@ const (
 	llmISVCConfigGroup       = "serving.kserve.io"
 	llmISVCConfigVersion     = "v1alpha2"
 	llmISVCConfigKind        = "LLMInferenceServiceConfig"
+
+	// preventWellKnownConfigDeletionEnv gates the llmisvc webhook that blocks
+	// deletion of well-known LLMInferenceServiceConfigs. Set to "false" during
+	// Kserve CR cleanup so the configs can actually be deleted.
+	preventWellKnownConfigDeletionEnv = "PREVENT_WELL_KNOWN_CONFIG_DELETION"
 
 	// Template (ServingRuntime) resource type
 	templateGroup = "template.openshift.io"

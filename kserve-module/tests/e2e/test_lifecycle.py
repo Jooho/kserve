@@ -63,7 +63,7 @@ class TestDelete:
         Verifies GC cleans up operand deployments via ownerReference,
         while the operator deployment itself remains.
         """
-        run([kubectl, "delete", "kserve", KSERVE_CR_NAME])
+        run([kubectl, "delete", "kserve", KSERVE_CR_NAME, "--timeout=120s"], timeout=130)
         wait_for_kserve_cleanup(kubectl, is_openshift=cluster_info.is_openshift)
 
         result = run([kubectl, "get", "kserve", KSERVE_CR_NAME], check=False)

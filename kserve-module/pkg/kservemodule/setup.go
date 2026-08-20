@@ -62,6 +62,7 @@ func (r *KserveModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	r.cache = mgr.GetCache()
+	r.APIReader = mgr.GetAPIReader()
 
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&platformv1alpha1.Kserve{}).
