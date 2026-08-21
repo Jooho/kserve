@@ -280,6 +280,25 @@ def get_jsonpath(kubectl_bin, resource_type, name, jsonpath, namespace=None):
     return result.stdout.strip()
 
 
+def list_resource_names(kubectl_bin, resource_type, namespace=None, annotation=None):
+    """List names of a resource type (all namespaces when namespace is None),
+    optionally filtered by an (key, value) annotation. Returns [] when none."""
+    cmd = [kubectl_bin, "get", resource_type, "-o", "json"]
+    cmd += ["-n", namespace] if namespace else ["-A"]
+    result = run(cmd, check=False)
+    if result.returncode != 0 or not result.stdout.strip():
+        return []
+    items = json.loads(result.stdout).get("items", [])
+    if annotation:
+        key, value = annotation
+        items = [
+            i
+            for i in items
+            if i.get("metadata", {}).get("annotations", {}).get(key) == value
+        ]
+    return [i["metadata"]["name"] for i in items]
+
+
 def enable_model_cache(kubectl_bin, worker_node, cache_size="5Gi"):
     """Patch the Kserve CR to enable ModelCache with nodeNames."""
     import json
