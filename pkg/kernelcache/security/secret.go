@@ -22,8 +22,6 @@ import "context"
 // (CA bundles, signing keys, trusted roots). It is a plain data fetcher so
 // parsing stays with each mode and adding a mode never changes this interface.
 // References use the "namespace/name" form.
-//
-// A Kubernetes client-backed implementation is added with the wiring changes.
 type SecretSource interface {
 	GetSecret(ctx context.Context, ref string) (map[string][]byte, error)
 	GetConfigMap(ctx context.Context, ref string) (map[string]string, error)

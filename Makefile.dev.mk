@@ -23,8 +23,10 @@ deploy: manifests
 	# The below kubectl apply and kubectl wait commands are necessary to avoid this race condition.
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full/localmodel
+	kubectl apply --server-side=true --force-conflicts -k config/crd/full/kernelcache
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full/llmisvc
 	kubectl wait --for=condition=established --timeout=60s crd/llminferenceserviceconfigs.serving.kserve.io
+	kubectl wait --for=condition=established --timeout=60s crd/kernelcaches.serving.kserve.io
 	# Remove the certmanager certificate if KSERVE_ENABLE_SELF_SIGNED_CA is not false
 	cd config/default && if [ ${KSERVE_ENABLE_SELF_SIGNED_CA} != false ]; then \
 	echo > ../certmanager/certificate.yaml; \
@@ -51,11 +53,13 @@ deploy-dev: manifests
 	# The below kubectl apply and kubectl wait commands are necessary to avoid this race condition.
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full/localmodel
+	kubectl apply --server-side=true --force-conflicts -k config/crd/full/kernelcache
 	kubectl apply --server-side=true --force-conflicts -k config/crd/full/llmisvc
 	kubectl wait --for=condition=established --timeout=60s crd/llminferenceserviceconfigs.serving.kserve.io
+	kubectl wait --for=condition=established --timeout=60s crd/kernelcaches.serving.kserve.io
 	./hack/image_patch_dev.sh development
 	
-	@echo "Deploy KServe,LocalModel and LLMInferenceService"
+	@echo "Deploy KServe, LocalModel, KernelCache and LLMInferenceService"
 	hack/setup/infra/manage.cert-manager-helm.sh
 	hack/setup/infra/manage.lws-operator.sh
 	hack/setup/infra/gateway-api/manage.gateway-api-extension-crd.sh
@@ -68,6 +72,9 @@ deploy-dev: manifests
 	@echo "Create ClusterServingRuntimes as part of default deployment"
 	kubectl wait --for=condition=ready pod -l control-plane=kserve-controller-manager -n kserve --timeout=300s
 	kubectl wait --for=condition=ready pod -l control-plane=llmisvc-controller-manager -n kserve --timeout=300s
+	kubectl wait --for=condition=ready pod -l control-plane=kserve-localmodel-controller-manager -n kserve --timeout=300s
+	kubectl rollout status daemonset/kserve-localmodelnode-agent -n kserve --timeout=300s || true
+	kubectl rollout status daemonset/kserve-kernelcachenode-agent -n kserve --timeout=300s || true
 	kubectl apply --server-side=true --force-conflicts -k config/clusterresources
 
 # Quick redeploy after code changes (rebuild images and update deployments)
@@ -80,6 +87,15 @@ redeploy-dev-image:
 	
 	kubectl rollout restart deployment/llmisvc-controller-manager -n kserve
 	kubectl rollout status deployment/llmisvc-controller-manager -n kserve --timeout=300s
+
+	kubectl rollout restart deployment/kserve-localmodel-controller-manager -n kserve
+	kubectl rollout status deployment/kserve-localmodel-controller-manager -n kserve --timeout=300s
+
+	kubectl rollout restart daemonset/kserve-localmodelnode-agent -n kserve
+	kubectl rollout status daemonset/kserve-localmodelnode-agent -n kserve --timeout=300s
+
+	kubectl rollout restart daemonset/kserve-kernelcachenode-agent -n kserve
+	kubectl rollout status daemonset/kserve-kernelcachenode-agent -n kserve --timeout=300s
 	
 	@echo "Deployments updated successfully"
 	kubectl get pods -n kserve
@@ -128,3 +144,12 @@ deploy-dev-kind-localmodel: docker-build docker-push docker-build-localmodel doc
 	SET_KSERVE_REGISTRY=$$KO_DOCKER_REPO SET_KSERVE_VERSION=$$TAG \
 	ENABLE_KSERVE=true ENABLE_LOCALMODEL=true UPDATE_CONFIGMAP_IMAGES=false \
 	./hack/setup/infra/manage.kserve-kustomize.sh
+
+.PHONY: deploy-dev-kernelcachenode-agent
+deploy-dev-kernelcachenode-agent:
+	kubectl apply -k config/kernelcachenodes
+	kubectl set image daemonset/kserve-kernelcachenode-agent -n kserve manager=${KO_DOCKER_REPO}/${KERNELCACHE_AGENT_IMG}:${TAG}
+	kubectl rollout restart daemonset/kserve-kernelcachenode-agent -n kserve
+	kubectl rollout status daemonset/kserve-kernelcachenode-agent -n kserve --timeout=120s
+
+release-dev-kernelcachenode-agent: docker-build-kernelcachenode-agent docker-push-kernelcachenode-agent

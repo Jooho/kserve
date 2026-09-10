@@ -1,0 +1,25 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: KernelCache
+metadata:
+  name: qwen-cache-oci
+  namespace: jooho-test
+spec:
+  artifact:
+    imageReference: image-registry.openshift-image-registry.svc:5000/jooho-test/kernel-cache-opt-125m@sha256:ea0132c9009d738e24715a61791e0c5797fe0778ab4285a32a19f4b0c05fea2e
+    cachePaths:
+      - containerName: kserve-container
+        containerPath: /tmp/vllm
+        ociPath: io.vllm.cache
+    identity:
+      footprints:
+        workloadFootprint: sha256:f114b60adc61f90127908dcf7277ea16df50f9455560819feebc1484dededbf4
+        compatibilityFootprint: sha256:9f7a0c0eb67bcab8fa7c1872516bd091fd0f1ef181fabc9b3768a16080b945a2
+      factors:
+        argsHash: sha256:a2a98bac159d62459d6198a30b0c56758353c1d3227e347a90599f3278ace165
+        commandHash: sha256:a3ce0fd225d9fd66edc83d0e7aaf8fb4c72353533f8947b305da9fc4ae06e268
+        modelURIHash: sha256:3388cb99d9d49158f162d35cf9666151ffaed1383d0e80e57d61acd8d1280530
+        runtimeImage: docker.io/vllm/vllm-openai@sha256:082ca6f035279109041ffd3fe0695cb568b29bc580b35c4f297a66a08b216c1b
+        tensorParallelSize: "1"
+  nodeGroupRef:
+    name: gpu-local-cache
+  mountType: oci

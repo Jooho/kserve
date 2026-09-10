@@ -136,6 +136,8 @@ var (
 	LoggerCredentialPathKey                     = KServeAPIGroupName + "/logger-secret-path"
 	LoggerCredentialFileKey                     = KServeAPIGroupName + "/logger-secret-file"
 	DisableAutoUpdateAnnotationKey              = KServeAPIGroupName + "/disable-auto-update"
+	KernelCacheSidecarInjectionAnnotationKey    = KServeAPIGroupName + "/kernelcache-sidecar-injection"
+	KernelCacheNodeGroupAnnotationKey           = KServeAPIGroupName + "/kernelcache-nodegroup"
 	ModelFormatAnnotationKey                    = "modelFormat"
 	InferencePoolMigratedAnnotationKey          = KServeAPIGroupName + "/inferencepool-migrated"
 	// Managed DRA Experimental Annotations
@@ -178,9 +180,20 @@ var (
 	LocalModelNamespaceLabel                         = InferenceServiceInternalAnnotationsPrefix + "/localmodel-namespace"
 	LocalModelSourceUriAnnotationKey                 = InferenceServiceInternalAnnotationsPrefix + "/localmodel-sourceuri"
 	LocalModelPVCNameAnnotationKey                   = InferenceServiceInternalAnnotationsPrefix + "/localmodel-pvc-name"
+	KernelCacheLabel                                 = InferenceServiceInternalAnnotationsPrefix + "/kernelcache"
+	KernelCacheUsageAnnotationKey                    = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-usage"
+	KernelCacheCaptureStateAnnotationKey             = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-capture-state"
+	KernelCacheCaptureGeneratedLabelKey              = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-capture-generated"
+	KernelCacheNodeGroupSelectionSourceAnnotationKey = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-nodegroup-selection-source"
 	ConfidentialEnabledAnnotationKey                 = InferenceServiceInternalAnnotationsPrefix + "/confidential-enabled"
 	ConfidentialResourceIdAnnotationKey              = InferenceServiceInternalAnnotationsPrefix + "/confidential-resource-id"
 	LocalModelLoRAAnnotationKey                      = InferenceServiceInternalAnnotationsPrefix + "/localmodel-lora"
+)
+
+const (
+	KernelCacheCaptureStateStarted   = "Started"
+	KernelCacheCaptureStateComplete  = "Complete"
+	KernelCacheCaptureStateUnchanged = "Unchanged"
 )
 
 // kserve networking constants
@@ -515,8 +528,9 @@ const (
 
 // InferenceService container names
 const (
-	InferenceServiceContainerName   = "kserve-container"
-	StorageInitializerContainerName = "storage-initializer"
+	InferenceServiceContainerName    = "kserve-container"
+	LLMInferenceServiceContainerName = "main"
+	StorageInitializerContainerName  = "storage-initializer"
 
 	// TransformerContainerName transformer container name in collocation
 	TransformerContainerName = "transformer-container"
@@ -858,6 +872,14 @@ func CanaryServiceName(name string, component InferenceServiceComponent) string 
 
 func ModelConfigName(inferenceserviceName string, shardId int) string {
 	return fmt.Sprintf("modelconfig-%s-%d", inferenceserviceName, shardId)
+}
+
+func KernelCacheCaptureName(inferenceserviceName string) string {
+	return inferenceserviceName + "-kernelcache-capture"
+}
+
+func KernelCacheTargetImage(registry, namespace, inferenceserviceName, captureID string) string {
+	return fmt.Sprintf("%s/%s/kernel-cache-%s:%s", strings.TrimSuffix(registry, "/"), namespace, inferenceserviceName, captureID)
 }
 
 func InferenceServicePrefix(name string) string {

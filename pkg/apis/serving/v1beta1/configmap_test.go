@@ -27,6 +27,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/kserve/kserve/pkg/constants"
+	kernelcachetypes "github.com/kserve/kserve/pkg/kernelcache/types"
 )
 
 var (
@@ -84,6 +85,98 @@ func TestNewInferenceServiceConfig(t *testing.T) {
 	isvcConfig, err := NewInferenceServicesConfig(isvcConfigMap)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(isvcConfig).ShouldNot(gomega.BeNil())
+}
+
+func TestNewKernelCacheConfigDefaultsMCVImage(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	for _, configMap := range []*corev1.ConfigMap{
+		{},
+		{Data: map[string]string{KernelCacheConfigName: `{}`}},
+	} {
+		config, err := NewKernelCacheConfig(configMap)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(config.MCVImage).To(gomega.Equal(DefaultKernelCacheMCVImage))
+		g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds))
+		g.Expect(config.ArtifactSecurity.Mode).To(gomega.Equal(string(kernelcachetypes.ModeNone)))
+		g.Expect(config.ArtifactSecurity.FailurePolicy).To(gomega.Equal(string(kernelcachetypes.FailurePolicyReject)))
+	}
+}
+
+func TestNewKernelCacheConfigRejectsInvalidMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":0}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError("kernelcache.mcvCaptureReadinessTimeoutSeconds must be greater than zero"))
+}
+
+func TestNewKernelCacheConfigRejectsPVCDefaultMountType(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"defaultMountType":"pvc"}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError(`kernelcache.defaultMountType must be oci, got "pvc"`))
+}
+
+func TestNewKernelCacheConfigUsesConfiguredMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":900}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(int64(900)))
+}
+
+func TestNewKernelCacheConfigRejectsInvalidArtifactSecurity(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"artifactSecurity":{"mode":"cert","failurePolicy":"reject"}}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).Should(gomega.HaveOccurred())
+}
+
+func TestNewKernelCacheConfigDefaultsOpenShiftRegistry(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"openshift"}}}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Endpoint).To(gomega.Equal(DefaultKernelCacheOpenShiftRegistryEndpoint))
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
+		Name: DefaultKernelCacheOpenShiftCAConfigMapName,
+		Key:  DefaultKernelCacheOpenShiftCAConfigMapKey,
+	}))
+}
+
+func TestNewKernelCacheConfigPreservesOpenShiftRegistryOverrides(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{
+			"registry": {
+				"endpoint": "registry.example:5000",
+				"auth": {"type": "openshift"},
+				"caConfigMapRef": {"name": "custom-ca", "key": "bundle.pem"}
+			}
+		}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Endpoint).To(gomega.Equal("registry.example:5000"))
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
+		Name: "custom-ca",
+		Key:  "bundle.pem",
+	}))
 }
 
 func TestNewMultiNodeConfigWithNoData(t *testing.T) {

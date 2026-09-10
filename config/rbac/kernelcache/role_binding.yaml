@@ -1,0 +1,27 @@
+# Bootstrap is cluster-wide; TokenRequest is granted through namespace RoleBindings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kserve-kernelcache-registry-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kserve-kernelcache-registry-bootstrap
+subjects:
+- kind: ServiceAccount
+  name: kserve-localmodel-controller-manager
+  namespace: kserve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kserve-kernelcache-nodegroup-agent-manager
+  namespace: kserve
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kserve-kernelcache-nodegroup-agent-manager
+subjects:
+- kind: ServiceAccount
+  name: kserve-localmodel-controller-manager
+  namespace: kserve

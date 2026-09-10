@@ -4710,6 +4710,150 @@
         }
       }
     },
+    "v1beta1.KernelCacheArtifactCertConfig": {
+      "type": "object",
+      "properties": {
+        "signingProfileRef": {
+          "type": "string"
+        },
+        "subjectRegexp": {
+          "type": "string"
+        },
+        "trustBundle": {
+          "type": "string"
+        },
+        "trustBundleKey": {
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheArtifactSecurityConfig": {
+      "type": "object",
+      "properties": {
+        "cert": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheArtifactCertConfig"
+        },
+        "failurePolicy": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "defaultSidecarInjection",
+        "jobNamespace"
+      ],
+      "properties": {
+        "abandonedCapturePolicy": {
+          "description": "AbandonedCapturePolicy controls generated captures whose producer Pod disappears before completion.",
+          "type": "string"
+        },
+        "artifactSecurity": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheArtifactSecurityConfig"
+        },
+        "defaultMountType": {
+          "type": "string"
+        },
+        "defaultNodeGroup": {
+          "description": "DefaultNodeGroup is used when an automatically created KernelCache has no workload override.",
+          "type": "string"
+        },
+        "defaultSidecarInjection": {
+          "type": "boolean",
+          "default": false
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "jobNamespace": {
+          "type": "string",
+          "default": ""
+        },
+        "jobTTLSecondsAfterFinished": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "mcvCaptureReadinessTimeoutSeconds": {
+          "description": "MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "mcvImage": {
+          "type": "string"
+        },
+        "prefetchImage": {
+          "type": "string"
+        },
+        "reconcileIntervalSeconds": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "registry": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryConfig"
+        }
+      }
+    },
+    "v1beta1.KernelCacheConfigMapKeyRef": {
+      "type": "object",
+      "required": [
+        "name",
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "v1beta1.KernelCacheOpenShiftAuth": {
+      "type": "object",
+      "properties": {
+        "tokenTTLSeconds": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "v1beta1.KernelCacheRegistryAuth": {
+      "type": "object",
+      "properties": {
+        "openshift": {
+          "$ref": "#/definitions/v1beta1.KernelCacheOpenShiftAuth"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheRegistryConfig": {
+      "type": "object",
+      "properties": {
+        "auth": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryAuth"
+        },
+        "caConfigMapRef": {
+          "$ref": "#/definitions/v1beta1.KernelCacheConfigMapKeyRef"
+        },
+        "endpoint": {
+          "type": "string"
+        }
+      }
+    },
     "v1beta1.LightGBMSpec": {
       "description": "LightGBMSpec defines arguments for configuring LightGBMSpec model serving.",
       "type": "object",

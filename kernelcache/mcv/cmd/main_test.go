@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kserve/kserve/kernelcache/mcv/pkg/config"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kserve/kserve/kernelcache/mcv/pkg/imgbuild"
 )
