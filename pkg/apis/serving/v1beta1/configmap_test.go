@@ -27,6 +27,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/kserve/kserve/pkg/constants"
+	kernelcachetypes "github.com/kserve/kserve/pkg/kernelcache/types"
 )
 
 var (
@@ -84,6 +85,66 @@ func TestNewInferenceServiceConfig(t *testing.T) {
 	isvcConfig, err := NewInferenceServicesConfig(isvcConfigMap)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(isvcConfig).ShouldNot(gomega.BeNil())
+}
+
+func TestNewKernelCacheConfigDefaultsMCVImage(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	for _, configMap := range []*corev1.ConfigMap{
+		{},
+		{Data: map[string]string{KernelCacheConfigName: `{}`}},
+	} {
+		config, err := NewKernelCacheConfig(configMap)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(config.MCVImage).To(gomega.Equal(DefaultKernelCacheMCVImage))
+		g.Expect(config.ArtifactSecurity.Mode).To(gomega.Equal(string(kernelcachetypes.ModeNone)))
+		g.Expect(config.ArtifactSecurity.FailurePolicy).To(gomega.Equal(string(kernelcachetypes.FailurePolicyReject)))
+	}
+}
+
+func TestNewKernelCacheConfigRejectsInvalidArtifactSecurity(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"artifactSecurity":{"mode":"cert","failurePolicy":"reject"}}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).Should(gomega.HaveOccurred())
+}
+
+func TestNewKernelCacheConfigDefaultsOpenShiftRegistry(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"openshift"}}}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Endpoint).To(gomega.Equal(DefaultKernelCacheOpenShiftRegistryEndpoint))
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
+		Name: DefaultKernelCacheOpenShiftCAConfigMapName,
+		Key:  DefaultKernelCacheOpenShiftCAConfigMapKey,
+	}))
+}
+
+func TestNewKernelCacheConfigPreservesOpenShiftRegistryOverrides(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{
+			"registry": {
+				"endpoint": "registry.example:5000",
+				"auth": {"type": "openshift"},
+				"caConfigMapRef": {"name": "custom-ca", "key": "bundle.pem"}
+			}
+		}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Endpoint).To(gomega.Equal("registry.example:5000"))
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
+		Name: "custom-ca",
+		Key:  "bundle.pem",
+	}))
 }
 
 func TestNewMultiNodeConfigWithNoData(t *testing.T) {

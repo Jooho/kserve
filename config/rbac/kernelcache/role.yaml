@@ -1,0 +1,66 @@
+# Bootstrap is cluster-wide; TokenRequest is granted through namespace RoleBindings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kserve-kernelcache-registry-bootstrap
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["serviceaccounts", "secrets"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  resourceNames: ["kernel-cache-pusher", "kernel-cache-reporter", "kernel-cache-prefetcher"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "update", "delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["create"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  resourceNames: ["kernel-cache-pusher", "kernel-cache-reporter", "kserve-kernelcache-token-requester", "kernel-cache-prefetcher"]
+  verbs: ["get", "patch", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: ["system:image-builder", "system:image-puller", "kserve-kernelcache-reporter", "kserve-kernelcache-token-requester"]
+  verbs: ["bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kserve-kernelcache-nodegroup-agent-manager
+  namespace: kserve
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kserve-kernelcache-token-requester
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: ["kernel-cache-pusher", "kernel-cache-reporter"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kserve-kernelcache-reporter
+rules:
+- apiGroups: ["serving.kserve.io"]
+  resources: ["kernelcachecaptures/status"]
+  verbs: ["patch"]

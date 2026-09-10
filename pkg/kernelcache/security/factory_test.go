@@ -29,18 +29,18 @@ import (
 func TestNewVerifier(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("disabled returns a working no-op", func(t *testing.T) {
-		v, err := NewVerifier(ctx, types.SecurityConfig{Mode: types.ModeDisabled}, nil)
+	t.Run("none returns a working no-op", func(t *testing.T) {
+		v, err := NewVerifier(ctx, types.SecurityConfig{Mode: types.ModeNone}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, v)
 
 		res, err := v.Verify(ctx, types.VerifyRequest{ImageRef: "registry/img:tag"})
 		require.NoError(t, err)
 		assert.False(t, res.Verified)
-		assert.Equal(t, types.ModeDisabled, res.Mode)
+		assert.Equal(t, types.ModeNone, res.Mode)
 	})
 
-	t.Run("empty mode defaults to disabled", func(t *testing.T) {
+	t.Run("empty mode defaults to none", func(t *testing.T) {
 		v, err := NewVerifier(ctx, types.SecurityConfig{}, nil)
 		require.NoError(t, err)
 		assert.IsType(t, noopVerifier{}, v)

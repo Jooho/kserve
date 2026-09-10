@@ -24,6 +24,7 @@ manifests: controller-gen kustomize yq
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-llmisvc-manager-role paths=./pkg/controller/v1alpha2/llmisvc output:rbac:artifacts:config=config/rbac/llmisvc
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-localmodel-manager-role paths=./pkg/controller/v1alpha1/localmodel output:rbac:artifacts:config=config/rbac/localmodel
 	@$(CONTROLLER_GEN) rbac:roleName=kserve-localmodelnode-agent-role paths=./pkg/controller/v1alpha1/localmodelnode output:rbac:artifacts:config=config/rbac/localmodelnode
+	@$(CONTROLLER_GEN) rbac:roleName=kserve-kernelcachenode-agent-role paths=./pkg/controller/v1alpha1/kernelcachenode output:rbac:artifacts:config=config/rbac/kernelcachenode
 	# Hook for distro-specific manifest generation (override via Makefile.overrides.mk).
 	@$(MAKE) manifests-distro
 
@@ -52,6 +53,12 @@ manifests: controller-gen kustomize yq
 	mv config/crd/full/serving.kserve.io_localmodelnamespacecaches.yaml config/crd/full/localmodel/serving.kserve.io_localmodelnamespacecaches.yaml
 	mv config/crd/full/serving.kserve.io_localmodelnodegroups.yaml config/crd/full/localmodel/serving.kserve.io_localmodelnodegroups.yaml
 	mv config/crd/full/serving.kserve.io_localmodelnodes.yaml config/crd/full/localmodel/serving.kserve.io_localmodelnodes.yaml
+
+	# Move KernelCache CRD to kernelcache folder
+	mv config/crd/full/serving.kserve.io_kernelcaches.yaml config/crd/full/kernelcache/serving.kserve.io_kernelcaches.yaml
+	mv config/crd/full/serving.kserve.io_kernelcachenodes.yaml config/crd/full/kernelcache/serving.kserve.io_kernelcachenodes.yaml
+	mv config/crd/full/serving.kserve.io_kernelcachecaptures.yaml config/crd/full/kernelcache/serving.kserve.io_kernelcachecaptures.yaml
+	mv config/crd/full/serving.kserve.io_kernelcachenodegroups.yaml config/crd/full/kernelcache/serving.kserve.io_kernelcachenodegroups.yaml
 		
 	@$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt",year=$(CURRENT_YEAR) paths=./pkg/apis/serving/v1alpha1
 	@$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt",year=$(CURRENT_YEAR) paths=./pkg/apis/serving/v1alpha2
@@ -140,6 +147,8 @@ manifests: controller-gen kustomize yq
 	$(KUSTOMIZE) build config/crd/full/llmisvc >> test/crds/serving.kserve.io_all_crds.yaml
 	echo "---" >> test/crds/serving.kserve.io_all_crds.yaml
 	$(KUSTOMIZE) build config/crd/full/localmodel >> test/crds/serving.kserve.io_all_crds.yaml
+	echo "---" >> test/crds/serving.kserve.io_all_crds.yaml
+	$(KUSTOMIZE) build config/crd/full/kernelcache >> test/crds/serving.kserve.io_all_crds.yaml
 	
 	# Generate minimal crd
 	./hack/minimal-crdgen.sh

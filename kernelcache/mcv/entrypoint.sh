@@ -1,8 +1,10 @@
 #!/bin/sh
-# Entrypoint wrapper that restricts execution to /mcv and buildah only.
-# buildah is needed because mcv re-executes itself via buildah's copier
-# subprocess mechanism (buildah.InitReexec / unshare.MaybeReexecUsingUserNamespace).
+# Entrypoint wrapper for capture orchestration and direct MCV commands.
 set -eu
+
+if [ "${MCV_CAPTURE_MODE:-false}" = "true" ]; then
+    exec python3 /capture-entrypoint.py
+fi
 
 case "${1:-}" in
     /mcv|mcv|buildah|/usr/bin/buildah)

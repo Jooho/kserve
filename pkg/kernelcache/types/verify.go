@@ -48,18 +48,18 @@ type VerifyResult struct {
 
 // ShouldBlock reports whether a consumer must block use of the image given a
 // failure policy. It centralises the allow/block decision so callers do not
-// reimplement the subtle cases (in particular, disabled mode is a deliberate
+// reimplement the subtle cases (in particular, none mode is a deliberate
 // skip, not a failure, and must never block).
 //
 // Rules:
-//   - disabled mode: never blocks (verification was intentionally skipped).
+//   - none mode: never blocks (verification was intentionally skipped).
 //   - verified: never blocks.
 //   - not verified: blocks only under FailurePolicyReject.
 //
 // Operational errors (a nil, non-completed result) are handled by the caller
 // separately and are outside this decision.
 func (r VerifyResult) ShouldBlock(policy FailurePolicy) bool {
-	if r.Mode == ModeDisabled || r.Verified {
+	if r.Mode == ModeNone || r.Verified {
 		return false
 	}
 	return policy == FailurePolicyReject

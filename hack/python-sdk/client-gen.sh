@@ -22,6 +22,7 @@ SWAGGER_JAR_URL="https://repo1.maven.org/maven2/org/openapitools/openapi-generat
 SWAGGER_CODEGEN_JAR="hack/python-sdk/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"
 SWAGGER_CODEGEN_CONF="hack/python-sdk/swagger_config.json"
 SWAGGER_CODEGEN_FILE="pkg/openapi/swagger.json"
+SWAGGER_CODEGEN_TEMPLATES="hack/python-sdk/templates/python"
 SDK_OUTPUT_PATH="python/kserve"
 
 echo "Downloading the swagger-codegen JAR package ..."

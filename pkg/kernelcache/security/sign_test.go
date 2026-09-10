@@ -29,18 +29,18 @@ import (
 func TestNewSigner(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("disabled returns a working no-op", func(t *testing.T) {
-		s, err := NewSigner(ctx, types.SecurityConfig{Mode: types.ModeDisabled}, nil)
+	t.Run("none returns a working no-op", func(t *testing.T) {
+		s, err := NewSigner(ctx, types.SecurityConfig{Mode: types.ModeNone}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, s)
 
 		res, err := s.Sign(ctx, types.SignRequest{ImageRef: "registry/img:tag"})
 		require.NoError(t, err)
-		assert.Equal(t, types.ModeDisabled, res.Mode)
+		assert.Equal(t, types.ModeNone, res.Mode)
 		assert.Empty(t, res.Digest)
 	})
 
-	t.Run("empty mode defaults to disabled", func(t *testing.T) {
+	t.Run("empty mode defaults to none", func(t *testing.T) {
 		s, err := NewSigner(ctx, types.SecurityConfig{}, nil)
 		require.NoError(t, err)
 		assert.IsType(t, noopSigner{}, s)

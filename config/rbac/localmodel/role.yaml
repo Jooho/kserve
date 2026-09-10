@@ -8,6 +8,7 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
   verbs:
   - get
 - apiGroups:
@@ -63,6 +64,7 @@ rules:
   resources:
   - clusterstoragecontainers
   - inferenceservices
+  - kernelcachenodegroups
   - llminferenceservices
   - localmodelnodegroups
   verbs:
@@ -72,6 +74,9 @@ rules:
 - apiGroups:
   - serving.kserve.io
   resources:
+  - kernelcachecaptures
+  - kernelcachenodes
+  - kernelcaches
   - localmodelcaches
   - localmodelnamespacecaches
   - localmodelnodes
@@ -86,6 +91,9 @@ rules:
 - apiGroups:
   - serving.kserve.io
   resources:
+  - kernelcachecaptures/status
+  - kernelcachenodes/status
+  - kernelcaches/status
   - localmodelcaches/status
   - localmodelnamespacecaches/status
   verbs:

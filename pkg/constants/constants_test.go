@@ -72,3 +72,11 @@ func TestParseDeploymentMode(t *testing.T) {
 		})
 	}
 }
+
+func TestKernelCacheCaptureName(t *testing.T) {
+	assert.Equal(t, "qwen-kernelcache-capture", KernelCacheCaptureName("qwen"))
+}
+
+func TestKernelCacheTargetImage(t *testing.T) {
+	assert.Equal(t, "registry.example:5000/test/kernel-cache-qwen:capture-id", KernelCacheTargetImage("registry.example:5000/", "test", "qwen", "capture-id"))
+}

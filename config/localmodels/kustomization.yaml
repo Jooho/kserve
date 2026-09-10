@@ -11,8 +11,10 @@ labels:
 resources:
 - ../certmanager/localmodel
 - ../rbac/localmodel
+- ../rbac/kernelcache
 - manager.yaml
 - ../localmodelnodes
+- ../kernelcachenodes
 - ../webhook/localmodel
 
 patches:
@@ -34,6 +36,11 @@ replacements:
       kind: ValidatingWebhookConfiguration
       name: localmodelcache.serving.kserve.io
   - fieldPaths:
+    - webhooks.*.clientConfig.service.namespace
+    select:
+      kind: MutatingWebhookConfiguration
+      name: kernelcache.serving.kserve.io
+  - fieldPaths:
     - metadata.annotations.[cert-manager.io/inject-ca-from]
     options:
       delimiter: '/'
@@ -41,6 +48,14 @@ replacements:
     select:
       kind: ValidatingWebhookConfiguration
       name: localmodelcache.serving.kserve.io
+  - fieldPaths:
+    - metadata.annotations.[cert-manager.io/inject-ca-from]
+    options:
+      delimiter: '/'
+      index: 0
+    select:
+      kind: MutatingWebhookConfiguration
+      name: kernelcache.serving.kserve.io
   - fieldPaths:
     - spec.commonName
     - spec.dnsNames.0
@@ -63,6 +78,11 @@ replacements:
     select:
       kind: ValidatingWebhookConfiguration
       name: localmodelcache.serving.kserve.io
+  - fieldPaths:
+    - webhooks.*.clientConfig.service.name
+    select:
+      kind: MutatingWebhookConfiguration
+      name: kernelcache.serving.kserve.io
   - fieldPaths:
     - spec.commonName
     - spec.dnsNames.0
