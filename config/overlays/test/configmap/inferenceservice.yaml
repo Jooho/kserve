@@ -658,6 +658,54 @@ data:
          "disableVolumeManagement": false
        }
 
+     # ====================================== KERNELCACHE CONFIGURATION ======================================
+     # Example
+     kernelcache: |-
+       {
+         # enabled controls KernelCache, KernelCacheCapture, and related webhook behavior.
+         "enabled": false,
+         # defaultSidecarInjection controls MCV injection when a workload does not override it.
+         "defaultSidecarInjection": true,
+         # defaultMountType is used when KernelCache does not specify a mount type (currently, only OCI is supported).
+         "defaultMountType": "oci",         
+         # defaultNodeGroup specifies the NodeGroup to use when no NodeGroup matches the workload.
+         # If empty and no NodeGroup matches, the KernelCache is not created.
+         "defaultNodeGroup": "",
+         # jobNamespace is the pre-created namespace where kernel cache preparation Jobs are created.
+         "jobNamespace": "kserve-kernelcache-jobs",
+         # mcvImage is the MCV container image used by cache capture and preparation flows.
+         "mcvImage": "kserve/kserve-mcv:latest-minimal",
+         # prefetchImage is the lightweight image used by OCI prefetch Jobs.
+         "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+         # registry defines the default capture registry and its access settings.
+         "registry": {
+           "auth": {
+             # type is none or serviceAccountToken. The default is none.
+             # none does not provision registry credentials.
+             # serviceAccountToken uses the Kubernetes TokenRequest API to issue
+             # short-lived credentials for registry access.
+             "type": "none"
+           }
+         },
+         # artifactSecurity controls signing after capture and verification before preparation.
+         # none skips both operations. cert requires cert.signingProfileRef,
+         # cert.trustBundle, and cert.subjectRegexp.
+         "artifactSecurity": {
+           "mode": "none",
+           "failurePolicy": "reject"
+         },
+         # abandonedCapturePolicy controls generated captures whose producer Pod disappears
+         # before completion. retain preserves Failed captures for diagnosis; delete removes them.
+         "abandonedCapturePolicy": "retain",
+         # jobTTLSecondsAfterFinished controls how long completed preparation Jobs (downloading an OCI image to the node) are retained.
+         "jobTTLSecondsAfterFinished": 600,         
+         # mcvCaptureReadinessTimeoutSeconds limits how long MCV waits for runtime readiness before capture. Larger models may require a longer timeout.
+         "mcvCaptureReadinessTimeoutSeconds": 600,
+         # The interval used for KCN status reconciliation. Periodic Node image
+         # validation runs internally at a fixed one-hour interval.
+         "reconcileIntervalSeconds": 300
+       }
+
   explainers: |-
     {
         "art": {
@@ -779,6 +827,30 @@ data:
       "jobTTLSecondsAfterFinished": 3600,
       "reconcilationFrequencyInSecs": 60,
       "disableVolumeManagement": false
+    }
+
+  kernelcache: |-
+    {
+      "enabled": false,
+      "defaultSidecarInjection": true,
+      "defaultMountType": "oci",
+      "defaultNodeGroup": "",
+      "jobNamespace": "kserve-kernelcache-jobs",
+      "mcvImage": "kserve/kserve-mcv:latest-minimal",
+      "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+      "registry": {
+        "auth": {
+          "type": "none"
+        }
+      },
+      "artifactSecurity": {
+        "mode": "none",
+        "failurePolicy": "reject"
+      },
+      "abandonedCapturePolicy": "retain",
+      "jobTTLSecondsAfterFinished": 600,
+      "mcvCaptureReadinessTimeoutSeconds": 600,
+      "reconcileIntervalSeconds": 300
     }
 
   security: |-

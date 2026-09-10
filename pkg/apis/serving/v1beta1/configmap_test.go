@@ -27,6 +27,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/kserve/kserve/pkg/constants"
+	kernelcachetypes "github.com/kserve/kserve/pkg/kernelcache/types"
 )
 
 var (
@@ -84,6 +85,162 @@ func TestNewInferenceServiceConfig(t *testing.T) {
 	isvcConfig, err := NewInferenceServicesConfig(isvcConfigMap)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(isvcConfig).ShouldNot(gomega.BeNil())
+}
+
+func TestNewKernelCacheConfigDefaults(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	for _, configMap := range []*corev1.ConfigMap{
+		{},
+		{Data: map[string]string{KernelCacheConfigName: `{}`}},
+	} {
+		config, err := NewKernelCacheConfig(configMap)
+		g.Expect(err).ShouldNot(gomega.HaveOccurred())
+		g.Expect(config.Enabled).To(gomega.BeFalse())
+		g.Expect(config.DefaultSidecarInjection).To(gomega.BeTrue())
+		g.Expect(config.DefaultMountType).To(gomega.Equal(DefaultKernelCacheMountType))
+		g.Expect(config.DefaultNodeGroup).To(gomega.BeEmpty())
+		g.Expect(config.JobNamespace).To(gomega.Equal(DefaultKernelCacheJobNamespace))
+		g.Expect(config.MCVImage).To(gomega.Equal(DefaultKernelCacheMCVImage))
+		g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds))
+		g.Expect(config.PrefetchImage).To(gomega.Equal(DefaultKernelCachePrefetchImage))
+		g.Expect(config.Registry.Endpoint).To(gomega.BeEmpty())
+		g.Expect(config.Registry.CAConfigMapRef).To(gomega.BeNil())
+		g.Expect(config.Registry.Auth.Type).To(gomega.Equal(KernelCacheRegistryAuthTypeNone))
+		g.Expect(config.Registry.Auth.TokenTTLSeconds).To(gomega.Equal(int64(0)))
+		g.Expect(config.Registry.Auth.PushRoleRef).To(gomega.BeNil())
+		g.Expect(config.Registry.Auth.PullRoleRef).To(gomega.BeNil())
+		g.Expect(config.ArtifactSecurity.Mode).To(gomega.Equal(string(kernelcachetypes.ModeNone)))
+		g.Expect(config.ArtifactSecurity.FailurePolicy).To(gomega.Equal(string(kernelcachetypes.FailurePolicyReject)))
+		g.Expect(config.ArtifactSecurity.Cert).To(gomega.Equal(KernelCacheArtifactCertConfig{}))
+		g.Expect(config.AbandonedCapturePolicy).To(gomega.Equal("retain"))
+		g.Expect(config.JobTTLSecondsAfterFinished).ToNot(gomega.BeNil())
+		g.Expect(*config.JobTTLSecondsAfterFinished).To(gomega.Equal(DefaultKernelCacheJobTTLSeconds))
+		g.Expect(config.ReconcileIntervalSeconds).ToNot(gomega.BeNil())
+		g.Expect(*config.ReconcileIntervalSeconds).To(gomega.Equal(DefaultKernelCacheReconcileIntervalSeconds))
+	}
+}
+
+func TestNewKernelCacheConfigUsesConfiguredValues(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{
+			"defaultMountType": "oci",
+			"jobNamespace": "custom-kernelcache-jobs",
+			"jobTTLSecondsAfterFinished": 900,
+			"reconcileIntervalSeconds": 60
+		}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.DefaultMountType).To(gomega.Equal("oci"))
+	g.Expect(config.JobNamespace).To(gomega.Equal("custom-kernelcache-jobs"))
+	g.Expect(*config.JobTTLSecondsAfterFinished).To(gomega.Equal(int32(900)))
+	g.Expect(*config.ReconcileIntervalSeconds).To(gomega.Equal(int64(60)))
+}
+
+func TestNewKernelCacheConfigRejectsInvalidJSON(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{
+		Data: map[string]string{KernelCacheConfigName: `not-json`},
+	}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(config).To(gomega.BeNil())
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("unable to unmarshal kernelcache"))
+}
+
+func TestNewKernelCacheConfigRejectsInvalidMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":0}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError("kernelcache.mcvCaptureReadinessTimeoutSeconds must be greater than zero"))
+}
+
+func TestNewKernelCacheConfigRejectsPVCDefaultMountType(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"defaultMountType":"pvc"}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError(`kernelcache.defaultMountType must be oci, got "pvc"`))
+}
+
+func TestNewKernelCacheConfigUsesConfiguredMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":900}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(int64(900)))
+}
+
+func TestNewKernelCacheConfigRejectsInvalidArtifactSecurity(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"artifactSecurity":{"mode":"cert","failurePolicy":"reject"}}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).Should(gomega.HaveOccurred())
+}
+
+func TestNewKernelCacheConfigDefaultsAnonymousRegistry(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"none"}}}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Auth.Type).To(gomega.Equal(KernelCacheRegistryAuthTypeNone))
+	g.Expect(config.Registry.Endpoint).To(gomega.BeEmpty())
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.BeNil())
+}
+
+func TestNewKernelCacheConfigUsesServiceAccountTokenRegistry(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{
+			"registry": {
+				"endpoint": "registry.example:5000",
+				"auth": {
+					"type": "serviceAccountToken",
+					"pushRoleRef": {"kind": "ClusterRole", "name": "registry-pusher"},
+					"pullRoleRef": {"kind": "ClusterRole", "name": "registry-puller"}
+				},
+				"caConfigMapRef": {"name": "custom-ca", "key": "bundle.pem"}
+			}
+		}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.Registry.Endpoint).To(gomega.Equal("registry.example:5000"))
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
+		Name: "custom-ca",
+		Key:  "bundle.pem",
+	}))
+	g.Expect(config.Registry.Auth.TokenTTLSeconds).To(gomega.Equal(DefaultKernelCacheRegistryTokenTTLSeconds))
+	g.Expect(config.Registry.Auth.PushRoleRef).To(gomega.Equal(&KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"}))
+	g.Expect(config.Registry.Auth.PullRoleRef).To(gomega.Equal(&KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"}))
+}
+
+func TestNewKernelCacheConfigRejectsUnsupportedAuthType(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"unsupported"}}}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError(`unsupported registry.auth.type "unsupported"`))
 }
 
 func TestNewMultiNodeConfigWithNoData(t *testing.T) {

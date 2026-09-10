@@ -321,7 +321,7 @@ func DeleteModelFromNode(ctx context.Context, c client.Client, log logr.Logger, 
 }
 
 // DeletePV deletes a PersistentVolume by name
-func DeletePV(ctx context.Context, clientset *kubernetes.Clientset, log logr.Logger, name string) error {
+func DeletePV(ctx context.Context, clientset kubernetes.Interface, log logr.Logger, name string) error {
 	persistentVolumes := clientset.CoreV1().PersistentVolumes()
 	if _, err := persistentVolumes.Get(ctx, name, metav1.GetOptions{}); err != nil {
 		if apierr.IsNotFound(err) {
@@ -342,7 +342,7 @@ func DeletePV(ctx context.Context, clientset *kubernetes.Clientset, log logr.Log
 }
 
 // DeletePVC deletes a PersistentVolumeClaim by name and namespace
-func DeletePVC(ctx context.Context, clientset *kubernetes.Clientset, log logr.Logger, name, namespace string) error {
+func DeletePVC(ctx context.Context, clientset kubernetes.Interface, log logr.Logger, name, namespace string) error {
 	persistentVolumeClaims := clientset.CoreV1().PersistentVolumeClaims(namespace)
 	if _, err := persistentVolumeClaims.Get(ctx, name, metav1.GetOptions{}); err != nil {
 		if apierr.IsNotFound(err) {
@@ -368,7 +368,7 @@ func DeletePVC(ctx context.Context, clientset *kubernetes.Clientset, log logr.Lo
 // PVs are cluster-scoped and cannot be owned by namespace-scoped resources
 func CreatePV(
 	ctx context.Context,
-	clientset *kubernetes.Clientset,
+	clientset kubernetes.Interface,
 	scheme *runtime.Scheme,
 	log logr.Logger,
 	spec corev1.PersistentVolume,
@@ -403,7 +403,7 @@ func CreatePV(
 // Only one of localModelCache or localModelNamespaceCache should be non-nil
 func CreatePVC(
 	ctx context.Context,
-	clientset *kubernetes.Clientset,
+	clientset kubernetes.Interface,
 	scheme *runtime.Scheme,
 	log logr.Logger,
 	spec corev1.PersistentVolumeClaim,
@@ -540,7 +540,7 @@ func consumerNamespaces(status v1alpha1.LocalModelCacheStatus) map[string]bool {
 func ReconcileForIsvcs(
 	ctx context.Context,
 	c client.Client,
-	clientset *kubernetes.Clientset,
+	clientset kubernetes.Interface,
 	scheme *runtime.Scheme,
 	log logr.Logger,
 	localModelCache *v1alpha1.LocalModelCache,

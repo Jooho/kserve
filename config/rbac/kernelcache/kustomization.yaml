@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- role.yaml
+- token_requester_role.yaml
+- role_binding.yaml
+- namespaced_role.yaml
+- namespaced_role_binding.yaml

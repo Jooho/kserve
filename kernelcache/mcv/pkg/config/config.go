@@ -33,7 +33,6 @@ var (
 )
 
 type MCVConfig struct {
-	MCVNamespace     string
 	EnabledGPU       *bool
 	EnabledStub      *bool
 	KubeConfig       string
@@ -96,7 +95,6 @@ func getMCVConfig(confDir string) MCVConfig {
 		EnabledGPU:       parseBoolEnv(envEnableGPU, true),
 		EnabledBaremetal: parseBoolEnv(envEnableBaremetal, false),
 		EnabledStub:      parseBoolEnv(envEnableSTUB, false),
-		MCVNamespace:     getConfig(envMCVNamespace, defaultNamespace, confDir),
 		KubeConfig:       getConfig(envKubeConfig, defaultKubeConfig, confDir),
 		Timeout:          10, // TODO should add a max timeout check
 	}

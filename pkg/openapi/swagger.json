@@ -4710,6 +4710,183 @@
         }
       }
     },
+    "v1beta1.KernelCacheArtifactCertConfig": {
+      "type": "object",
+      "properties": {
+        "signingProfileRef": {
+          "type": "string"
+        },
+        "subjectRegexp": {
+          "type": "string"
+        },
+        "trustBundle": {
+          "type": "string"
+        },
+        "trustBundleKey": {
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheArtifactSecurityConfig": {
+      "type": "object",
+      "properties": {
+        "cert": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheArtifactCertConfig"
+        },
+        "failurePolicy": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheConfig": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "defaultSidecarInjection",
+        "jobNamespace"
+      ],
+      "properties": {
+        "abandonedCapturePolicy": {
+          "description": "AbandonedCapturePolicy controls generated captures whose producer Pod disappears before completion.",
+          "type": "string"
+        },
+        "artifactSecurity": {
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheArtifactSecurityConfig"
+        },
+        "defaultMountType": {
+          "type": "string"
+        },
+        "defaultNodeGroup": {
+          "description": "DefaultNodeGroup is used when an automatically created KernelCache has no workload override.",
+          "type": "string"
+        },
+        "defaultSidecarInjection": {
+          "type": "boolean",
+          "default": false
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "jobNamespace": {
+          "type": "string",
+          "default": ""
+        },
+        "jobTTLSecondsAfterFinished": {
+          "description": "JobTTLSecondsAfterFinished controls how long completed preparation Jobs are retained.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "mcvCaptureReadinessTimeoutSeconds": {
+          "description": "MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "mcvImage": {
+          "type": "string"
+        },
+        "prefetchImage": {
+          "type": "string"
+        },
+        "reconcileIntervalSeconds": {
+          "description": "ReconcileIntervalSeconds controls KCN status reconciliation. Periodic Node image validation uses the node agent's internal interval.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "registry": {
+          "description": "Registry configures the OCI registry used by capture and prefetch operations.",
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryConfig"
+        }
+      }
+    },
+    "v1beta1.KernelCacheConfigMapKeyRef": {
+      "description": "KernelCacheConfigMapKeyRef identifies a value in a ConfigMap.",
+      "type": "object",
+      "required": [
+        "name",
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "description": "Key is the data key containing the referenced value.",
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "description": "Name is the name of the referenced ConfigMap.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "v1beta1.KernelCacheRegistryAuth": {
+      "description": "KernelCacheRegistryAuth defines how KernelCache obtains registry credentials.",
+      "type": "object",
+      "properties": {
+        "pullRoleRef": {
+          "description": "PullRoleRef identifies the Role or ClusterRole bound to the prefetch ServiceAccount used to pull cache images.",
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryRoleRef"
+        },
+        "pushRoleRef": {
+          "description": "PushRoleRef identifies the Role or ClusterRole bound to the per-capture ServiceAccount used to publish captured images.",
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryRoleRef"
+        },
+        "tokenTTLSeconds": {
+          "description": "TokenTTLSeconds is the lifetime of a token issued through TokenRequest. The default is 600 seconds when serviceAccountToken is selected.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "type": {
+          "description": "Type selects none or serviceAccountToken authentication. The zero value is treated as none.",
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheRegistryConfig": {
+      "description": "KernelCacheRegistryConfig defines the registry endpoint, trust bundle, and authentication used by KernelCache capture and prefetch operations.",
+      "type": "object",
+      "properties": {
+        "auth": {
+          "description": "Auth configures how registry credentials are provisioned.",
+          "default": {},
+          "$ref": "#/definitions/v1beta1.KernelCacheRegistryAuth"
+        },
+        "caConfigMapRef": {
+          "description": "CAConfigMapRef optionally references a ConfigMap key containing the registry CA bundle.",
+          "$ref": "#/definitions/v1beta1.KernelCacheConfigMapKeyRef"
+        },
+        "endpoint": {
+          "description": "Endpoint is the OCI registry host and optional port.",
+          "type": "string"
+        }
+      }
+    },
+    "v1beta1.KernelCacheRegistryRoleRef": {
+      "description": "KernelCacheRegistryRoleRef identifies the Kubernetes Role or ClusterRole used to authorize registry access.",
+      "type": "object",
+      "required": [
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Kind is Role or ClusterRole.",
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "description": "Name is the name of the referenced Role or ClusterRole.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
     "v1beta1.LightGBMSpec": {
       "description": "LightGBMSpec defines arguments for configuring LightGBMSpec model serving.",
       "type": "object",

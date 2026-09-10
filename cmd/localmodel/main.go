@@ -21,11 +21,15 @@ import (
 	"flag"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -33,11 +37,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
+	"github.com/kserve/kserve/pkg/constants"
+	kernelcachecontroller "github.com/kserve/kserve/pkg/controller/v1alpha1/kernelcache"
 	localmodelcontroller "github.com/kserve/kserve/pkg/controller/v1alpha1/localmodel"
 	"github.com/kserve/kserve/pkg/oteljson"
 	kservescheme "github.com/kserve/kserve/pkg/scheme"
+	kernelcachewebhook "github.com/kserve/kserve/pkg/webhook/admission/kernelcache"
 	localmodelwebhook "github.com/kserve/kserve/pkg/webhook/admission/localmodelcache"
 	localmodelnamespacecachewebhook "github.com/kserve/kserve/pkg/webhook/admission/localmodelnamespacecache"
 )
@@ -120,6 +128,17 @@ func main() {
 	// Create a new Cmd to provide shared dependencies and start components
 	setupLog.Info("Setting up manager")
 	mgr, err := manager.New(cfg, manager.Options{
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.ConfigMap{}: {
+					Namespaces: map[string]cache.Config{
+						constants.KServeNamespace: {
+							FieldSelector: fields.OneTermEqualSelector("metadata.name", constants.InferenceServiceConfigMapName),
+						},
+					},
+				},
+			},
+		},
 		Metrics: metricsserver.Options{
 			BindAddress: options.metricsAddr,
 			TLSOpts:     tlsOpts,
@@ -171,6 +190,44 @@ func main() {
 		os.Exit(1)
 	}
 
+	setupLog.Info("Setting up KernelCache registry bootstrap controller")
+	if err = (&kernelcachecontroller.KernelCacheRegistryReconciler{
+		Client: mgr.GetClient(), Clientset: clientSet, Reader: mgr.GetAPIReader(),
+		OperatorNamespace:      constants.KServeNamespace,
+		OperatorServiceAccount: "kserve-localmodel-controller-manager",
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to set up KernelCache registry bootstrap")
+		os.Exit(1)
+	}
+	setupLog.Info("Setting up v1alpha1 KernelCacheCapture controller")
+	if err = (&kernelcachecontroller.KernelCacheCaptureReconciler{
+		Client: mgr.GetClient(),
+		Reader: mgr.GetAPIReader(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "v1alpha1Controllers", "KernelCacheCapture")
+		os.Exit(1)
+	}
+
+	setupLog.Info("Setting up v1alpha1 KernelCache controller")
+	if err = (&kernelcachecontroller.KernelCacheReconciler{
+		Client: mgr.GetClient(),
+		Reader: mgr.GetAPIReader(),
+		Log:    ctrl.Log.WithName("v1alpha1Controllers").WithName("KernelCache"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "v1alpha1Controllers", "KernelCache")
+		os.Exit(1)
+	}
+
+	setupLog.Info("Setting up v1alpha1 KernelCacheNode controller")
+	if err = (&kernelcachecontroller.KernelCacheNodeReconciler{
+		Client: mgr.GetClient(),
+		Reader: mgr.GetAPIReader(),
+		Log:    ctrl.Log.WithName("v1alpha1Controllers").WithName("KernelCacheNode"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "v1alpha1Controllers", "KernelCacheNode")
+		os.Exit(1)
+	}
+
 	// Setup webhook
 	setupLog.Info("setting up webhook server")
 	if err = ctrl.NewWebhookManagedBy(mgr, &v1alpha1.LocalModelCache{}).
@@ -186,6 +243,21 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "LocalModelNamespaceCache")
 		os.Exit(1)
 	}
+
+	setupLog.Info("registering KernelCache pod mutating webhook")
+	mgr.GetWebhookServer().Register("/mutate-kernelcache-pods", &webhook.Admission{
+		Handler: &kernelcachewebhook.PodMutator{
+			Client:    mgr.GetClient(),
+			Reader:    mgr.GetAPIReader(),
+			Clientset: clientSet,
+			Decoder:   admission.NewDecoder(mgr.GetScheme()),
+		},
+	})
+	mgr.GetWebhookServer().Register("/validate-kernelcachecapture-status", &webhook.Admission{
+		Handler: &kernelcachewebhook.CaptureStatusValidator{
+			Decoder: admission.NewDecoder(mgr.GetScheme()),
+		},
+	})
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

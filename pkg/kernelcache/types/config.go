@@ -32,8 +32,8 @@ import (
 type Mode string
 
 const (
-	// ModeDisabled performs no verification or signing.
-	ModeDisabled Mode = "disabled"
+	// ModeNone performs no verification or signing.
+	ModeNone Mode = "none"
 )
 
 // FailurePolicy decides what a consumer does when verification fails. The
@@ -69,11 +69,11 @@ type SecurityConfig struct {
 var ErrUnknownMode = errors.New("unknown security mode")
 
 // Default fills empty fields with safe defaults. An unset mode defaults to
-// disabled so an unconfigured feature performs no verification rather than
+// none so an unconfigured feature performs no verification rather than
 // failing; an unset failure policy defaults to reject.
 func (c *SecurityConfig) Default() {
 	if c.Mode == "" {
-		c.Mode = ModeDisabled
+		c.Mode = ModeNone
 	}
 	if c.FailurePolicy == "" {
 		c.FailurePolicy = FailurePolicyReject
@@ -84,7 +84,7 @@ func (c *SecurityConfig) Default() {
 // own case here (and any mode-specific field checks in its constructor).
 func (c *SecurityConfig) Validate() error {
 	switch c.Mode {
-	case ModeDisabled:
+	case ModeNone:
 	case ModeCert:
 		if err := c.Cert.validate(); err != nil {
 			return err

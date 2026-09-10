@@ -20,7 +20,7 @@ limitations under the License.
 // lives here too. The data contracts (config, request/result types) live in
 // pkg/kernelcache/types so callers can reference them without importing this
 // package and its verification dependencies. A new mode is added as a factory
-// case alongside its implementation; today the disabled no-op and the cert mode
+// case alongside its implementation; today the none no-op and the cert mode
 // (verification and signing) are wired.
 package security
 
@@ -34,7 +34,7 @@ import (
 // NewVerifier builds the Verifier for the configured mode. The config is
 // defaulted and validated first. ctx bounds any construction-time I/O (such as
 // loading a trust bundle); src provides key and trust material to the mode
-// implementations and is unused by the disabled mode.
+// implementations and is unused by the none mode.
 func NewVerifier(ctx context.Context, cfg types.SecurityConfig, src SecretSource) (Verifier, error) {
 	cfg.Default()
 	if err := cfg.Validate(); err != nil {
@@ -50,7 +50,7 @@ func NewVerifier(ctx context.Context, cfg types.SecurityConfig, src SecretSource
 	}
 
 	switch cfg.Mode {
-	case types.ModeDisabled:
+	case types.ModeNone:
 		return noopVerifier{}, nil
 	default:
 		// Unreachable after Validate, kept as a defensive guard.
@@ -78,7 +78,7 @@ func NewSigner(ctx context.Context, cfg types.SecurityConfig, src SecretSource) 
 	}
 
 	switch cfg.Mode {
-	case types.ModeDisabled:
+	case types.ModeNone:
 		return noopSigner{}, nil
 	default:
 		// Unreachable after Validate, kept as a defensive guard.
@@ -114,28 +114,26 @@ func buildCertSigner(ctx context.Context, mode types.Mode, cfg types.CertConfig,
 	return cs, nil
 }
 
-// noopSigner signs nothing. It backs the disabled mode.
+// noopSigner signs nothing. It backs the none mode.
 type noopSigner struct{}
 
 var _ Signer = noopSigner{}
 
-// Sign is a no-op that reports the disabled mode without contacting a registry.
+// Sign is a no-op that reports the none mode without contacting a registry.
 func (noopSigner) Sign(_ context.Context, _ types.SignRequest) (types.SignResult, error) {
-	return types.SignResult{Mode: types.ModeDisabled}, nil
+	return types.SignResult{Mode: types.ModeNone}, nil
 }
 
-// noopVerifier performs no signature check. It backs the disabled mode.
+// noopVerifier performs no signature check. It backs the none mode.
 type noopVerifier struct{}
 
 var _ Verifier = noopVerifier{}
 
-// Verify reports the image as not verified without contacting any registry.
-// Digest resolution for the disabled mode is added together with the shared
-// registry helper used by the real verifiers.
+// Verify reports that verification was skipped without contacting a registry.
 func (noopVerifier) Verify(_ context.Context, _ types.VerifyRequest) (types.VerifyResult, error) {
 	return types.VerifyResult{
-		Mode:     types.ModeDisabled,
+		Mode:     types.ModeNone,
 		Verified: false,
-		Reason:   "verification disabled",
+		Reason:   "verification not configured",
 	}, nil
 }
