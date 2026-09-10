@@ -28,30 +28,30 @@ import (
 // or renamed tag would silently drop config in production; this test fails
 // instead.
 func TestSecurityConfigSchema(t *testing.T) {
-	const raw = `{ "mode": "disabled", "failurePolicy": "reject" }`
+	const raw = `{ "mode": "none", "failurePolicy": "reject" }`
 
 	var got SecurityConfig
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
 
 	want := SecurityConfig{
-		Mode:          ModeDisabled,
+		Mode:          ModeNone,
 		FailurePolicy: FailurePolicyReject,
 	}
 	assert.Equal(t, want, got)
 }
 
 func TestSecurityConfigDefault(t *testing.T) {
-	t.Run("empty defaults to disabled + reject", func(t *testing.T) {
+	t.Run("empty defaults to none + reject", func(t *testing.T) {
 		c := SecurityConfig{}
 		c.Default()
-		assert.Equal(t, ModeDisabled, c.Mode)
+		assert.Equal(t, ModeNone, c.Mode)
 		assert.Equal(t, FailurePolicyReject, c.FailurePolicy)
 	})
 
 	t.Run("set values are preserved", func(t *testing.T) {
-		c := SecurityConfig{Mode: ModeDisabled, FailurePolicy: FailurePolicyWarn}
+		c := SecurityConfig{Mode: ModeNone, FailurePolicy: FailurePolicyWarn}
 		c.Default()
-		assert.Equal(t, ModeDisabled, c.Mode)
+		assert.Equal(t, ModeNone, c.Mode)
 		assert.Equal(t, FailurePolicyWarn, c.FailurePolicy)
 	})
 }
@@ -62,11 +62,11 @@ func TestSecurityConfigValidate(t *testing.T) {
 		cfg     SecurityConfig
 		wantErr bool
 	}{
-		{"disabled reject", SecurityConfig{Mode: ModeDisabled, FailurePolicy: FailurePolicyReject}, false},
-		{"disabled warn", SecurityConfig{Mode: ModeDisabled, FailurePolicy: FailurePolicyWarn}, false},
+		{"none reject", SecurityConfig{Mode: ModeNone, FailurePolicy: FailurePolicyReject}, false},
+		{"none warn", SecurityConfig{Mode: ModeNone, FailurePolicy: FailurePolicyWarn}, false},
 		{"unknown mode", SecurityConfig{Mode: "bogus", FailurePolicy: FailurePolicyReject}, true},
 		{"empty mode", SecurityConfig{Mode: "", FailurePolicy: FailurePolicyReject}, true},
-		{"bad failure policy", SecurityConfig{Mode: ModeDisabled, FailurePolicy: "explode"}, true},
+		{"bad failure policy", SecurityConfig{Mode: ModeNone, FailurePolicy: "explode"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

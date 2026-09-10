@@ -31,7 +31,6 @@ func TestInitialize_Defaults(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, cfg)
 	assert.Equal(t, filepath.Clean(tempDir), cfg.ConfDir)
-	assert.Equal(t, defaultNamespace, cfg.MCV.MCVNamespace)
 	assert.Equal(t, defaultKubeConfig, cfg.MCV.KubeConfig)
 	assert.True(t, *cfg.MCV.EnabledGPU)
 	assert.False(t, *cfg.MCV.EnabledBaremetal)
@@ -40,7 +39,6 @@ func TestInitialize_Defaults(t *testing.T) {
 func TestEnvironmentOverrides(t *testing.T) {
 	t.Setenv("ENABLE_GPU", "false")
 	t.Setenv("ENABLE_BAREMETAL", "true")
-	t.Setenv("MCV_NAMESPACE", "custom-ns")
 	t.Setenv("KUBE_CONFIG", "/path/to/kubeconfig")
 
 	tempDir := t.TempDir()
@@ -50,7 +48,6 @@ func TestEnvironmentOverrides(t *testing.T) {
 
 	assert.False(t, *cfg.MCV.EnabledGPU)
 	assert.True(t, *cfg.MCV.EnabledBaremetal)
-	assert.Equal(t, "custom-ns", cfg.MCV.MCVNamespace)
 	assert.Equal(t, "/path/to/kubeconfig", cfg.MCV.KubeConfig)
 }
 

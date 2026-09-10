@@ -23,7 +23,7 @@ import (
 )
 
 // otherMode stands in for a real (fallible) verification mode. ShouldBlock only
-// special-cases ModeDisabled, so any non-disabled mode exercises the same path.
+// special-cases ModeNone, so any configured mode exercises the same path.
 const otherMode Mode = "othermode"
 
 func TestVerifyResultShouldBlock(t *testing.T) {
@@ -33,7 +33,7 @@ func TestVerifyResultShouldBlock(t *testing.T) {
 		policy FailurePolicy
 		want   bool
 	}{
-		{"disabled never blocks even under reject", VerifyResult{Mode: ModeDisabled, Verified: false}, FailurePolicyReject, false},
+		{"none never blocks even under reject", VerifyResult{Mode: ModeNone, Verified: false}, FailurePolicyReject, false},
 		{"verified never blocks", VerifyResult{Mode: otherMode, Verified: true}, FailurePolicyReject, false},
 		{"unverified blocks under reject", VerifyResult{Mode: otherMode, Verified: false}, FailurePolicyReject, true},
 		{"unverified warns (no block) under warn", VerifyResult{Mode: otherMode, Verified: false}, FailurePolicyWarn, false},

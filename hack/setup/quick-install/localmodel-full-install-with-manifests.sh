@@ -1184,6 +1184,7 @@ main() {
         KSERVE_CRDS="inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io inferencegraphs.serving.kserve.io trainedmodels.serving.kserve.io"
         LLMISVC_CRDS="llminferenceservices.serving.kserve.io llminferenceserviceconfigs.serving.kserve.io"
         LOCALMODEL_CRDS="localmodelcaches.serving.kserve.io localmodelnodegroups.serving.kserve.io localmodelnodes.serving.kserve.io"
+        KERNELCACHE_CRDS="kernelcaches.serving.kserve.io kernelcachecaptures.serving.kserve.io kernelcachenodes.serving.kserve.io kernelcachenodegroups.serving.kserve.io"
         
         # Override KSERVE_VERSION if SET_KSERVE_VERSION is provided
         if [ -n "${SET_KSERVE_VERSION}" ]; then
@@ -1253,8 +1254,10 @@ main() {
         
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                 TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 test_overlay_deployments="kserve-controller-manager kserve-localmodel-controller-manager"
                 if is_positive "${ENABLE_LLMISVC}"; then
                     TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
@@ -1269,9 +1272,11 @@ main() {
         
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
                 TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
                 TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager llmisvc-controller-manager")
             elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
@@ -1298,7 +1303,9 @@ main() {
                 fi
                 if is_positive "${ENABLE_LOCALMODEL}"; then
                     TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                    TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                     TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                    TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                     TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
                 fi
             fi
@@ -1325,7 +1332,9 @@ main() {
         
             if is_positive "${ENABLE_LOCALMODEL}"; then
                 TARGET_CRD_DIRS+=("${TARGET_CONFIG_ROOT_DIR}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${TARGET_CONFIG_ROOT_DIR}/config/crd/full/kernelcache")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 TARGET_OVERLAY_DIRS+=("${LOCALMODEL_CONFIG_DIR}")
                 TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
             fi
@@ -6682,6 +6691,15 @@ kind: ServiceAccount
 metadata:
   labels:
     app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcachenode-agent
+  namespace: kserve
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
     app.kubernetes.io/instance: kserve-localmodel-controller-manager
     app.kubernetes.io/managed-by: kserve-localmodel-controller-manager
     app.kubernetes.io/name: kserve
@@ -6698,6 +6716,211 @@ metadata:
     app.kubernetes.io/name: kserve
   name: kserve-localmodelnode-agent
   namespace: kserve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcache-nodegroup-agent-manager
+  namespace: kserve
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcache-registry-bootstrap
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  verbs:
+  - get
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - kserve-kernelcache-token-requester
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - system:image-builder
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - system:image-puller
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - kernelcachecaptures
+  - kernelcachenodes
+  - kernelcaches
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - kernelcachecaptures/status
+  - kernelcachenodes/status
+  - kernelcaches/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - kernelcachenodegroups
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcache-token-requester
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts/token
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcachenode-agent-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - nodes
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - kernelcachenodegroups
+  - kernelcachenodes
+  - kernelcaches
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - serving.kserve.io
+  resources:
+  - kernelcachenodes/status
+  verbs:
+  - get
+  - patch
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -6888,6 +7111,23 @@ metadata:
   labels:
     app.kubernetes.io/component: localmodel
     app.kubernetes.io/name: kserve
+  name: kserve-kernelcache-nodegroup-agent-manager
+  namespace: kserve
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kserve-kernelcache-nodegroup-agent-manager
+subjects:
+- kind: ServiceAccount
+  name: kserve-localmodel-controller-manager
+  namespace: kserve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
   name: kserve-localmodel-leader-election-rolebinding
   namespace: kserve
 roleRef:
@@ -6897,6 +7137,38 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: kserve-localmodel-controller-manager
+  namespace: kserve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcache-registry-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kserve-kernelcache-registry-bootstrap
+subjects:
+- kind: ServiceAccount
+  name: kserve-localmodel-controller-manager
+  namespace: kserve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kserve-kernelcachenode-agent-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kserve-kernelcachenode-agent-role
+subjects:
+- kind: ServiceAccount
+  name: kserve-kernelcachenode-agent
   namespace: kserve
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -7037,6 +7309,85 @@ metadata:
   labels:
     app.kubernetes.io/component: localmodel
     app.kubernetes.io/name: kserve
+    control-plane: kserve-kernelcachenode-agent
+  name: kserve-kernelcachenode-agent
+  namespace: kserve
+spec:
+  selector:
+    matchLabels:
+      control-plane: kserve-kernelcachenode-agent
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        app.kubernetes.io/name: kserve-kernelcachenode-agent
+        control-plane: kserve-kernelcachenode-agent
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: serving.kserve.io/kernelcache-agent
+                operator: In
+                values:
+                - disabled
+      containers:
+      - command:
+        - /manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        image: kserve/kserve-kernelcachenode-agent:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        name: manager
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 10m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kserve-kernelcachenode-agent
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
     control-plane: kserve-localmodelnode-agent
     controller-tools.k8s.io: "1.0"
   name: kserve-localmodelnode-agent
@@ -7119,6 +7470,77 @@ spec:
     kind: Issuer
     name: selfsigned-issuer
   secretName: localmodel-webhook-server-cert
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: kserve/localmodel-serving-cert
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kernelcache.serving.kserve.io
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: localmodel-webhook-server-service
+      namespace: kserve
+      path: /mutate-kernelcache-pods
+  failurePolicy: Fail
+  matchConditions:
+  - expression: has(object.metadata.labels) && 'serving.kserve.io/inferenceservice'
+      in object.metadata.labels
+    name: inferenceservice-workload
+  name: kernelcache.kserve-webhook-server.pod-mutator
+  namespaceSelector:
+    matchExpressions:
+    - key: control-plane
+      operator: DoesNotExist
+  reinvocationPolicy: IfNeeded
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: kserve/localmodel-serving-cert
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/component: localmodel
+    app.kubernetes.io/name: kserve
+  name: kernelcachecapture.serving.kserve.io
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: localmodel-webhook-server-service
+      namespace: kserve
+      path: /validate-kernelcachecapture-status
+  failurePolicy: Fail
+  name: kernelcachecapture.kserve-webhook-server.status-validator
+  rules:
+  - apiGroups:
+    - serving.kserve.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - UPDATE
+    resources:
+    - kernelcachecaptures/status
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration

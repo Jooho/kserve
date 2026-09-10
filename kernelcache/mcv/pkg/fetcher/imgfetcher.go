@@ -132,7 +132,7 @@ func loadImageFromTarball(path string) (v1.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load image from tarball: %w", err)
 	}
-	logging.Debug("loaded image from tarball!!!!!!!!")
+	logging.Debug("loaded image from tarball")
 	return img, nil
 }
 
@@ -143,7 +143,7 @@ func NewImgFetcher() ImgFetcher {
 // FetchImg pulls the image from the registry and extracts the Triton or vLLM Cache
 func (i *imgFetcher) FetchImg(imgName string) (v1.Image, error) {
 	if i.fetcher == nil {
-		logging.Error("Error with fetcher!!!!!!!!")
+		logging.Error("Error with fetcher")
 		return nil, errors.New("failed to configure fetcher")
 	}
 
@@ -156,7 +156,7 @@ func (i *imgFetcher) FetchImg(imgName string) (v1.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch image: %w", err)
 	}
-	logging.Debug("Img retrieved successfully!!!!!!!!")
+	logging.Debug("Img retrieved successfully")
 
 	digest, err := img.Digest()
 	if err != nil {

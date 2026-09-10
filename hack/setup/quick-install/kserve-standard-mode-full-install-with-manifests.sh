@@ -1184,6 +1184,7 @@ main() {
         KSERVE_CRDS="inferenceservices.serving.kserve.io servingruntimes.serving.kserve.io clusterservingruntimes.serving.kserve.io inferencegraphs.serving.kserve.io trainedmodels.serving.kserve.io"
         LLMISVC_CRDS="llminferenceservices.serving.kserve.io llminferenceserviceconfigs.serving.kserve.io"
         LOCALMODEL_CRDS="localmodelcaches.serving.kserve.io localmodelnodegroups.serving.kserve.io localmodelnodes.serving.kserve.io"
+        KERNELCACHE_CRDS="kernelcaches.serving.kserve.io kernelcachecaptures.serving.kserve.io kernelcachenodes.serving.kserve.io kernelcachenodegroups.serving.kserve.io"
         
         # Override KSERVE_VERSION if SET_KSERVE_VERSION is provided
         if [ -n "${SET_KSERVE_VERSION}" ]; then
@@ -1253,8 +1254,10 @@ main() {
         
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                 TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 test_overlay_deployments="kserve-controller-manager kserve-localmodel-controller-manager"
                 if is_positive "${ENABLE_LLMISVC}"; then
                     TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
@@ -1269,9 +1272,11 @@ main() {
         
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                 TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/llmisvc")
                 TARGET_CRDS_TO_VERIFY+=("${KSERVE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 TARGET_CRDS_TO_VERIFY+=("${LLMISVC_CRDS}")
                 TARGET_DEPLOYMENT_NAMES+=("kserve-controller-manager kserve-localmodel-controller-manager llmisvc-controller-manager")
             elif [ "${KSERVE_OVERLAY_DIR}" == "test-llmisvc" ]; then
@@ -1298,7 +1303,9 @@ main() {
                 fi
                 if is_positive "${ENABLE_LOCALMODEL}"; then
                     TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/localmodel")
+                    TARGET_CRD_DIRS+=("${REPO_ROOT}/config/crd/full/kernelcache")
                     TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                    TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                     TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
                 fi
             fi
@@ -1325,7 +1332,9 @@ main() {
         
             if is_positive "${ENABLE_LOCALMODEL}"; then
                 TARGET_CRD_DIRS+=("${TARGET_CONFIG_ROOT_DIR}/config/crd/full/localmodel")
+                TARGET_CRD_DIRS+=("${TARGET_CONFIG_ROOT_DIR}/config/crd/full/kernelcache")
                 TARGET_CRDS_TO_VERIFY+=("${LOCALMODEL_CRDS}")
+                TARGET_CRDS_TO_VERIFY+=("${KERNELCACHE_CRDS}")
                 TARGET_OVERLAY_DIRS+=("${LOCALMODEL_CONFIG_DIR}")
                 TARGET_DEPLOYMENT_NAMES+=("kserve-localmodel-controller-manager")
             fi
@@ -55812,6 +55821,54 @@ data:
          # This is to disable localmodel pv and pvc management for namespaces without isvcs
          "disableVolumeManagement": false
        }
+
+     # ====================================== KERNELCACHE CONFIGURATION ======================================
+     # Example
+     kernelcache: |-
+       {
+         # enabled controls KernelCache, KernelCacheCapture, and related webhook behavior.
+         "enabled": false,
+         # defaultSidecarInjection controls MCV injection when a workload does not override it.
+         "defaultSidecarInjection": true,
+         # defaultMountType is used when KernelCache does not specify a mount type.
+         "defaultMountType": "oci",
+         # defaultNodeGroup selects the KernelCacheNodeGroup for automatically created KernelCaches.
+         # Set it to an empty value when every workload must select a node group explicitly.
+         "defaultNodeGroup": "",
+         # jobNamespace is the pre-created namespace where kernel cache preparation Jobs are created.
+         "jobNamespace": "kserve-kernelcache-jobs",
+         # mcvImage is the MCV container image used by cache capture and preparation flows.
+         "mcvImage": "quay.io/gkm/mcv:latest",
+         # prefetchImage is the lightweight image used by OCI prefetch Jobs.
+         "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+         # registry defines the default capture registry and its access settings.
+         "registry": {
+           # OpenShift defaults the internal registry endpoint and service CA.
+           # Explicit endpoint and caConfigMapRef values override those defaults.
+           "auth": {
+             "type": "openshift",
+             "openshift": {
+               "tokenTTLSeconds": 600
+             }
+           }
+         },
+         # artifactSecurity controls signing after capture and verification before preparation.
+         # none skips both operations. cert requires cert.signingProfileRef,
+         # cert.trustBundle, and cert.subjectRegexp.
+         "artifactSecurity": {
+           "mode": "none",
+           "failurePolicy": "reject"
+         },
+         # abandonedCapturePolicy controls generated captures whose producer Pod disappears
+         # before completion. retain preserves Failed captures for diagnosis; delete removes them.
+         "abandonedCapturePolicy": "retain",
+         # TTL for preparation Jobs after they finish.
+         "jobTTLSecondsAfterFinished": 600,
+         # Maximum time for the MCV capture sidecar to wait for workload readiness.
+         "mcvCaptureReadinessTimeoutSeconds": 600,
+         # The interval used for node-local cache reconciliation.
+         "reconcileIntervalSeconds": 300
+       }
   agent: |-
     {
         "image" : "kserve/agent:latest",
@@ -55890,6 +55947,32 @@ data:
         "disableIstioVirtualHost": false,
         "disableIngressCreation": false,
         "disableHTTPRouteTimeout": false
+    }
+  kernelcache: |-
+    {
+      "enabled": false,
+      "defaultSidecarInjection": true,
+      "defaultMountType": "oci",
+      "defaultNodeGroup": "",
+      "jobNamespace": "kserve-kernelcache-jobs",
+      "mcvImage": "quay.io/gkm/mcv:latest",
+      "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
+      "registry": {
+        "auth": {
+          "type": "openshift",
+          "openshift": {
+            "tokenTTLSeconds": 600
+          }
+        }
+      },
+      "artifactSecurity": {
+        "mode": "none",
+        "failurePolicy": "reject"
+      },
+      "abandonedCapturePolicy": "retain",
+      "jobTTLSecondsAfterFinished": 600,
+      "mcvCaptureReadinessTimeoutSeconds": 600,
+      "reconcileIntervalSeconds": 300
     }
   localModel: |-
     {

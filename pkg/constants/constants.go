@@ -17,6 +17,7 @@ limitations under the License.
 package constants
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"regexp"
@@ -136,6 +137,8 @@ var (
 	LoggerCredentialPathKey                     = KServeAPIGroupName + "/logger-secret-path"
 	LoggerCredentialFileKey                     = KServeAPIGroupName + "/logger-secret-file"
 	DisableAutoUpdateAnnotationKey              = KServeAPIGroupName + "/disable-auto-update"
+	KernelCacheSidecarInjectionAnnotationKey    = KServeAPIGroupName + "/kernelcache-sidecar-injection"
+	KernelCacheNodeGroupAnnotationKey           = KServeAPIGroupName + "/kernelcache-nodegroup"
 	ModelFormatAnnotationKey                    = "modelFormat"
 	InferencePoolMigratedAnnotationKey          = KServeAPIGroupName + "/inferencepool-migrated"
 	// Managed DRA Experimental Annotations
@@ -178,6 +181,10 @@ var (
 	LocalModelNamespaceLabel                         = InferenceServiceInternalAnnotationsPrefix + "/localmodel-namespace"
 	LocalModelSourceUriAnnotationKey                 = InferenceServiceInternalAnnotationsPrefix + "/localmodel-sourceuri"
 	LocalModelPVCNameAnnotationKey                   = InferenceServiceInternalAnnotationsPrefix + "/localmodel-pvc-name"
+	KernelCacheLabel                                 = InferenceServiceInternalAnnotationsPrefix + "/kernelcache"
+	KernelCacheUsageAnnotationKey                    = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-usage"
+	KernelCacheCaptureGeneratedLabelKey              = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-capture-generated"
+	KernelCacheNodeGroupSelectionSourceAnnotationKey = InferenceServiceInternalAnnotationsPrefix + "/kernelcache-nodegroup-selection-source"
 	ConfidentialEnabledAnnotationKey                 = InferenceServiceInternalAnnotationsPrefix + "/confidential-enabled"
 	ConfidentialResourceIdAnnotationKey              = InferenceServiceInternalAnnotationsPrefix + "/confidential-resource-id"
 	LocalModelLoRAAnnotationKey                      = InferenceServiceInternalAnnotationsPrefix + "/localmodel-lora"
@@ -515,8 +522,9 @@ const (
 
 // InferenceService container names
 const (
-	InferenceServiceContainerName   = "kserve-container"
-	StorageInitializerContainerName = "storage-initializer"
+	InferenceServiceContainerName    = "kserve-container"
+	LLMInferenceServiceContainerName = "main"
+	StorageInitializerContainerName  = "storage-initializer"
 
 	// TransformerContainerName transformer container name in collocation
 	TransformerContainerName = "transformer-container"
@@ -858,6 +866,45 @@ func CanaryServiceName(name string, component InferenceServiceComponent) string 
 
 func ModelConfigName(inferenceserviceName string, shardId int) string {
 	return fmt.Sprintf("modelconfig-%s-%d", inferenceserviceName, shardId)
+}
+
+func KernelCacheCaptureName(inferenceserviceName string) string {
+	return inferenceserviceName + "-kernelcache-capture"
+}
+
+// KernelCacheCaptureRevisionName returns the deterministic generated capture
+// name for a workload revision. The revision identifier is retained in full so
+// Pods from the same ReplicaSet resolve the same KCC. Long source names are
+// shortened with a digest to keep the result within the Kubernetes name limit.
+func KernelCacheCaptureRevisionName(sourceName, revisionID string) string {
+	const marker = "-kcc-"
+	const maxNameLength = 63
+
+	if sourceName == "" || revisionID == "" {
+		return ""
+	}
+	suffix := marker + revisionID
+	available := maxNameLength - len(suffix)
+	if available <= 0 {
+		return ""
+	}
+	if len(sourceName) <= available {
+		return sourceName + suffix
+	}
+
+	// Preserve a stable portion of the source name and add a digest so two
+	// long names with the same prefix cannot silently collide.
+	digest := sha256.Sum256([]byte(sourceName))
+	digestText := fmt.Sprintf("-%x", digest[:4])
+	keep := available - len(digestText)
+	if keep < 1 {
+		return ""
+	}
+	return strings.TrimRight(sourceName[:keep], "-.") + digestText + suffix
+}
+
+func KernelCacheTargetImage(registry, namespace, inferenceserviceName, captureID string) string {
+	return fmt.Sprintf("%s/%s/kernel-cache-%s:%s", strings.TrimSuffix(registry, "/"), namespace, inferenceserviceName, captureID)
 }
 
 func InferenceServicePrefix(name string) string {

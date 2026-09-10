@@ -232,7 +232,7 @@ class CaptureEntrypointTest(unittest.TestCase):
 
         reporter_request.assert_called_once_with({"state": "Failed"})
 
-    def test_capture_session_superseded_detection_requires_matching_status(self):
+    def test_capture_session_superseded_detection_requires_claim_marker(self):
         cases = (
             (
                 {
@@ -240,7 +240,7 @@ class CaptureEntrypointTest(unittest.TestCase):
                     "status": "Failure",
                     "reason": "Invalid",
                     "code": 422,
-                    "message": "testing value /status/activeSession/id failed: test failed",
+                    "message": "runtimeResult.sourcePodName is already claimed",
                 },
                 True,
             ),
@@ -250,7 +250,7 @@ class CaptureEntrypointTest(unittest.TestCase):
                     "status": "Failure",
                     "reason": "Invalid",
                     "code": 422,
-                    "message": "testing value /status/activeSession/podName failed: test failed",
+                    "message": "reporter identity is not authorized for this KernelCacheCapture",
                 },
                 True,
             ),

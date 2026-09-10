@@ -21,9 +21,7 @@ const (
 	envEnableBaremetal = "ENABLE_BAREMETAL"
 	envEnableSTUB      = "ENABLE_STUB"
 	envKubeConfig      = "KUBE_CONFIG"
-	envMCVNamespace    = "MCV_NAMESPACE"
 
-	defaultNamespace  = "mcv"
 	defaultKubeConfig = ""
 	defaultConfDir    = "/tmp/mcv/"
 	defaultConfFile   = "mcv.config"
