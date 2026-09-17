@@ -48,10 +48,9 @@ func TestCompleteCaptureStatusIncludesPodRuntimeFactors(t *testing.T) {
 
 	modelHash := "sha256:" + strings.Repeat("a", 64)
 	runtimeInfo, err := json.Marshal(map[string]string{
-		runtimeInfoModelURIHashKey:       modelHash,
-		runtimeInfoCommandHashKey:        cacheidentity.HashStrings([]string{"vllm", "--dtype", "bfloat16"}),
-		runtimeInfoArgsHashKey:           cacheidentity.HashStrings([]string{"--max-model-len=4096"}),
-		runtimeInfoTensorParallelSizeKey: "2",
+		runtimeInfoModelURIHashKey: modelHash,
+		runtimeInfoCommandHashKey:  cacheidentity.HashStrings([]string{"vllm", "--dtype", "bfloat16"}),
+		runtimeInfoArgsHashKey:     cacheidentity.HashStrings([]string{"--max-model-len=4096"}),
 	})
 	require.NoError(t, err)
 

@@ -56213,6 +56213,8 @@ data:
          "abandonedCapturePolicy": "retain",
          # TTL for preparation Jobs after they finish.
          "jobTTLSecondsAfterFinished": 3600,
+         # Maximum time for the MCV capture sidecar to wait for workload readiness.
+         "mcvCaptureReadinessTimeoutSeconds": 600,
          # The interval used for node-local cache reconciliation.
          "reconcileIntervalSeconds": 60
        }
@@ -56318,6 +56320,7 @@ data:
       },
       "abandonedCapturePolicy": "retain",
       "jobTTLSecondsAfterFinished": 3600,
+      "mcvCaptureReadinessTimeoutSeconds": 600,
       "reconcileIntervalSeconds": 60
     }
   localModel: |-

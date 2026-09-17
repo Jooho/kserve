@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/stretchr/testify/require"
@@ -37,6 +39,9 @@ import (
 	cachesnapshot "github.com/kserve/kserve/kernelcache/mcv/pkg/snapshot"
 )
 
+const testCacheHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+// Rejects symlinks, FIFOs, and OCI whiteouts during cache snapshotting.
 func TestOCISnapshotRejectsUnsafeEntries(t *testing.T) {
 	for _, kind := range []string{"symlink", "fifo", "whiteout"} {
 		t.Run(kind, func(t *testing.T) {
@@ -56,7 +61,8 @@ func TestOCISnapshotRejectsUnsafeEntries(t *testing.T) {
 	}
 }
 
-func TestOCISnapshotAllowsOnlyMountedCacheLinks(t *testing.T) {
+// Resolves cache links only when their targets stay within the configured root.
+func TestOCISnapshotCacheLinks(t *testing.T) {
 	allowed := t.TempDir()
 	t.Setenv("MCV_CACHE_LINK_ROOT", allowed)
 	cacheFile := filepath.Join(allowed, "kernel.bin")
@@ -74,7 +80,8 @@ func TestOCISnapshotAllowsOnlyMountedCacheLinks(t *testing.T) {
 	require.Error(t, snapshotOCICache(context.Background(), source, filepath.Join(t.TempDir(), "snapshot")))
 }
 
-func TestOCISnapshotIncludesOnlySelectedDirectoryTrees(t *testing.T) {
+// Includes the selected directory tree and excludes all other cache content.
+func TestOCISnapshotSelectedTrees(t *testing.T) {
 	source := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(source, "torch_compile_cache", "existing"), 0o700))
 	require.NoError(t, os.MkdirAll(filepath.Join(source, "torch_compile_cache", "new-hash", "nested"), 0o700))
@@ -96,7 +103,8 @@ func TestOCISnapshotIncludesOnlySelectedDirectoryTrees(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(destination, "unrelated", "other.bin"))
 }
 
-func TestOCISnapshotExcludesDirectoryTrees(t *testing.T) {
+// Excludes configured directory trees and their contents from the snapshot.
+func TestOCISnapshotExcludedTrees(t *testing.T) {
 	source := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(source, "included"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "included", "kernel.bin"), []byte("included"), 0o600))
@@ -114,13 +122,13 @@ func TestOCISnapshotExcludesDirectoryTrees(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(destination, "dummy_cache"))
 }
 
-func TestCreateDeltaImageSkipsUnchangedCache(t *testing.T) {
+// Returns Unchanged when the current cache matches the saved snapshot.
+func TestCreateDeltaImageUnchanged(t *testing.T) {
 	cacheDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(cacheDir, "torch_compile_cache", "existing"), 0o700))
 	document, err := cachesnapshot.Capture([]string{cacheDir})
 	require.NoError(t, err)
-	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
-	require.NoError(t, cachesnapshot.Write(snapshotPath, document))
+	snapshotPath := writeSnapshotFile(t, document)
 
 	result, err := (&ociBuilder{}).CreateDeltaImageWithResult("example.com/cache:test", cacheDir, snapshotPath)
 	require.NoError(t, err)
@@ -128,7 +136,73 @@ func TestCreateDeltaImageSkipsUnchangedCache(t *testing.T) {
 	require.Empty(t, result.ImageReference)
 }
 
-func TestCreateDeltaImageSkipsOnlyExcludedDirectories(t *testing.T) {
+// Packages a changed directory while excluding unrelated directories.
+func TestCreateDeltaImageModifiedFile(t *testing.T) {
+	ctx := context.Background()
+	cacheDir := t.TempDir()
+	directory := filepath.Join(cacheDir, "torch_compile_cache", "torch_aot_compile", testCacheHash, "rank_0_0")
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+	file := filepath.Join(directory, "model")
+	require.NoError(t, os.WriteFile(file, []byte("before"), 0o600))
+	unrelated := filepath.Join(cacheDir, "torch_compile_cache", "unrelated", "other.bin")
+	require.NoError(t, os.MkdirAll(filepath.Dir(unrelated), 0o700))
+	require.NoError(t, os.WriteFile(unrelated, []byte("other"), 0o600))
+	document, err := cachesnapshot.Capture([]string{cacheDir})
+	require.NoError(t, err)
+	snapshotPath := writeSnapshotFile(t, document)
+	require.NoError(t, os.WriteFile(file, []byte("after"), 0o600))
+
+	imageName := newTestRegistry(t) + "/cache:modified"
+	result, err := (&ociBuilder{}).CreateDeltaImageWithResult(imageName, cacheDir, snapshotPath)
+	require.NoError(t, err)
+	require.Equal(t, CreateStateSucceeded, result.State)
+
+	ref, err := name.NewDigest(result.ImageReference, name.Insecure)
+	require.NoError(t, err)
+	image, err := remote.Image(ref, remote.WithContext(ctx))
+	require.NoError(t, err)
+	files := readLayerFiles(t, image)
+	require.Equal(t, "after", files["io.vllm.cache/torch_compile_cache/torch_aot_compile/"+testCacheHash+"/rank_0_0/model"])
+	require.NotContains(t, files, "io.vllm.cache/torch_compile_cache/unrelated/other.bin")
+}
+
+// Creates a full image when a file deletion cannot be represented by a delta layer.
+func TestCreateDeltaImageDeletedFile(t *testing.T) {
+	ctx := context.Background()
+	cacheDir := t.TempDir()
+	directory := filepath.Join(cacheDir, "torch_compile_cache", "torch_aot_compile", testCacheHash, "rank_0_0")
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+	deleted := filepath.Join(directory, "deleted.bin")
+	kept := filepath.Join(directory, "kept.bin")
+	require.NoError(t, os.WriteFile(deleted, []byte("deleted"), 0o600))
+	require.NoError(t, os.WriteFile(kept, []byte("kept"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "model"), []byte("model"), 0o600))
+	unrelated := filepath.Join(cacheDir, "torch_compile_cache", "unrelated", "other.bin")
+	require.NoError(t, os.MkdirAll(filepath.Dir(unrelated), 0o700))
+	require.NoError(t, os.WriteFile(unrelated, []byte("other"), 0o600))
+	document, err := cachesnapshot.Capture([]string{cacheDir})
+	require.NoError(t, err)
+	snapshotPath := writeSnapshotFile(t, document)
+	require.NoError(t, os.Remove(deleted))
+
+	imageName := newTestRegistry(t) + "/cache:deleted"
+	result, err := (&ociBuilder{}).CreateDeltaImageWithResult(imageName, cacheDir, snapshotPath)
+	require.NoError(t, err)
+	require.Equal(t, CreateStateSucceeded, result.State)
+
+	ref, err := name.NewDigest(result.ImageReference, name.Insecure)
+	require.NoError(t, err)
+	image, err := remote.Image(ref, remote.WithContext(ctx))
+	require.NoError(t, err)
+	files := readLayerFiles(t, image)
+	require.Equal(t, "kept", files["io.vllm.cache/torch_compile_cache/torch_aot_compile/"+testCacheHash+"/rank_0_0/kept.bin"])
+	_, exists := files["io.vllm.cache/torch_compile_cache/torch_aot_compile/"+testCacheHash+"/rank_0_0/deleted.bin"]
+	require.False(t, exists)
+	require.Equal(t, "other", files["io.vllm.cache/torch_compile_cache/unrelated/other.bin"])
+}
+
+// Returns Unchanged when changes occur only under an excluded directory.
+func TestCreateDeltaImageExcludedChange(t *testing.T) {
 	cacheDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(cacheDir, "torch_compile_cache", "existing"), 0o700))
 	document, err := cachesnapshot.CaptureRoots([]cachesnapshot.RootOptions{{
@@ -136,8 +210,7 @@ func TestCreateDeltaImageSkipsOnlyExcludedDirectories(t *testing.T) {
 		ExcludedDirectories: []string{"dummy_cache"},
 	}})
 	require.NoError(t, err)
-	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
-	require.NoError(t, cachesnapshot.Write(snapshotPath, document))
+	snapshotPath := writeSnapshotFile(t, document)
 	require.NoError(t, os.MkdirAll(filepath.Join(cacheDir, "dummy_cache", "nested"), 0o700))
 
 	result, err := (&ociBuilder{}).CreateDeltaImageWithResult("example.com/cache:test", cacheDir, snapshotPath)
@@ -146,15 +219,15 @@ func TestCreateDeltaImageSkipsOnlyExcludedDirectories(t *testing.T) {
 	require.Empty(t, result.ImageReference)
 }
 
-func TestCreateDeltaImageSkipsInitialExcludedOnlyCache(t *testing.T) {
+// Returns Unchanged when an initial cache contains only an excluded directory.
+func TestCreateDeltaImageExcludedOnly(t *testing.T) {
 	cacheDir := t.TempDir()
 	document, err := cachesnapshot.CaptureRoots([]cachesnapshot.RootOptions{{
 		Source:              cacheDir,
 		ExcludedDirectories: []string{"dummy_cache"},
 	}})
 	require.NoError(t, err)
-	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
-	require.NoError(t, cachesnapshot.Write(snapshotPath, document))
+	snapshotPath := writeSnapshotFile(t, document)
 	require.NoError(t, os.MkdirAll(filepath.Join(cacheDir, "dummy_cache", "nested"), 0o700))
 
 	result, err := (&ociBuilder{}).CreateDeltaImageWithResult("example.com/cache:test", cacheDir, snapshotPath)
@@ -163,21 +236,23 @@ func TestCreateDeltaImageSkipsInitialExcludedOnlyCache(t *testing.T) {
 	require.Empty(t, result.ImageReference)
 }
 
-func TestCreateDeltaImageRequiresSnapshot(t *testing.T) {
+// Returns an error when the requested snapshot file is missing.
+func TestCreateDeltaImageMissingSnapshot(t *testing.T) {
 	_, err := (&ociBuilder{}).CreateDeltaImageWithResult(
 		"example.com/cache:test", t.TempDir(), filepath.Join(t.TempDir(), "missing.json"),
 	)
 	require.ErrorContains(t, err, "read delta snapshot")
 }
 
-func TestSnapshotHasDirectories(t *testing.T) {
+// Reports whether a snapshot contains directories or regular files.
+func TestSnapshotContent(t *testing.T) {
 	tests := []struct {
 		name     string
 		document *cachesnapshot.Document
 		expected bool
 	}{
 		{
-			name: "empty snapshot is an initial capture",
+			name: "empty snapshot has no content",
 			document: &cachesnapshot.Document{
 				Version: cachesnapshot.Version,
 				Roots:   []cachesnapshot.Root{{Source: "/tmp/cache"}},
@@ -185,7 +260,7 @@ func TestSnapshotHasDirectories(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "snapshot with directories is eligible for delta capture",
+			name: "snapshot with directories has content",
 			document: &cachesnapshot.Document{
 				Version: cachesnapshot.Version,
 				Roots: []cachesnapshot.Root{{
@@ -195,16 +270,28 @@ func TestSnapshotHasDirectories(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			name: "snapshot with files has content",
+			document: &cachesnapshot.Document{
+				Version: cachesnapshot.Version,
+				Roots: []cachesnapshot.Root{{
+					Source: "/tmp/cache",
+					Files:  []cachesnapshot.File{{Path: "cache.bin", Size: 1, Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+				}},
+			},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.expected, snapshotHasDirectories(tt.document))
+			require.Equal(t, tt.expected, snapshotHasContent(tt.document))
 		})
 	}
 }
 
-func TestOCIPackageRegistryRoundTrip(t *testing.T) {
+// Preserves OCI metadata and layer contents through a registry round trip.
+func TestPackageOCIImageRegistry(t *testing.T) {
 	ctx := context.Background()
 	source := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(source, "kernel.bin"), []byte("compiled-cache"), 0o600))
@@ -224,9 +311,7 @@ func TestOCIPackageRegistryRoundTrip(t *testing.T) {
 	digest, err := img.Digest()
 	require.NoError(t, err)
 
-	server := httptest.NewServer(registry.New())
-	defer server.Close()
-	ref, err := name.NewTag(strings.TrimPrefix(server.URL, "http://")+"/cache:test", name.Insecure)
+	ref, err := name.NewTag(newTestRegistry(t)+"/cache:test", name.Insecure)
 	require.NoError(t, err)
 	require.NoError(t, remote.Write(ref, img, remote.WithContext(ctx)))
 	actual, err := remote.Image(ref, remote.WithContext(ctx))
@@ -271,4 +356,48 @@ func TestOCIPackageRegistryRoundTrip(t *testing.T) {
 		"io.vllm.cache/kernel.bin":       "compiled-cache",
 		"io.vllm.manifest/manifest.json": `{"vllm":[]}`,
 	}, files)
+}
+
+func writeSnapshotFile(t *testing.T, document *cachesnapshot.Document) string {
+	t.Helper()
+	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
+	require.NoError(t, cachesnapshot.Write(snapshotPath, document))
+	return snapshotPath
+}
+
+func newTestRegistry(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewUnstartedServer(registry.New())
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	server.Listener = listener
+	server.Start()
+	t.Cleanup(server.Close)
+	return strings.TrimPrefix(server.URL, "http://")
+}
+
+func readLayerFiles(t *testing.T, image v1.Image) map[string]string {
+	t.Helper()
+	layers, err := image.Layers()
+	require.NoError(t, err)
+	require.Len(t, layers, 1)
+	reader, err := layers[0].Uncompressed()
+	require.NoError(t, err)
+	defer reader.Close()
+	tr := tar.NewReader(reader)
+	files := map[string]string{}
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if header.Typeflag == tar.TypeDir {
+			continue
+		}
+		content, err := io.ReadAll(tr)
+		require.NoError(t, err)
+		files[header.Name] = string(content)
+	}
+	return files
 }

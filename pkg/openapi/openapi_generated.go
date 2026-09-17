@@ -8694,6 +8694,13 @@ func schema_pkg_apis_serving_v1beta1_KernelCacheConfig(ref common.ReferenceCallb
 							Format: "",
 						},
 					},
+					"mcvCaptureReadinessTimeoutSeconds": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
 					"prefetchImage": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"string"},

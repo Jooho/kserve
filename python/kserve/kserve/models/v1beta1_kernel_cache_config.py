@@ -55,6 +55,7 @@ class V1beta1KernelCacheConfig(object):
         'enabled': 'bool',
         'job_namespace': 'str',
         'job_ttl_seconds_after_finished': 'int',
+        'mcv_capture_readiness_timeout_seconds': 'int',
         'mcv_image': 'str',
         'prefetch_image': 'str',
         'reconcile_interval_seconds': 'int',
@@ -70,13 +71,14 @@ class V1beta1KernelCacheConfig(object):
         'enabled': 'enabled',
         'job_namespace': 'jobNamespace',
         'job_ttl_seconds_after_finished': 'jobTTLSecondsAfterFinished',
+        'mcv_capture_readiness_timeout_seconds': 'mcvCaptureReadinessTimeoutSeconds',
         'mcv_image': 'mcvImage',
         'prefetch_image': 'prefetchImage',
         'reconcile_interval_seconds': 'reconcileIntervalSeconds',
         'registry': 'registry'
     }
 
-    def __init__(self, abandoned_capture_policy=None, artifact_security=None, default_mount_type=None, default_node_group=None, default_sidecar_injection=False, enabled=False, job_namespace='', job_ttl_seconds_after_finished=None, mcv_image=None, prefetch_image=None, reconcile_interval_seconds=None, registry=None, local_vars_configuration=None):  # noqa: E501
+    def __init__(self, abandoned_capture_policy=None, artifact_security=None, default_mount_type=None, default_node_group=None, default_sidecar_injection=False, enabled=False, job_namespace='', job_ttl_seconds_after_finished=None, mcv_capture_readiness_timeout_seconds=None, mcv_image=None, prefetch_image=None, reconcile_interval_seconds=None, registry=None, local_vars_configuration=None):  # noqa: E501
         """V1beta1KernelCacheConfig - a model defined in OpenAPI"""  # noqa: E501
         if local_vars_configuration is None:
             local_vars_configuration = Configuration()
@@ -90,6 +92,7 @@ class V1beta1KernelCacheConfig(object):
         self._enabled = None
         self._job_namespace = None
         self._job_ttl_seconds_after_finished = None
+        self._mcv_capture_readiness_timeout_seconds = None
         self._mcv_image = None
         self._prefetch_image = None
         self._reconcile_interval_seconds = None
@@ -109,6 +112,8 @@ class V1beta1KernelCacheConfig(object):
         self.job_namespace = job_namespace
         if job_ttl_seconds_after_finished is not None:
             self.job_ttl_seconds_after_finished = job_ttl_seconds_after_finished
+        if mcv_capture_readiness_timeout_seconds is not None:
+            self.mcv_capture_readiness_timeout_seconds = mcv_capture_readiness_timeout_seconds
         if mcv_image is not None:
             self.mcv_image = mcv_image
         if prefetch_image is not None:
@@ -295,6 +300,29 @@ class V1beta1KernelCacheConfig(object):
         """
 
         self._job_ttl_seconds_after_finished = job_ttl_seconds_after_finished
+
+    @property
+    def mcv_capture_readiness_timeout_seconds(self):
+        """Gets the mcv_capture_readiness_timeout_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
+
+        MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.  # noqa: E501
+
+        :return: The mcv_capture_readiness_timeout_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
+        :rtype: int
+        """
+        return self._mcv_capture_readiness_timeout_seconds
+
+    @mcv_capture_readiness_timeout_seconds.setter
+    def mcv_capture_readiness_timeout_seconds(self, mcv_capture_readiness_timeout_seconds):
+        """Sets the mcv_capture_readiness_timeout_seconds of this V1beta1KernelCacheConfig.
+
+        MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.  # noqa: E501
+
+        :param mcv_capture_readiness_timeout_seconds: The mcv_capture_readiness_timeout_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
+        :type: int
+        """
+
+        self._mcv_capture_readiness_timeout_seconds = mcv_capture_readiness_timeout_seconds
 
     @property
     def mcv_image(self):

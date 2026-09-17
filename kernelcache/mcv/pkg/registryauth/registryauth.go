@@ -74,8 +74,8 @@ func RemoteOptions(ctx context.Context, targetRegistry string) ([]remote.Option,
 			return nil, fmt.Errorf("read registry access: %w", err)
 		}
 		var access publishingCredential
-		if json.Unmarshal(data, &access) != nil {
-			return nil, errors.New("invalid registry access JSON")
+		if err := json.Unmarshal(data, &access); err != nil {
+			return nil, fmt.Errorf("invalid registry access JSON: %w", err)
 		}
 		if access.Token == "" || access.Username == "" || !access.ExpiresAt.After(time.Now()) {
 			return nil, errors.New("registry access is missing or expired")
@@ -113,7 +113,7 @@ func RemoteOptions(ctx context.Context, targetRegistry string) ([]remote.Option,
 func ValidateTokenScope(targetRegistry string) error {
 	configuredRegistry := strings.TrimSpace(os.Getenv(tokenRegistryEnv))
 	if configuredRegistry == "" {
-		return errors.New("MCV_REGISTRY_TOKEN_REGISTRY is required when MCV_REGISTRY_TOKEN_FILE is set")
+		return errors.New("MCV_REGISTRY_TOKEN_REGISTRY is required when registry credentials are configured")
 	}
 
 	allowed, err := name.NewRegistry(configuredRegistry, name.StrictValidation)
@@ -147,7 +147,7 @@ func registryTransport(caFile string) (http.RoundTripper, error) {
 		return nil, fmt.Errorf("registry CA file contains no valid certificates: %s", caFile)
 	}
 
-	base, ok := http.DefaultTransport.(*http.Transport)
+	base, ok := remote.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, errors.New("unsupported default HTTP transport")
 	}

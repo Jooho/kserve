@@ -21,6 +21,21 @@ The cache already contains all necessary GPU information:
 - `VLLM_PAGED_ATTN_ARCH` (sm_75, gfx1100, etc.)
 - `VLLM_MAIN_CUDA_VERSION` / `ROCM_VERSION`
 
+### Skip preflight checks during extraction
+
+Use `--skip-precheck` when the extraction environment should keep normal GPU
+behavior but skip GPU compatibility checks for one invocation:
+
+```bash
+mcv --extract \
+  --image quay.io/myorg/cache:v1 \
+  --dir /path/to/cache \
+  --skip-precheck
+```
+
+`--skip-precheck` is different from `--no-gpu`: it does not disable GPU
+detection. It only skips the compatibility preflight for extraction.
+
 ## Container Images
 
 ### No-GPU Image (Recommended for --no-gpu)

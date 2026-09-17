@@ -180,11 +180,12 @@ type LocalModelConfig struct {
 }
 
 const (
-	DefaultKernelCacheMCVImage                  = "quay.io/gkm/mcv:latest"
-	DefaultKernelCachePrefetchImage             = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
-	DefaultKernelCacheOpenShiftRegistryEndpoint = "image-registry.openshift-image-registry.svc:5000"
-	DefaultKernelCacheOpenShiftCAConfigMapName  = "openshift-service-ca.crt"
-	DefaultKernelCacheOpenShiftCAConfigMapKey   = "service-ca.crt"
+	DefaultKernelCacheMCVImage                                = "quay.io/gkm/mcv:latest"
+	DefaultKernelCachePrefetchImage                           = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
+	DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds int64 = 600
+	DefaultKernelCacheOpenShiftRegistryEndpoint               = "image-registry.openshift-image-registry.svc:5000"
+	DefaultKernelCacheOpenShiftCAConfigMapName                = "openshift-service-ca.crt"
+	DefaultKernelCacheOpenShiftCAConfigMapKey                 = "service-ca.crt"
 )
 
 // +kubebuilder:object:generate=false
@@ -193,14 +194,16 @@ type KernelCacheConfig struct {
 	DefaultSidecarInjection bool   `json:"defaultSidecarInjection"`
 	DefaultMountType        string `json:"defaultMountType,omitempty"`
 	// DefaultNodeGroup is used when an automatically created KernelCache has no workload override.
-	DefaultNodeGroup           string                            `json:"defaultNodeGroup,omitempty"`
-	JobNamespace               string                            `json:"jobNamespace"`
-	MCVImage                   string                            `json:"mcvImage,omitempty"`
-	PrefetchImage              string                            `json:"prefetchImage,omitempty"`
-	Registry                   KernelCacheRegistryConfig         `json:"registry,omitempty"`
-	ArtifactSecurity           KernelCacheArtifactSecurityConfig `json:"artifactSecurity,omitempty"`
-	JobTTLSecondsAfterFinished *int32                            `json:"jobTTLSecondsAfterFinished,omitempty"`
-	ReconcileIntervalSeconds   *int64                            `json:"reconcileIntervalSeconds,omitempty"`
+	DefaultNodeGroup string `json:"defaultNodeGroup,omitempty"`
+	JobNamespace     string `json:"jobNamespace"`
+	MCVImage         string `json:"mcvImage,omitempty"`
+	// MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness.
+	MCVCaptureReadinessTimeoutSeconds int64                             `json:"mcvCaptureReadinessTimeoutSeconds,omitempty"`
+	PrefetchImage                     string                            `json:"prefetchImage,omitempty"`
+	Registry                          KernelCacheRegistryConfig         `json:"registry,omitempty"`
+	ArtifactSecurity                  KernelCacheArtifactSecurityConfig `json:"artifactSecurity,omitempty"`
+	JobTTLSecondsAfterFinished        *int32                            `json:"jobTTLSecondsAfterFinished,omitempty"`
+	ReconcileIntervalSeconds          *int64                            `json:"reconcileIntervalSeconds,omitempty"`
 	// AbandonedCapturePolicy controls generated captures whose producer Pod disappears before completion.
 	AbandonedCapturePolicy string `json:"abandonedCapturePolicy,omitempty"`
 	// CachePaths is resolved for each Pod and is not read from the ConfigMap.
@@ -539,9 +542,10 @@ func NewLocalModelConfig(isvcConfigMap *corev1.ConfigMap) (*LocalModelConfig, er
 
 func NewKernelCacheConfig(isvcConfigMap *corev1.ConfigMap) (*KernelCacheConfig, error) {
 	kernelCacheConfig := &KernelCacheConfig{
-		DefaultSidecarInjection: true,
-		MCVImage:                DefaultKernelCacheMCVImage,
-		PrefetchImage:           DefaultKernelCachePrefetchImage,
+		DefaultSidecarInjection:           true,
+		MCVImage:                          DefaultKernelCacheMCVImage,
+		MCVCaptureReadinessTimeoutSeconds: DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds,
+		PrefetchImage:                     DefaultKernelCachePrefetchImage,
 		ArtifactSecurity: KernelCacheArtifactSecurityConfig{
 			Mode:          string(kernelcachetypes.ModeNone),
 			FailurePolicy: string(kernelcachetypes.FailurePolicyReject),
@@ -579,6 +583,9 @@ func NewKernelCacheConfig(isvcConfigMap *corev1.ConfigMap) (*KernelCacheConfig, 
 	}
 	if kernelCacheConfig.AbandonedCapturePolicy != "retain" && kernelCacheConfig.AbandonedCapturePolicy != "delete" {
 		return nil, errors.New("kernelcache.abandonedCapturePolicy must be retain or delete")
+	}
+	if kernelCacheConfig.MCVCaptureReadinessTimeoutSeconds <= 0 {
+		return nil, errors.New("kernelcache.mcvCaptureReadinessTimeoutSeconds must be greater than zero")
 	}
 	if kernelCacheConfig.Registry.Auth.Type == "openshift" {
 		if kernelCacheConfig.Registry.Endpoint == "" {

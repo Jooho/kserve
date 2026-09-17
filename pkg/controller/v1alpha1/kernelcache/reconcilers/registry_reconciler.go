@@ -41,6 +41,7 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha2"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
+	"github.com/kserve/kserve/pkg/kernelcache/captureconfig"
 	"github.com/kserve/kserve/pkg/kernelcache/registryauth"
 	"github.com/kserve/kserve/pkg/kernelcache/reporter"
 )
@@ -188,25 +189,14 @@ func (r *KernelCacheRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 func (r *KernelCacheRegistryReconciler) ensureCaptureForPod(ctx context.Context, pod *corev1.Pod, cfg *v1beta1.KernelCacheConfig) (bool, error) {
-	var name, targetImage, cachePathsJSON string
-	for _, container := range pod.Spec.Containers {
-		if container.Name != "mcv" {
-			continue
-		}
-		for _, env := range container.Env {
-			switch env.Name {
-			case "MCV_CAPTURE_NAME":
-				name = env.Value
-			case "MCV_TARGET_IMAGE":
-				targetImage = env.Value
-			case "MCV_CACHE_PATHS":
-				cachePathsJSON = env.Value
-			}
-		}
+	captureConfig, found, err := captureConfigFromPod(pod)
+	if err != nil {
+		return false, err
 	}
-	if name == "" {
+	if !found || captureConfig.Capture.Name == "" {
 		return false, nil
 	}
+	name := captureConfig.Capture.Name
 
 	inferenceServiceName := pod.Labels[constants.InferenceServicePodLabelKey]
 	if inferenceServiceName == "" {
@@ -238,12 +228,6 @@ func (r *KernelCacheRegistryReconciler) ensureCaptureForPod(ctx context.Context,
 		return false, getErr
 	}
 
-	cachePaths := []v1alpha1.KernelCachePath{}
-	if cachePathsJSON != "" {
-		if err := json.Unmarshal([]byte(cachePathsJSON), &cachePaths); err != nil {
-			return false, fmt.Errorf("parse capture cache paths: %w", err)
-		}
-	}
 	capture := &v1alpha1.KernelCacheCapture{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -255,8 +239,8 @@ func (r *KernelCacheRegistryReconciler) ensureCaptureForPod(ctx context.Context,
 		},
 		Spec: v1alpha1.KernelCacheCaptureSpec{
 			SourceRef:   v1alpha1.KernelCacheSourceRef{Kind: "InferenceService", Name: inferenceService.Name},
-			TargetImage: targetImage,
-			CachePaths:  cachePaths,
+			TargetImage: captureConfig.TargetImage,
+			CachePaths:  captureConfig.CachePaths,
 		},
 	}
 	capture.Spec.Signing = captureSigningSpec(cfg)
@@ -288,26 +272,18 @@ func (r *KernelCacheRegistryReconciler) setPodCaptureState(ctx context.Context, 
 }
 
 func (r *KernelCacheRegistryReconciler) activateCaptureSession(ctx context.Context, pod *corev1.Pod) (bool, bool, error) {
-	var name, sessionID string
-	for _, container := range pod.Spec.Containers {
-		if container.Name != "mcv" {
-			continue
-		}
-		for _, env := range container.Env {
-			switch env.Name {
-			case "MCV_CAPTURE_NAME":
-				name = env.Value
-			case "MCV_CAPTURE_SESSION_ID":
-				sessionID = env.Value
-			}
-		}
+	captureConfig, found, err := captureConfigFromPod(pod)
+	if err != nil {
+		return false, false, err
 	}
-	if name == "" || sessionID == "" || pod.DeletionTimestamp != nil {
+	if !found || captureConfig.Capture.Name == "" || captureConfig.Capture.SessionID == "" || pod.DeletionTimestamp != nil {
 		return false, false, nil
 	}
+	name := captureConfig.Capture.Name
+	sessionID := captureConfig.Capture.SessionID
 	selected := false
 	terminal := false
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		selected = false
 		terminal = false
 		capture := &v1alpha1.KernelCacheCapture{}
@@ -370,6 +346,47 @@ func (r *KernelCacheRegistryReconciler) activateCaptureSession(ctx context.Conte
 		return nil
 	})
 	return selected, terminal, err
+}
+
+func captureConfigFromPod(pod *corev1.Pod) (captureconfig.CaptureConfig, bool, error) {
+	for _, container := range pod.Spec.Containers {
+		if container.Name != "mcv" {
+			continue
+		}
+		envs := make(map[string]string, len(container.Env))
+		for _, env := range container.Env {
+			envs[env.Name] = env.Value
+		}
+		if value := envs[captureconfig.CaptureConfigEnv]; value != "" {
+			config, err := captureconfig.ParseCaptureConfig(value)
+			if err != nil {
+				return captureconfig.CaptureConfig{}, true, err
+			}
+			return config, true, nil
+		}
+
+		name := envs["MCV_CAPTURE_NAME"]
+		if name == "" {
+			return captureconfig.CaptureConfig{}, false, nil
+		}
+		cachePaths := []v1alpha1.KernelCachePath{}
+		if value := envs["MCV_CACHE_PATHS"]; value != "" {
+			if err := json.Unmarshal([]byte(value), &cachePaths); err != nil {
+				return captureconfig.CaptureConfig{}, true, fmt.Errorf("parse capture cache paths: %w", err)
+			}
+		}
+		return captureconfig.CaptureConfig{
+			Version:     captureconfig.CurrentVersion,
+			TargetImage: envs["MCV_TARGET_IMAGE"],
+			Capture: captureconfig.CaptureIdentity{
+				Name:      name,
+				Namespace: pod.Namespace,
+				SessionID: envs["MCV_CAPTURE_SESSION_ID"],
+			},
+			CachePaths: cachePaths,
+		}, true, nil
+	}
+	return captureconfig.CaptureConfig{}, false, nil
 }
 
 func captureSessionTerminal(capture *v1alpha1.KernelCacheCapture) bool {

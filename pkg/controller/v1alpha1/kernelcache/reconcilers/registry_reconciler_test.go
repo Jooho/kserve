@@ -37,9 +37,38 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
+	"github.com/kserve/kserve/pkg/kernelcache/captureconfig"
 	"github.com/kserve/kserve/pkg/kernelcache/registryauth"
 	"github.com/kserve/kserve/pkg/kernelcache/reporter"
 )
+
+func TestCaptureConfigFromPodReadsGroupedConfiguration(t *testing.T) {
+	want := captureconfig.CaptureConfig{
+		Version:     captureconfig.CurrentVersion,
+		TargetImage: "registry.example/team/cache:session",
+		Capture: captureconfig.CaptureIdentity{
+			Name:      "capture",
+			Namespace: "team",
+			SessionID: "session-id",
+		},
+		CachePaths: []v1alpha1.KernelCachePath{{
+			ContainerName: "kserve-container",
+			ContainerPath: "/tmp/vllm",
+			OCIPath:       "io.vllm.cache",
+		}},
+	}
+	value, err := captureconfig.MarshalCaptureConfig(want)
+	require.NoError(t, err)
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Name: "mcv",
+		Env:  []corev1.EnvVar{{Name: captureconfig.CaptureConfigEnv, Value: value}},
+	}}}}
+
+	got, found, err := captureConfigFromPod(pod)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, want, got)
+}
 
 func TestRegistryCreatesGeneratedCaptureBeforeActivatingSession(t *testing.T) {
 	ctx := context.Background()
@@ -56,6 +85,21 @@ func TestRegistryCreatesGeneratedCaptureBeforeActivatingSession(t *testing.T) {
 		podUID      = "pod-uid"
 	)
 	controller := true
+	captureValue, err := captureconfig.MarshalCaptureConfig(captureconfig.CaptureConfig{
+		Version:     captureconfig.CurrentVersion,
+		TargetImage: "registry.example/team/cache:session",
+		Capture: captureconfig.CaptureIdentity{
+			Name:      captureName,
+			Namespace: namespace,
+			SessionID: sessionID,
+		},
+		CachePaths: []v1alpha1.KernelCachePath{{
+			ContainerName: "kserve-container",
+			ContainerPath: "/tmp/vllm",
+			OCIPath:       "io.vllm.cache",
+		}},
+	})
+	require.NoError(t, err)
 	inferenceService := &v1beta1.InferenceService{
 		ObjectMeta: metav1.ObjectMeta{Name: "model", Namespace: namespace, UID: "isvc-uid"},
 	}
@@ -78,10 +122,7 @@ func TestRegistryCreatesGeneratedCaptureBeforeActivatingSession(t *testing.T) {
 		Spec: corev1.PodSpec{NodeName: "gpu-node", Containers: []corev1.Container{{
 			Name: "mcv",
 			Env: []corev1.EnvVar{
-				{Name: "MCV_CAPTURE_NAME", Value: captureName},
-				{Name: "MCV_CAPTURE_SESSION_ID", Value: sessionID},
-				{Name: "MCV_TARGET_IMAGE", Value: "registry.example/team/cache:session"},
-				{Name: "MCV_CACHE_PATHS", Value: `[{"containerName":"kserve-container","containerPath":"/tmp/vllm","ociPath":"io.vllm.cache"}]`},
+				{Name: captureconfig.CaptureConfigEnv, Value: captureValue},
 			},
 		}}},
 	}
@@ -114,7 +155,7 @@ func TestRegistryCreatesGeneratedCaptureBeforeActivatingSession(t *testing.T) {
 		OperatorServiceAccount: "operator",
 	}
 
-	_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(pod)})
+	_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(pod)})
 	require.NoError(t, err)
 
 	capture := &v1alpha1.KernelCacheCapture{}

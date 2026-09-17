@@ -58,6 +58,87 @@ func TestCaptureAndCompare(t *testing.T) {
 	}, deltas[0].RequiredDirectories)
 }
 
+func TestCompareDetectsModifiedFileInExistingDirectory(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "torch_compile_cache", "existing")
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+	file := filepath.Join(directory, "kernel.bin")
+	require.NoError(t, os.WriteFile(file, []byte("before"), 0o600))
+
+	before, err := Capture([]string{root})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, []byte("after"), 0o600))
+	after, err := Capture([]string{root})
+	require.NoError(t, err)
+
+	deltas, err := Compare(before, after)
+	require.NoError(t, err)
+	require.Len(t, deltas, 1)
+	require.Empty(t, deltas[0].AddedDirectories)
+	require.Equal(t, []string{"torch_compile_cache/existing/kernel.bin"}, deltas[0].ChangedFiles)
+	require.Empty(t, deltas[0].DeletedFiles)
+	require.Equal(t, []string{"torch_compile_cache/existing"}, deltas[0].ContentDirectories)
+}
+
+func TestCompareDetectsAddedFileInExistingDirectory(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "torch_compile_cache", "existing")
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+
+	before, err := Capture([]string{root})
+	require.NoError(t, err)
+	file := filepath.Join(directory, "kernel.bin")
+	require.NoError(t, os.WriteFile(file, []byte("after"), 0o600))
+	after, err := Capture([]string{root})
+	require.NoError(t, err)
+
+	deltas, err := Compare(before, after)
+	require.NoError(t, err)
+	require.Len(t, deltas, 1)
+	require.Equal(t, []string{"torch_compile_cache/existing/kernel.bin"}, deltas[0].ChangedFiles)
+	require.Empty(t, deltas[0].DeletedFiles)
+	require.Equal(t, []string{"torch_compile_cache/existing"}, deltas[0].ContentDirectories)
+}
+
+func TestCompareDetectsDeletedFile(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "torch_compile_cache", "existing")
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+	file := filepath.Join(directory, "kernel.bin")
+	require.NoError(t, os.WriteFile(file, []byte("before"), 0o600))
+
+	before, err := Capture([]string{root})
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(file))
+	after, err := Capture([]string{root})
+	require.NoError(t, err)
+
+	deltas, err := Compare(before, after)
+	require.NoError(t, err)
+	require.Len(t, deltas, 1)
+	require.Empty(t, deltas[0].AddedDirectories)
+	require.Equal(t, []string{"torch_compile_cache/existing/kernel.bin"}, deltas[0].DeletedFiles)
+	require.Equal(t, []string{"torch_compile_cache/existing"}, deltas[0].ContentDirectories)
+}
+
+func TestCompareMarksRootFileChangeForFullImage(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "cache.bin")
+	require.NoError(t, os.WriteFile(file, []byte("before"), 0o600))
+	before, err := Capture([]string{root})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, []byte("after"), 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "new-cache"), 0o700))
+	after, err := Capture([]string{root})
+	require.NoError(t, err)
+
+	deltas, err := Compare(before, after)
+	require.NoError(t, err)
+	require.Len(t, deltas, 1)
+	require.True(t, deltas[0].RequiresFullImage)
+	require.Equal(t, []string{"new-cache"}, deltas[0].ContentDirectories)
+}
+
 func TestWriteAndRead(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "vllm", "cache"), 0o700))
@@ -163,4 +244,17 @@ func TestReadLegacySnapshotWithoutExcludedDirectories(t *testing.T) {
 	document, err := Read(path)
 	require.NoError(t, err)
 	require.Empty(t, document.Roots[0].ExcludedDirectories)
+}
+
+func TestCompareRejectsLegacySnapshotWithoutFileState(t *testing.T) {
+	root := t.TempDir()
+	before := &Document{
+		Version: LegacyVersion,
+		Roots:   []Root{{Source: root, Directories: []string{"cache"}}},
+	}
+	after, err := Capture([]string{root})
+	require.NoError(t, err)
+
+	_, err = Compare(before, after)
+	require.ErrorContains(t, err, "does not contain file state")
 }

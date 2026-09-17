@@ -17,19 +17,25 @@ limitations under the License.
 package snapshot
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 const (
 	// Version is the current snapshot document version.
-	Version = 1
+	Version = 2
+	// LegacyVersion is the directory-only snapshot format written by older MCV versions.
+	LegacyVersion = 1
 	// DefaultPath is the default location shared by snapshot and create actions.
 	DefaultPath = "/tmp/mcv/cache-snapshot.json"
 )
@@ -45,11 +51,19 @@ type Document struct {
 	Roots   []Root `json:"roots"`
 }
 
-// Root contains the recursive directory names for one cache root.
+// Root contains the recursive directories and regular files for one cache root.
 type Root struct {
 	Source              string   `json:"source"`
 	ExcludedDirectories []string `json:"excludedDirectories,omitempty"`
 	Directories         []string `json:"directories"`
+	Files               []File   `json:"files"`
+}
+
+// File contains the content identity of one regular file in a cache root.
+type File struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	Digest string `json:"digest"`
 }
 
 // RootOptions configures a recursive directory snapshot for one cache root.
@@ -58,15 +72,18 @@ type RootOptions struct {
 	ExcludedDirectories []string
 }
 
-// Delta contains newly added directories and the parent entries required in an OCI layer.
+// Delta contains changed cache entries and the directories required in an OCI layer.
 type Delta struct {
 	Source              string
 	AddedDirectories    []string
+	ChangedFiles        []string
+	DeletedFiles        []string
 	ContentDirectories  []string
 	RequiredDirectories []string
+	RequiresFullImage   bool
 }
 
-// Capture records recursive directory names without reading file contents.
+// Capture records recursive directory and regular file state.
 func Capture(roots []string) (*Document, error) {
 	options := make([]RootOptions, 0, len(roots))
 	for _, root := range roots {
@@ -75,7 +92,7 @@ func Capture(roots []string) (*Document, error) {
 	return CaptureRoots(options)
 }
 
-// CaptureRoots records recursive directory names without reading file contents.
+// CaptureRoots records recursive directory and regular file state.
 func CaptureRoots(roots []RootOptions) (*Document, error) {
 	if len(roots) == 0 {
 		return nil, errors.New("at least one snapshot root is required")
@@ -103,33 +120,56 @@ func CaptureRoots(roots []RootOptions) (*Document, error) {
 		if !info.IsDir() {
 			return nil, fmt.Errorf("snapshot root is not a directory: %s", root)
 		}
+		rootFS, err := os.OpenRoot(root)
+		if err != nil {
+			return nil, fmt.Errorf("open snapshot root %s: %w", root, err)
+		}
 
 		directories := make([]string, 0)
-		if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		files := make([]File, 0)
+		walkErr := fs.WalkDir(rootFS.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
-			if path == root || !entry.IsDir() {
+			if relative == "." {
 				return nil
-			}
-			relative, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
 			}
 			relative = filepath.ToSlash(relative)
 			if excludedDirectory(relative, excluded) {
-				return filepath.SkipDir
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			directories = append(directories, relative)
+			if entry.IsDir() {
+				directories = append(directories, relative)
+				return nil
+			}
+			if !entry.Type().IsRegular() {
+				return nil
+			}
+			digest, err := fileDigest(rootFS, filepath.FromSlash(relative))
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			files = append(files, File{Path: relative, Size: info.Size(), Digest: digest})
 			return nil
-		}); err != nil {
+		})
+		closeErr := rootFS.Close()
+		if err := errors.Join(walkErr, closeErr); err != nil {
 			return nil, fmt.Errorf("walk snapshot root %s: %w", root, err)
 		}
 		sort.Strings(directories)
+		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 		document.Roots = append(document.Roots, Root{
 			Source:              root,
 			ExcludedDirectories: excluded,
 			Directories:         directories,
+			Files:               files,
 		})
 	}
 	sort.Slice(document.Roots, func(i, j int) bool {
@@ -145,6 +185,9 @@ func Compare(before, after *Document) ([]Delta, error) {
 	}
 	if err := Validate(after); err != nil {
 		return nil, fmt.Errorf("invalid current snapshot: %w", err)
+	}
+	if before.Version != Version {
+		return nil, fmt.Errorf("snapshot version %d does not contain file state", before.Version)
 	}
 
 	previous := make(map[string]Root, len(before.Roots))
@@ -171,17 +214,86 @@ func Compare(before, after *Document) ([]Delta, error) {
 				added = append(added, directory)
 			}
 		}
-		if len(added) == 0 {
+		previousFiles := make(map[string]File, len(previousRoot.Files))
+		for _, file := range previousRoot.Files {
+			previousFiles[file.Path] = file
+		}
+		currentFiles := make(map[string]File, len(root.Files))
+		changedFiles := make([]string, 0)
+		for _, file := range root.Files {
+			currentFiles[file.Path] = file
+			previousFile, exists := previousFiles[file.Path]
+			if !exists || previousFile.Size != file.Size || previousFile.Digest != file.Digest {
+				changedFiles = append(changedFiles, file.Path)
+			}
+		}
+		deletedFiles := make([]string, 0)
+		for path := range previousFiles {
+			if _, exists := currentFiles[path]; !exists {
+				deletedFiles = append(deletedFiles, path)
+			}
+		}
+		sort.Strings(changedFiles)
+		sort.Strings(deletedFiles)
+		if len(added) == 0 && len(changedFiles) == 0 && len(deletedFiles) == 0 {
 			continue
 		}
+		changedParents, changedRootFiles := fileParentDirectories(changedFiles)
+		deletedParents, deletedRootFiles := fileParentDirectories(deletedFiles)
+		contentInputs := append(append([]string(nil), added...), changedParents...)
+		contentInputs = append(contentInputs, deletedParents...)
 		deltas = append(deltas, Delta{
 			Source:              root.Source,
 			AddedDirectories:    added,
-			ContentDirectories:  contentDirectories(added),
-			RequiredDirectories: requiredDirectories(added),
+			ChangedFiles:        changedFiles,
+			DeletedFiles:        deletedFiles,
+			ContentDirectories:  contentDirectories(contentInputs),
+			RequiredDirectories: requiredDirectories(contentInputs),
+			RequiresFullImage:   changedRootFiles || deletedRootFiles || len(deletedFiles) > 0,
 		})
 	}
 	return deltas, nil
+}
+
+func fileDigest(root *os.Root, path string) (string, error) {
+	file, err := root.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	before, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !before.Mode().IsRegular() {
+		return "", fmt.Errorf("snapshot file is not regular: %s", path)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	after, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+		return "", fmt.Errorf("snapshot file changed during hashing: %s", path)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func fileParentDirectories(files []string) ([]string, bool) {
+	parents := make([]string, 0, len(files))
+	rootFile := false
+	for _, file := range files {
+		parent := filepath.ToSlash(filepath.Dir(file))
+		if parent != "." {
+			parents = append(parents, parent)
+		} else {
+			rootFile = true
+		}
+	}
+	return parents, rootFile
 }
 
 func contentDirectories(added []string) []string {
@@ -260,7 +372,7 @@ func Validate(document *Document) error {
 	if document == nil {
 		return errors.New("snapshot document is required")
 	}
-	if document.Version != Version {
+	if document.Version != Version && document.Version != LegacyVersion {
 		return fmt.Errorf("unsupported snapshot version: %d", document.Version)
 	}
 	if len(document.Roots) == 0 {
@@ -288,6 +400,23 @@ func Validate(document *Document) error {
 				return fmt.Errorf("duplicate directory %q for snapshot root %s", directory, root.Source)
 			}
 			seenDirectories[directory] = struct{}{}
+		}
+		seenFiles := make(map[string]struct{}, len(root.Files))
+		for _, file := range root.Files {
+			clean := filepath.ToSlash(filepath.Clean(file.Path))
+			if file.Path == "" || clean == "." || clean != file.Path || filepath.IsAbs(file.Path) || file.Path == ".." || strings.HasPrefix(file.Path, "../") {
+				return fmt.Errorf("invalid file %q for snapshot root %s", file.Path, root.Source)
+			}
+			if _, exists := seenFiles[file.Path]; exists {
+				return fmt.Errorf("duplicate file %q for snapshot root %s", file.Path, root.Source)
+			}
+			seenFiles[file.Path] = struct{}{}
+			if file.Size < 0 || len(file.Digest) != sha256.Size*2 {
+				return fmt.Errorf("invalid file state for %q in snapshot root %s", file.Path, root.Source)
+			}
+			if _, err := hex.DecodeString(file.Digest); err != nil {
+				return fmt.Errorf("invalid file digest for %q in snapshot root %s: %w", file.Path, root.Source, err)
+			}
 		}
 	}
 	return nil

@@ -79,7 +79,6 @@ const (
 	runtimeInfoCommandHashKey                  = cacheidentity.CommandHashFactor
 	runtimeInfoArgsHashKey                     = cacheidentity.ArgsHashFactor
 	runtimeInfoModelURIHashKey                 = cacheidentity.ModelURIHashFactor
-	runtimeInfoTensorParallelSizeKey           = cacheidentity.TensorParallelSizeFactor
 )
 
 // KernelCacheCaptureReconciler processes capture results for enabled InferenceServices.
@@ -668,15 +667,7 @@ func parseRuntimeInfo(result map[string]string) (map[string]string, error) {
 			return nil, fmt.Errorf("runtimeInfo.%s must be a SHA-256 value", key)
 		}
 	}
-	if value := info[runtimeInfoTensorParallelSizeKey]; value != "" && !isPositiveInteger(value) {
-		return nil, fmt.Errorf("runtimeInfo.%s must be a positive integer", runtimeInfoTensorParallelSizeKey)
-	}
 	return info, nil
-}
-
-func isPositiveInteger(value string) bool {
-	parsed, err := strconv.Atoi(value)
-	return err == nil && parsed > 0
 }
 
 func captureCachePaths(capture *v1alpha1.KernelCacheCapture, result map[string]string) ([]v1alpha1.KernelCachePath, error) {

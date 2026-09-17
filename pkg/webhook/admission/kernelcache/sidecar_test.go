@@ -32,6 +32,7 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1alpha1"
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
+	"github.com/kserve/kserve/pkg/kernelcache/captureconfig"
 	cacheidentity "github.com/kserve/kserve/pkg/kernelcache/identity"
 )
 
@@ -145,7 +146,7 @@ func TestInjectSidecar(t *testing.T) {
 			}
 			mutator := &PodMutator{Client: builder.Build()}
 			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "test", Labels: map[string]string{constants.InferenceServicePodLabelKey: "qwen"}}, Spec: corev1.PodSpec{ServiceAccountName: "runtime", Containers: []corev1.Container{{Name: "kserve-container", Env: []corev1.EnvVar{{Name: "VLLM_CACHE_ROOT", Value: "/cache/vllm"}}, ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/health", Port: intstr.FromInt(8080)}}, PeriodSeconds: 5, TimeoutSeconds: 2}}}}}
-			cfg := &v1beta1.KernelCacheConfig{MCVImage: "example/mcv:test", Registry: v1beta1.KernelCacheRegistryConfig{Endpoint: tc.registryEndpoint}}
+			cfg := &v1beta1.KernelCacheConfig{MCVImage: "example/mcv:test", MCVCaptureReadinessTimeoutSeconds: 900, Registry: v1beta1.KernelCacheRegistryConfig{Endpoint: tc.registryEndpoint}}
 			originalConfig := cfg.DeepCopy()
 			originalEnv := append([]corev1.EnvVar(nil), pod.Spec.Containers[0].Env...)
 			require.NoError(t, mutator.injectSidecar(context.Background(), pod, cfg))
@@ -155,16 +156,21 @@ func TestInjectSidecar(t *testing.T) {
 			require.Len(t, pod.Spec.Containers, 2)
 			require.Equal(t, cfg.MCVImage, pod.Spec.Containers[1].Image)
 			require.Equal(t, tc.wantContainerPath, pod.Spec.Containers[0].VolumeMounts[0].MountPath)
-			require.True(t, strings.HasPrefix(pod.Spec.Containers[1].Env[2].Value, tc.wantTargetImage))
-			captureName := containerEnvValue(pod.Spec.Containers[1], "MCV_CAPTURE_NAME")
+			captureValue := containerEnvValue(pod.Spec.Containers[1], captureconfig.CaptureConfigEnv)
+			var captureConfig captureconfig.CaptureConfig
+			require.NoError(t, json.Unmarshal([]byte(captureValue), &captureConfig))
+			readinessValue := containerEnvValue(pod.Spec.Containers[1], captureconfig.ReadinessConfigEnv)
+			var readinessConfig captureconfig.ReadinessConfig
+			require.NoError(t, json.Unmarshal([]byte(readinessValue), &readinessConfig))
+			require.Equal(t, int64(900), readinessConfig.MCVCaptureReadinessTimeoutSeconds)
+			require.True(t, strings.HasPrefix(captureConfig.TargetImage, tc.wantTargetImage))
+			captureName := captureConfig.Capture.Name
 			if tc.wantGeneratedName {
 				require.True(t, strings.HasPrefix(captureName, constants.KernelCacheCaptureName("qwen")+"-"))
 			} else {
 				require.Equal(t, tc.wantCaptureName, captureName)
 			}
-			var cachePaths []v1alpha1.KernelCachePath
-			require.NoError(t, json.Unmarshal([]byte(containerEnvValue(pod.Spec.Containers[1], "MCV_CACHE_PATHS")), &cachePaths))
-			require.Equal(t, tc.wantContainerPath, cachePaths[0].ContainerPath)
+			require.Equal(t, tc.wantContainerPath, captureConfig.CachePaths[0].ContainerPath)
 			require.NoError(t, mutator.injectSidecar(context.Background(), pod, cfg))
 			require.Len(t, pod.Spec.Containers, 2)
 		})
@@ -191,10 +197,12 @@ func TestInjectSidecarUsesNewCaptureNameAfterCompletedCapture(t *testing.T) {
 	cfg := &v1beta1.KernelCacheConfig{MCVImage: "example/mcv:test", Registry: v1beta1.KernelCacheRegistryConfig{Endpoint: "registry.example:5000"}}
 
 	require.NoError(t, mutator.injectSidecar(context.Background(), pod, cfg))
-	captureName := containerEnvValue(pod.Spec.Containers[1], "MCV_CAPTURE_NAME")
+	var captureConfig captureconfig.CaptureConfig
+	require.NoError(t, json.Unmarshal([]byte(containerEnvValue(pod.Spec.Containers[1], captureconfig.CaptureConfigEnv)), &captureConfig))
+	captureName := captureConfig.Capture.Name
 	require.NotEqual(t, fixedName, captureName)
 	require.True(t, strings.HasPrefix(captureName, fixedName+"-"), captureName)
-	require.Equal(t, capture.Spec.TargetImage, containerEnvValue(pod.Spec.Containers[1], "MCV_TARGET_IMAGE"))
+	require.Equal(t, capture.Spec.TargetImage, captureConfig.TargetImage)
 }
 
 func TestInjectSidecarUsesNewCaptureNameAfterUnchangedCapture(t *testing.T) {
@@ -213,7 +221,9 @@ func TestInjectSidecarUsesNewCaptureNameAfterUnchangedCapture(t *testing.T) {
 	cfg := &v1beta1.KernelCacheConfig{MCVImage: "example/mcv:test", Registry: v1beta1.KernelCacheRegistryConfig{Endpoint: "registry.example:5000"}}
 
 	require.NoError(t, mutator.injectSidecar(context.Background(), pod, cfg))
-	captureName := containerEnvValue(pod.Spec.Containers[1], "MCV_CAPTURE_NAME")
+	var captureConfig captureconfig.CaptureConfig
+	require.NoError(t, json.Unmarshal([]byte(containerEnvValue(pod.Spec.Containers[1], captureconfig.CaptureConfigEnv)), &captureConfig))
+	captureName := captureConfig.Capture.Name
 	require.NotEqual(t, fixedName, captureName)
 	require.True(t, strings.HasPrefix(captureName, fixedName+"-"), captureName)
 }
@@ -233,7 +243,9 @@ func TestInjectSidecarReusesInProgressCapture(t *testing.T) {
 	cfg := &v1beta1.KernelCacheConfig{MCVImage: "example/mcv:test", Registry: v1beta1.KernelCacheRegistryConfig{Endpoint: "registry.example:5000"}}
 
 	require.NoError(t, mutator.injectSidecar(context.Background(), pod, cfg))
-	require.Equal(t, capture.Name, containerEnvValue(pod.Spec.Containers[1], "MCV_CAPTURE_NAME"))
+	var captureConfig captureconfig.CaptureConfig
+	require.NoError(t, json.Unmarshal([]byte(containerEnvValue(pod.Spec.Containers[1], captureconfig.CaptureConfigEnv)), &captureConfig))
+	require.Equal(t, capture.Name, captureConfig.Capture.Name)
 }
 
 func sidecarTestPod() *corev1.Pod {
@@ -315,15 +327,19 @@ func TestSidecarManifestsAndExistingMount(t *testing.T) {
 	cfg := &v1beta1.KernelCacheConfig{
 		MCVImage: "example/mcv:test", TargetImage: "registry.example/cache:capture-id",
 		CachePaths:         []v1alpha1.KernelCachePath{{ContainerName: "main", ContainerPath: "/cache", OCIPath: "vllm"}},
-		ReadinessEnv:       []corev1.EnvVar{{Name: "MCV_READINESS_PROBE_PORT", Value: "8080"}},
 		ReporterSecretName: "mcv-reporter-capture-id",
 	}
-	manifests, err := getSidecarManifests(cfg)
+	manifests, err := getSidecarManifestsWithConfigs(cfg, captureconfig.ReadinessConfig{URL: "http://127.0.0.1:8080/"}, captureconfig.RuntimeInfo{})
 	require.NoError(t, err)
 	require.Len(t, manifests.Containers, 1)
 	require.Len(t, manifests.Volumes, 2)
-	require.Equal(t, cfg.TargetImage, manifests.Containers[0].Env[2].Value)
-	require.Contains(t, manifests.Containers[0].Env, cfg.ReadinessEnv[0])
+	var captureConfig captureconfig.CaptureConfig
+	require.NoError(t, json.Unmarshal([]byte(containerEnvValue(manifests.Containers[0], captureconfig.CaptureConfigEnv)), &captureConfig))
+	require.Equal(t, cfg.TargetImage, captureConfig.TargetImage)
+	var readinessConfig captureconfig.ReadinessConfig
+	require.NoError(t, json.Unmarshal([]byte(containerEnvValue(manifests.Containers[0], captureconfig.ReadinessConfigEnv)), &readinessConfig))
+	require.Equal(t, "http://127.0.0.1:8080/", readinessConfig.URL)
+	require.Equal(t, []string{"python3", "/capture-entrypoint.py"}, manifests.Containers[0].Command)
 
 	podSpec := corev1.PodSpec{
 		Volumes:    []corev1.Volume{{Name: "existing", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},

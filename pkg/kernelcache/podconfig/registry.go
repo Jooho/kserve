@@ -97,9 +97,6 @@ func applyRegistry(pod *corev1.PodSpec, container *corev1.Container, cfg v1beta1
 	env := []corev1.EnvVar{}
 	switch cfg.Auth.Type {
 	case "", "none":
-		if capture {
-			env = append(env, corev1.EnvVar{Name: "MCV_REGISTRY_AUTH_REQUIRED", Value: "false"})
-		}
 	case "openshift":
 		if cfg.Endpoint == "" || strings.ContainsAny(cfg.Endpoint, "/ \t\n") {
 			return errors.New("registry.endpoint must be a registry host with optional port")
@@ -112,8 +109,7 @@ func applyRegistry(pod *corev1.PodSpec, container *corev1.Container, cfg v1beta1
 				LocalObjectReference: corev1.LocalObjectReference{Name: secretName}, Optional: ptr.To(true),
 				Items: []corev1.KeyToPath{{Key: registryauth.AccessKey, Path: registryauth.AccessKey}},
 			}})
-			env = append(env, corev1.EnvVar{Name: "MCV_REGISTRY_AUTH_REQUIRED", Value: "true"},
-				corev1.EnvVar{Name: "MCV_REGISTRY_ACCESS_FILE", Value: registryPath + "/" + registryauth.AccessKey})
+			env = append(env, corev1.EnvVar{Name: "MCV_REGISTRY_ACCESS_FILE", Value: registryPath + "/" + registryauth.AccessKey})
 		} else {
 			sources = append(sources, corev1.VolumeProjection{ServiceAccountToken: &corev1.ServiceAccountTokenProjection{Path: "token", ExpirationSeconds: ptr.To(int64(600))}})
 			env = append(env, corev1.EnvVar{Name: "MCV_REGISTRY_TOKEN_FILE", Value: registryPath + "/token"})

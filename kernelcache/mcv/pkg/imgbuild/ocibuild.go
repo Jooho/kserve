@@ -66,6 +66,10 @@ func (b *ociBuilder) CreateDeltaImageWithResult(imageName, cacheDir, snapshotPat
 	if !found {
 		return nil, fmt.Errorf("delta snapshot does not contain the requested cache root: %s", cacheDir)
 	}
+	if previous.Version != cachesnapshot.Version {
+		logging.Infof("Snapshot version %d has no file state; creating a full OCI cache image", previous.Version)
+		return b.createImageWithResult(imageName, cacheDir, nil, previousRoot.ExcludedDirectories)
+	}
 	current, err := cachesnapshot.CaptureRoots([]cachesnapshot.RootOptions{{
 		Source:              cacheDir,
 		ExcludedDirectories: previousRoot.ExcludedDirectories,
@@ -73,8 +77,8 @@ func (b *ociBuilder) CreateDeltaImageWithResult(imageName, cacheDir, snapshotPat
 	if err != nil {
 		return nil, fmt.Errorf("capture current cache directories: %w", err)
 	}
-	if len(previousRoot.Directories) == 0 {
-		if !snapshotHasDirectories(current) {
+	if len(previousRoot.Directories) == 0 && len(previousRoot.Files) == 0 {
+		if !snapshotHasContent(current) {
 			return unchangedResult(), nil
 		}
 		logging.Info("No existing cache directories found; creating initial OCI cache image")
@@ -85,16 +89,21 @@ func (b *ociBuilder) CreateDeltaImageWithResult(imageName, cacheDir, snapshotPat
 		return nil, fmt.Errorf("compare cache snapshots: %w", err)
 	}
 	if len(deltas) == 0 {
-		return &CreateResult{State: CreateStateUnchanged, CompletedAt: time.Now().UTC()}, nil
+		return unchangedResult(), nil
 	}
 	for _, delta := range deltas {
-		logging.Infof("Snapshot delta detected: source=%s addedDirectories=%v contentDirectories=%v", delta.Source, delta.AddedDirectories, delta.ContentDirectories)
+		logging.Infof("Snapshot delta detected: source=%s addedDirectories=%v changedFiles=%v deletedFiles=%v contentDirectories=%v", delta.Source, delta.AddedDirectories, delta.ChangedFiles, delta.DeletedFiles, delta.ContentDirectories)
 	}
 	if len(deltas) != 1 || deltas[0].Source != filepath.Clean(cacheDir) {
 		return nil, errors.New("delta snapshot does not contain the requested cache root")
 	}
+	delta := deltas[0]
+	if delta.RequiresFullImage || len(delta.ContentDirectories) == 0 {
+		logging.Info("Snapshot delta cannot be represented as a directory-only OCI layer; creating a full OCI cache image")
+		return b.createImageWithResult(imageName, cacheDir, nil, previousRoot.ExcludedDirectories)
+	}
 	logging.Info("New cache directories found; creating delta OCI cache image")
-	return b.createImageWithResult(imageName, cacheDir, deltas[0].ContentDirectories, previousRoot.ExcludedDirectories)
+	return b.createImageWithResult(imageName, cacheDir, delta.ContentDirectories, previousRoot.ExcludedDirectories)
 }
 
 func snapshotRoot(document *cachesnapshot.Document, source string) (cachesnapshot.Root, bool) {
@@ -110,9 +119,9 @@ func unchangedResult() *CreateResult {
 	return &CreateResult{State: CreateStateUnchanged, CompletedAt: time.Now().UTC()}
 }
 
-func snapshotHasDirectories(document *cachesnapshot.Document) bool {
+func snapshotHasContent(document *cachesnapshot.Document) bool {
 	for _, root := range document.Roots {
-		if len(root.Directories) > 0 {
+		if len(root.Directories) > 0 || len(root.Files) > 0 {
 			return true
 		}
 	}

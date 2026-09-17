@@ -18,7 +18,6 @@ package kernelcache
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -37,6 +36,7 @@ import (
 	"github.com/kserve/kserve/pkg/apis/serving/v1beta1"
 	"github.com/kserve/kserve/pkg/constants"
 	kernelcacheutil "github.com/kserve/kserve/pkg/kernelcache"
+	"github.com/kserve/kserve/pkg/kernelcache/captureconfig"
 	cacheidentity "github.com/kserve/kserve/pkg/kernelcache/identity"
 	"github.com/kserve/kserve/pkg/kernelcache/podconfig"
 	"github.com/kserve/kserve/pkg/kernelcache/registryauth"
@@ -45,15 +45,6 @@ import (
 
 const (
 	sidecarName = "mcv"
-
-	mcvCaptureModeEnv        = "MCV_CAPTURE_MODE"
-	mcvCacheDirEnv           = "MCV_CACHE_DIR"
-	mcvTargetImageEnv        = "MCV_TARGET_IMAGE"
-	mcvResultPathEnv         = "MCV_RESULT_PATH"
-	mcvCommandHashEnv        = "MCV_RUNTIME_COMMAND_HASH"
-	mcvArgsHashEnv           = "MCV_RUNTIME_ARGS_HASH"
-	mcvModelURIHashEnv       = "MCV_RUNTIME_MODEL_URI_HASH"
-	mcvTensorParallelSizeEnv = "MCV_TENSOR_PARALLEL_SIZE"
 )
 
 func (m *PodMutator) injectSidecar(ctx context.Context, pod *corev1.Pod, cfg *v1beta1.KernelCacheConfig) error {
@@ -124,11 +115,11 @@ func (m *PodMutator) injectSidecar(ctx context.Context, pod *corev1.Pod, cfg *v1
 			return err
 		}
 	}
-	updatedConfig.ReadinessEnv, err = readinessProbeEnv(container)
+	readinessConfig, err := readinessProbeConfig(container, updatedConfig.MCVCaptureReadinessTimeoutSeconds)
 	if err != nil {
 		return err
 	}
-	runtimeInfoEnv := runtimeInfoEnv(container, pod.Annotations[constants.StorageInitializerSourceUriInternalAnnotationKey])
+	runtimeInfo := runtimeInfoConfig(container, pod.Annotations[constants.StorageInitializerSourceUriInternalAnnotationKey])
 	if updatedConfig.TargetImage == "" {
 		if updatedConfig.Registry.Endpoint == "" {
 			return errors.New("kernelcache.registry.endpoint is required when no KernelCacheCapture target is configured")
@@ -148,13 +139,12 @@ func (m *PodMutator) injectSidecar(ctx context.Context, pod *corev1.Pod, cfg *v1
 	updatedConfig.CaptureName = captureName
 	updatedConfig.CaptureNamespace = pod.Namespace
 	updatedConfig.CaptureSessionID = captureID
-	manifests, err := getSidecarManifests(updatedConfig)
+	manifests, err := getSidecarManifestsWithConfigs(updatedConfig, readinessConfig, runtimeInfo)
 	if err != nil {
 		return err
 	}
 	mutatedPod := pod.DeepCopy()
 	sidecar := &manifests.Containers[0]
-	sidecar.Env = append(sidecar.Env, runtimeInfoEnv...)
 	for _, volume := range pod.Spec.Volumes {
 		if volume.Name == kernelCacheSourceVolumeName {
 			sidecar.VolumeMounts = append(sidecar.VolumeMounts, corev1.VolumeMount{
@@ -241,8 +231,26 @@ func generatedCaptureName(base, captureID string) string {
 	return base + suffix
 }
 
-func getSidecarManifests(cfg *v1beta1.KernelCacheConfig) (corev1.PodSpec, error) {
-	cachePaths, err := json.Marshal(cfg.CachePaths)
+func getSidecarManifestsWithConfigs(cfg *v1beta1.KernelCacheConfig, readiness captureconfig.ReadinessConfig, runtimeInfo captureconfig.RuntimeInfo) (corev1.PodSpec, error) {
+	captureValue, err := captureconfig.MarshalCaptureConfig(captureconfig.CaptureConfig{
+		Version:     captureconfig.CurrentVersion,
+		CacheDir:    "/workspace/cache/0",
+		TargetImage: cfg.TargetImage,
+		Capture: captureconfig.CaptureIdentity{
+			Name:      cfg.CaptureName,
+			Namespace: cfg.CaptureNamespace,
+			SessionID: cfg.CaptureSessionID,
+		},
+		CachePaths: cfg.CachePaths,
+	})
+	if err != nil {
+		return corev1.PodSpec{}, err
+	}
+	readinessValue, err := captureconfig.MarshalReadinessConfig(readiness)
+	if err != nil {
+		return corev1.PodSpec{}, err
+	}
+	runtimeValue, err := captureconfig.MarshalRuntimeInfo(runtimeInfo)
 	if err != nil {
 		return corev1.PodSpec{}, err
 	}
@@ -251,20 +259,15 @@ func getSidecarManifests(cfg *v1beta1.KernelCacheConfig) (corev1.PodSpec, error)
 		Name:            sidecarName,
 		Image:           cfg.MCVImage,
 		ImagePullPolicy: corev1.PullAlways,
+		Command:         []string{"python3", "/capture-entrypoint.py"},
 		Env: []corev1.EnvVar{
-			{Name: mcvCaptureModeEnv, Value: "true"},
-			{Name: mcvCacheDirEnv, Value: "/workspace/cache/0"},
-			{Name: mcvTargetImageEnv, Value: cfg.TargetImage},
-			{Name: mcvResultPathEnv, Value: "/tmp/mcv/result.json"},
-			{Name: "MCV_CAPTURE_NAME", Value: cfg.CaptureName},
-			{Name: "MCV_CAPTURE_NAMESPACE", Value: cfg.CaptureNamespace},
-			{Name: "MCV_CAPTURE_SESSION_ID", Value: cfg.CaptureSessionID},
-			{Name: "MCV_CACHE_PATHS", Value: string(cachePaths)},
+			{Name: captureconfig.CaptureConfigEnv, Value: captureValue},
+			{Name: captureconfig.ReadinessConfigEnv, Value: readinessValue},
+			{Name: captureconfig.RuntimeInfoEnv, Value: runtimeValue},
 			{Name: "MCV_SOURCE_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 		},
 	}
 
-	sidecar.Env = append(sidecar.Env, cfg.ReadinessEnv...)
 	for index := range cfg.CachePaths {
 		name := fmt.Sprintf("mcv-cache-%d", index)
 		manifests.Volumes = append(manifests.Volumes, corev1.Volume{
@@ -284,22 +287,13 @@ func getSidecarManifests(cfg *v1beta1.KernelCacheConfig) (corev1.PodSpec, error)
 	return manifests, nil
 }
 
-func runtimeInfoEnv(container *corev1.Container, modelURI string) []corev1.EnvVar {
+func runtimeInfoConfig(container *corev1.Container, modelURI string) captureconfig.RuntimeInfo {
 	runtime := runtimeIdentityInput(container, modelURI)
-	env := make([]corev1.EnvVar, 0, 4)
-	if runtime.CommandHash != "" {
-		env = append(env, corev1.EnvVar{Name: mcvCommandHashEnv, Value: runtime.CommandHash})
+	return captureconfig.RuntimeInfo{
+		CommandHash:  runtime.CommandHash,
+		ArgsHash:     runtime.ArgsHash,
+		ModelURIHash: runtime.ModelURIHash,
 	}
-	if runtime.ArgsHash != "" {
-		env = append(env, corev1.EnvVar{Name: mcvArgsHashEnv, Value: runtime.ArgsHash})
-	}
-	if runtime.ModelURIHash != "" {
-		env = append(env, corev1.EnvVar{Name: mcvModelURIHashEnv, Value: runtime.ModelURIHash})
-	}
-	if runtime.TensorParallelSize != "" {
-		env = append(env, corev1.EnvVar{Name: mcvTensorParallelSizeEnv, Value: runtime.TensorParallelSize})
-	}
-	return env
 }
 
 func runtimeIdentityInput(container *corev1.Container, modelURI string) cacheidentity.Input {
@@ -394,14 +388,14 @@ func findContainerIndex(containers []corev1.Container, name string) int {
 	return slices.IndexFunc(containers, func(c corev1.Container) bool { return c.Name == name })
 }
 
-func readinessProbeEnv(container *corev1.Container) ([]corev1.EnvVar, error) {
+func readinessProbeConfig(container *corev1.Container, timeoutSeconds int64) (captureconfig.ReadinessConfig, error) {
 	probe := container.ReadinessProbe
 	if probe == nil || probe.HTTPGet == nil {
-		return nil, fmt.Errorf("container %q requires an HTTP readinessProbe for MCV capture", container.Name)
+		return captureconfig.ReadinessConfig{}, fmt.Errorf("container %q requires an HTTP readinessProbe for MCV capture", container.Name)
 	}
 	port, err := readinessProbePort(container, probe.HTTPGet.Port)
 	if err != nil {
-		return nil, err
+		return captureconfig.ReadinessConfig{}, err
 	}
 	scheme := string(probe.HTTPGet.Scheme)
 	if scheme == "" {
@@ -415,15 +409,12 @@ func readinessProbeEnv(container *corev1.Container) ([]corev1.EnvVar, error) {
 	if pathValue == "" {
 		pathValue = "/"
 	}
-	return []corev1.EnvVar{
-		{Name: "MCV_READINESS_PROBE_TYPE", Value: "httpGet"},
-		{Name: "MCV_READINESS_PROBE_SCHEME", Value: strings.ToLower(scheme)},
-		{Name: "MCV_READINESS_PROBE_HOST", Value: host},
-		{Name: "MCV_READINESS_PROBE_PORT", Value: port},
-		{Name: "MCV_READINESS_PROBE_PATH", Value: pathValue},
-		{Name: "MCV_READINESS_PROBE_INITIAL_DELAY_SECONDS", Value: strconv.Itoa(int(probe.InitialDelaySeconds))},
-		{Name: "MCV_READINESS_PROBE_PERIOD_SECONDS", Value: strconv.Itoa(int(probe.PeriodSeconds))},
-		{Name: "MCV_READINESS_PROBE_TIMEOUT_SECONDS", Value: strconv.Itoa(int(probe.TimeoutSeconds))},
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = v1beta1.DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds
+	}
+	return captureconfig.ReadinessConfig{
+		URL:                               fmt.Sprintf("%s://%s:%s%s", strings.ToLower(scheme), host, port, pathValue),
+		MCVCaptureReadinessTimeoutSeconds: timeoutSeconds,
 	}, nil
 }
 

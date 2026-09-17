@@ -11,6 +11,7 @@ Name | Type | Description | Notes
 **enabled** | **bool** |  | [default to False]
 **job_namespace** | **str** |  | [default to '']
 **job_ttl_seconds_after_finished** | **int** |  | [optional] 
+**mcv_capture_readiness_timeout_seconds** | **int** | MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness. | [optional] 
 **mcv_image** | **str** |  | [optional] 
 **prefetch_image** | **str** |  | [optional] 
 **reconcile_interval_seconds** | **int** |  | [optional] 

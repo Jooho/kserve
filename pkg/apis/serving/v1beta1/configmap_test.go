@@ -96,9 +96,31 @@ func TestNewKernelCacheConfigDefaultsMCVImage(t *testing.T) {
 		config, err := NewKernelCacheConfig(configMap)
 		g.Expect(err).ShouldNot(gomega.HaveOccurred())
 		g.Expect(config.MCVImage).To(gomega.Equal(DefaultKernelCacheMCVImage))
+		g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds))
 		g.Expect(config.ArtifactSecurity.Mode).To(gomega.Equal(string(kernelcachetypes.ModeNone)))
 		g.Expect(config.ArtifactSecurity.FailurePolicy).To(gomega.Equal(string(kernelcachetypes.FailurePolicyReject)))
 	}
+}
+
+func TestNewKernelCacheConfigRejectsInvalidMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":0}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError("kernelcache.mcvCaptureReadinessTimeoutSeconds must be greater than zero"))
+}
+
+func TestNewKernelCacheConfigUsesConfiguredMCVCaptureReadinessTimeout(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"mcvCaptureReadinessTimeoutSeconds":900}`,
+	}}
+
+	config, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(int64(900)))
 }
 
 func TestNewKernelCacheConfigRejectsInvalidArtifactSecurity(t *testing.T) {

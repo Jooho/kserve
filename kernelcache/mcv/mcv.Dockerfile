@@ -29,11 +29,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 
 # ---- License stage (parallel with build on BuildKit) ----
-# FROM deps AS license
+FROM deps AS license
 
-# RUN --mount=type=cache,target=/go/pkg/mod \
-#     --mount=type=cache,target=/root/.cache/go-build \
-#     go install github.com/google/go-licenses@v1.6.0
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/google/go-licenses@v1.6.0
 
 COPY kernelcache/mcv/cmd/   cmd/
 COPY kernelcache/mcv/pkg/   pkg/
