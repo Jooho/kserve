@@ -47,55 +47,110 @@ class V1beta1KernelCacheRegistryAuth(object):
                             and the value is json key in definition.
     """
     openapi_types = {
-        'openshift': 'V1beta1KernelCacheOpenShiftAuth',
+        'pull_role_ref': 'V1beta1KernelCacheRegistryRoleRef',
+        'push_role_ref': 'V1beta1KernelCacheRegistryRoleRef',
+        'token_ttl_seconds': 'int',
         'type': 'str'
     }
 
     attribute_map = {
-        'openshift': 'openshift',
+        'pull_role_ref': 'pullRoleRef',
+        'push_role_ref': 'pushRoleRef',
+        'token_ttl_seconds': 'tokenTTLSeconds',
         'type': 'type'
     }
 
-    def __init__(self, openshift=None, type=None, local_vars_configuration=None):  # noqa: E501
+    def __init__(self, pull_role_ref=None, push_role_ref=None, token_ttl_seconds=None, type=None, local_vars_configuration=None):  # noqa: E501
         """V1beta1KernelCacheRegistryAuth - a model defined in OpenAPI"""  # noqa: E501
         if local_vars_configuration is None:
             local_vars_configuration = Configuration()
         self.local_vars_configuration = local_vars_configuration
 
-        self._openshift = None
+        self._pull_role_ref = None
+        self._push_role_ref = None
+        self._token_ttl_seconds = None
         self._type = None
         self.discriminator = None
 
-        if openshift is not None:
-            self.openshift = openshift
+        if pull_role_ref is not None:
+            self.pull_role_ref = pull_role_ref
+        if push_role_ref is not None:
+            self.push_role_ref = push_role_ref
+        if token_ttl_seconds is not None:
+            self.token_ttl_seconds = token_ttl_seconds
         if type is not None:
             self.type = type
 
     @property
-    def openshift(self):
-        """Gets the openshift of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+    def pull_role_ref(self):
+        """Gets the pull_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
 
 
-        :return: The openshift of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
-        :rtype: V1beta1KernelCacheOpenShiftAuth
+        :return: The pull_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :rtype: V1beta1KernelCacheRegistryRoleRef
         """
-        return self._openshift
+        return self._pull_role_ref
 
-    @openshift.setter
-    def openshift(self, openshift):
-        """Sets the openshift of this V1beta1KernelCacheRegistryAuth.
+    @pull_role_ref.setter
+    def pull_role_ref(self, pull_role_ref):
+        """Sets the pull_role_ref of this V1beta1KernelCacheRegistryAuth.
 
 
-        :param openshift: The openshift of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
-        :type: V1beta1KernelCacheOpenShiftAuth
+        :param pull_role_ref: The pull_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :type: V1beta1KernelCacheRegistryRoleRef
         """
 
-        self._openshift = openshift
+        self._pull_role_ref = pull_role_ref
+
+    @property
+    def push_role_ref(self):
+        """Gets the push_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+
+
+        :return: The push_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :rtype: V1beta1KernelCacheRegistryRoleRef
+        """
+        return self._push_role_ref
+
+    @push_role_ref.setter
+    def push_role_ref(self, push_role_ref):
+        """Sets the push_role_ref of this V1beta1KernelCacheRegistryAuth.
+
+
+        :param push_role_ref: The push_role_ref of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :type: V1beta1KernelCacheRegistryRoleRef
+        """
+
+        self._push_role_ref = push_role_ref
+
+    @property
+    def token_ttl_seconds(self):
+        """Gets the token_ttl_seconds of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+
+        TokenTTLSeconds is the lifetime of a token issued through TokenRequest. The default is 600 seconds when serviceAccountToken is selected.  # noqa: E501
+
+        :return: The token_ttl_seconds of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :rtype: int
+        """
+        return self._token_ttl_seconds
+
+    @token_ttl_seconds.setter
+    def token_ttl_seconds(self, token_ttl_seconds):
+        """Sets the token_ttl_seconds of this V1beta1KernelCacheRegistryAuth.
+
+        TokenTTLSeconds is the lifetime of a token issued through TokenRequest. The default is 600 seconds when serviceAccountToken is selected.  # noqa: E501
+
+        :param token_ttl_seconds: The token_ttl_seconds of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
+        :type: int
+        """
+
+        self._token_ttl_seconds = token_ttl_seconds
 
     @property
     def type(self):
         """Gets the type of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
 
+        Type selects none or serviceAccountToken authentication. The zero value is treated as none.  # noqa: E501
 
         :return: The type of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
         :rtype: str
@@ -106,6 +161,7 @@ class V1beta1KernelCacheRegistryAuth(object):
     def type(self, type):
         """Sets the type of this V1beta1KernelCacheRegistryAuth.
 
+        Type selects none or serviceAccountToken authentication. The zero value is treated as none.  # noqa: E501
 
         :param type: The type of this V1beta1KernelCacheRegistryAuth.  # noqa: E501
         :type: str

@@ -64,7 +64,14 @@ func TestSecretBoundAccessLifecycle(t *testing.T) {
 		}}, nil
 	})
 	manager := &Credentials{Client: client}
-	cfg := v1beta1.KernelCacheRegistryConfig{Endpoint: "registry.example:5000", Auth: v1beta1.KernelCacheRegistryAuth{Type: "openshift"}}
+	cfg := v1beta1.KernelCacheRegistryConfig{
+		Endpoint: "registry.example:5000",
+		Auth: v1beta1.KernelCacheRegistryAuth{
+			Type:        v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken,
+			PushRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"},
+			PullRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"},
+		},
+	}
 	result, err := manager.IssueForCapture(ctx, pod, captureName, cfg)
 	require.NoError(t, err)
 	var credential RegistryCredential

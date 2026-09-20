@@ -10,11 +10,11 @@ Name | Type | Description | Notes
 **default_sidecar_injection** | **bool** |  | [default to False]
 **enabled** | **bool** |  | [default to False]
 **job_namespace** | **str** |  | [default to '']
-**job_ttl_seconds_after_finished** | **int** |  | [optional] 
+**job_ttl_seconds_after_finished** | **int** | JobTTLSecondsAfterFinished controls how long completed preparation Jobs are retained. | [optional] 
 **mcv_capture_readiness_timeout_seconds** | **int** | MCVCaptureReadinessTimeoutSeconds limits how long the MCV capture sidecar waits for workload readiness. | [optional] 
 **mcv_image** | **str** |  | [optional] 
 **prefetch_image** | **str** |  | [optional] 
-**reconcile_interval_seconds** | **int** |  | [optional] 
+**reconcile_interval_seconds** | **int** | ReconcileIntervalSeconds controls KCN status reconciliation. Periodic Node image validation uses the node agent&#39;s internal interval. | [optional] 
 **registry** | [**V1beta1KernelCacheRegistryConfig**](V1beta1KernelCacheRegistryConfig.md) |  | [optional] 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

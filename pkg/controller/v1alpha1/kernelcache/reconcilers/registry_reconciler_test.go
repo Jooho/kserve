@@ -298,7 +298,7 @@ func TestKernelCacheRegistryBootstrap(t *testing.T) {
 	require.NoError(t, v1beta1.AddToScheme(scheme))
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: constants.InferenceServiceConfigMapName, Namespace: constants.KServeNamespace},
-		Data:       map[string]string{"kernelcache": `{"enabled":true,"defaultSidecarInjection":true,"registry":{"endpoint":"registry.example:5000","auth":{"type":"openshift"}}}`},
+		Data:       map[string]string{"kernelcache": `{"enabled":true,"defaultSidecarInjection":true,"registry":{"endpoint":"registry.example:5000","auth":{"type":"serviceAccountToken","pushRoleRef":{"kind":"ClusterRole","name":"registry-pusher"},"pullRoleRef":{"kind":"ClusterRole","name":"registry-puller"}}}}`},
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team"}}
 	svc := &v1beta1.InferenceService{ObjectMeta: metav1.ObjectMeta{Name: "model", Namespace: "team"}}
@@ -340,7 +340,15 @@ func TestRegistryCreatesScopedPusherIdentity(t *testing.T) {
 	}}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(capture).Build()
 	r := &KernelCacheRegistryReconciler{Client: c, Reader: c}
-	require.NoError(t, r.ensurePusherIdentityForCapture(ctx, capture))
+	config := v1beta1.KernelCacheRegistryConfig{
+		Endpoint: "registry.example:5000",
+		Auth: v1beta1.KernelCacheRegistryAuth{
+			Type:        v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken,
+			PushRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"},
+			PullRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"},
+		},
+	}
+	require.NoError(t, r.ensurePusherIdentityForCapture(ctx, capture, config))
 
 	sa := &corev1.ServiceAccount{}
 	require.NoError(t, c.Get(ctx, client.ObjectKey{Namespace: capture.Namespace, Name: registryauth.PusherServiceAccountName(capture.Name)}, sa))
@@ -350,7 +358,7 @@ func TestRegistryCreatesScopedPusherIdentity(t *testing.T) {
 
 	binding := &rbacv1.RoleBinding{}
 	require.NoError(t, c.Get(ctx, client.ObjectKey{Namespace: capture.Namespace, Name: registryauth.PusherRoleBindingName(capture.Name)}, binding))
-	require.Equal(t, "system:image-builder", binding.RoleRef.Name)
+	require.Equal(t, "registry-pusher", binding.RoleRef.Name)
 	require.Equal(t, registryauth.PusherServiceAccountName(capture.Name), binding.Subjects[0].Name)
 	require.Equal(t, capture.UID, metav1.GetControllerOf(binding).UID)
 	require.NotNil(t, binding.OwnerReferences[0].BlockOwnerDeletion)

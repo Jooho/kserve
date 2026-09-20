@@ -48,7 +48,7 @@ func (c *Credentials) IssueForCapture(ctx context.Context, pod *corev1.Pod, capt
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Auth.Type == "" || cfg.Auth.Type == "none" {
+	if cfg.Auth.Type == "" || cfg.Auth.Type == v1beta1.KernelCacheRegistryAuthTypeNone {
 		return nil, nil
 	}
 	live, err := c.Client.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})

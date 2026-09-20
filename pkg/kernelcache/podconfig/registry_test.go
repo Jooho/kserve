@@ -26,7 +26,15 @@ import (
 )
 
 func TestCaptureRegistryProjection(t *testing.T) {
-	cfg := v1beta1.KernelCacheRegistryConfig{Endpoint: "registry.example:5000", Auth: v1beta1.KernelCacheRegistryAuth{Type: "openshift"}, CAConfigMapRef: &v1beta1.KernelCacheConfigMapKeyRef{Name: "registry-ca", Key: "bundle"}}
+	cfg := v1beta1.KernelCacheRegistryConfig{
+		Endpoint: "registry.example:5000",
+		Auth: v1beta1.KernelCacheRegistryAuth{
+			Type:        v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken,
+			PushRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"},
+			PullRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"},
+		},
+		CAConfigMapRef: &v1beta1.KernelCacheConfigMapKeyRef{Name: "registry-ca", Key: "bundle"},
+	}
 	pod := corev1.PodSpec{ServiceAccountName: "runtime"}
 	container := corev1.Container{Name: "mcv"}
 	require.NoError(t, ApplyCaptureRegistry(&pod, &container, cfg, "capture-secret"))

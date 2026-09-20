@@ -73,6 +73,7 @@ class V1beta1KernelCacheConfigMapKeyRef(object):
     def key(self):
         """Gets the key of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
 
+        Key is the data key containing the referenced value.  # noqa: E501
 
         :return: The key of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
         :rtype: str
@@ -83,6 +84,7 @@ class V1beta1KernelCacheConfigMapKeyRef(object):
     def key(self, key):
         """Sets the key of this V1beta1KernelCacheConfigMapKeyRef.
 
+        Key is the data key containing the referenced value.  # noqa: E501
 
         :param key: The key of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
         :type: str
@@ -96,6 +98,7 @@ class V1beta1KernelCacheConfigMapKeyRef(object):
     def name(self):
         """Gets the name of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
 
+        Name is the name of the referenced ConfigMap.  # noqa: E501
 
         :return: The name of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
         :rtype: str
@@ -106,6 +109,7 @@ class V1beta1KernelCacheConfigMapKeyRef(object):
     def name(self, name):
         """Sets the name of this V1beta1KernelCacheConfigMapKeyRef.
 
+        Name is the name of the referenced ConfigMap.  # noqa: E501
 
         :param name: The name of this V1beta1KernelCacheConfigMapKeyRef.  # noqa: E501
         :type: str

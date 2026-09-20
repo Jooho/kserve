@@ -143,28 +143,30 @@ func TestNewKernelCacheConfigRejectsInvalidArtifactSecurity(t *testing.T) {
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
 
-func TestNewKernelCacheConfigDefaultsOpenShiftRegistry(t *testing.T) {
+func TestNewKernelCacheConfigDefaultsAnonymousRegistry(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	configMap := &corev1.ConfigMap{Data: map[string]string{
-		KernelCacheConfigName: `{"registry":{"auth":{"type":"openshift"}}}`,
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"none"}}}`,
 	}}
 
 	config, err := NewKernelCacheConfig(configMap)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(config.Registry.Endpoint).To(gomega.Equal(DefaultKernelCacheOpenShiftRegistryEndpoint))
-	g.Expect(config.Registry.CAConfigMapRef).To(gomega.Equal(&KernelCacheConfigMapKeyRef{
-		Name: DefaultKernelCacheOpenShiftCAConfigMapName,
-		Key:  DefaultKernelCacheOpenShiftCAConfigMapKey,
-	}))
+	g.Expect(config.Registry.Auth.Type).To(gomega.Equal(KernelCacheRegistryAuthTypeNone))
+	g.Expect(config.Registry.Endpoint).To(gomega.BeEmpty())
+	g.Expect(config.Registry.CAConfigMapRef).To(gomega.BeNil())
 }
 
-func TestNewKernelCacheConfigPreservesOpenShiftRegistryOverrides(t *testing.T) {
+func TestNewKernelCacheConfigUsesServiceAccountTokenRegistry(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	configMap := &corev1.ConfigMap{Data: map[string]string{
 		KernelCacheConfigName: `{
 			"registry": {
 				"endpoint": "registry.example:5000",
-				"auth": {"type": "openshift"},
+				"auth": {
+					"type": "serviceAccountToken",
+					"pushRoleRef": {"kind": "ClusterRole", "name": "registry-pusher"},
+					"pullRoleRef": {"kind": "ClusterRole", "name": "registry-puller"}
+				},
 				"caConfigMapRef": {"name": "custom-ca", "key": "bundle.pem"}
 			}
 		}`,
@@ -177,6 +179,19 @@ func TestNewKernelCacheConfigPreservesOpenShiftRegistryOverrides(t *testing.T) {
 		Name: "custom-ca",
 		Key:  "bundle.pem",
 	}))
+	g.Expect(config.Registry.Auth.TokenTTLSeconds).To(gomega.Equal(DefaultKernelCacheRegistryTokenTTLSeconds))
+	g.Expect(config.Registry.Auth.PushRoleRef).To(gomega.Equal(&KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"}))
+	g.Expect(config.Registry.Auth.PullRoleRef).To(gomega.Equal(&KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"}))
+}
+
+func TestNewKernelCacheConfigRejectsUnsupportedAuthType(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+	configMap := &corev1.ConfigMap{Data: map[string]string{
+		KernelCacheConfigName: `{"registry":{"auth":{"type":"unsupported"}}}`,
+	}}
+
+	_, err := NewKernelCacheConfig(configMap)
+	g.Expect(err).To(gomega.MatchError(`unsupported registry.auth.type "unsupported"`))
 }
 
 func TestNewMultiNodeConfigWithNoData(t *testing.T) {

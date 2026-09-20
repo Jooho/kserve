@@ -46,7 +46,11 @@ func TestEnsurePrefetchIdentitySplitsJobAndSourceNamespaces(t *testing.T) {
 		JobNamespace: "jobs",
 		Registry: v1beta1.KernelCacheRegistryConfig{
 			Endpoint: "registry.example/source",
-			Auth:     v1beta1.KernelCacheRegistryAuth{Type: "openshift"},
+			Auth: v1beta1.KernelCacheRegistryAuth{
+				Type:        v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken,
+				PushRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-pusher"},
+				PullRoleRef: &v1beta1.KernelCacheRegistryRoleRef{Kind: "ClusterRole", Name: "registry-puller"},
+			},
 		},
 	}
 
@@ -66,7 +70,7 @@ func TestEnsurePrefetchIdentitySplitsJobAndSourceNamespaces(t *testing.T) {
 	if err := cl.Get(t.Context(), client.ObjectKey{Namespace: "source", Name: kernelCachePrefetchRoleBinding}, binding); err != nil {
 		t.Fatal(err)
 	}
-	if binding.RoleRef.Name != "system:image-puller" {
+	if binding.RoleRef.Name != "registry-puller" {
 		t.Fatalf("unexpected RoleRef: %#v", binding.RoleRef)
 	}
 	if len(binding.Subjects) != 1 || binding.Subjects[0].Namespace != "jobs" || binding.Subjects[0].Name != kernelCachePrefetchServiceAccount {

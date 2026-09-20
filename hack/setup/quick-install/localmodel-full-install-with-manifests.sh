@@ -6793,22 +6793,6 @@ rules:
   - bind
 - apiGroups:
   - rbac.authorization.k8s.io
-  resourceNames:
-  - system:image-builder
-  resources:
-  - clusterroles
-  verbs:
-  - bind
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resourceNames:
-  - system:image-puller
-  resources:
-  - clusterroles
-  verbs:
-  - bind
-- apiGroups:
-  - rbac.authorization.k8s.io
   resources:
   - rolebindings
   verbs:

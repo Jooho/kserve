@@ -180,7 +180,7 @@ func (r *KernelCacheRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, fmt.Errorf("issue capture reporter access: %w", issueErr)
 		}
 	}
-	if cfg.Registry.Auth.Type != "openshift" {
+	if cfg.Registry.Auth.Type != v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken {
 		if isCapturePod {
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
@@ -193,7 +193,7 @@ func (r *KernelCacheRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 		if capture == nil {
 			return ctrl.Result{}, errors.New("capture registry access requires a KernelCacheCapture")
 		}
-		if err := r.ensurePusherIdentityForCapture(ctx, capture); err != nil {
+		if err := r.ensurePusherIdentityForCapture(ctx, capture, cfg.Registry); err != nil {
 			return ctrl.Result{}, err
 		}
 		if r.Clientset == nil {
@@ -391,10 +391,13 @@ func (r *KernelCacheRegistryReconciler) ensureReporterIdentityForCapture(ctx con
 	return r.ensureRoleBinding(ctx, binding, reporter.ManagedLabel)
 }
 
-func (r *KernelCacheRegistryReconciler) ensurePusherIdentityForCapture(ctx context.Context, capture *v1alpha1.KernelCacheCapture) error {
+func (r *KernelCacheRegistryReconciler) ensurePusherIdentityForCapture(ctx context.Context, capture *v1alpha1.KernelCacheCapture, config v1beta1.KernelCacheRegistryConfig) error {
 	namespace := capture.Namespace
 	serviceAccountName := registryauth.PusherServiceAccountName(capture.Name)
 	owner := captureOwnerReference(capture)
+	if config.Auth.PushRoleRef == nil {
+		return errors.New("registry push RoleRef is required for serviceAccountToken authentication")
+	}
 	if err := r.ensureManagedServiceAccountWithOwner(ctx, namespace, serviceAccountName, registryauth.ManagedLabel, owner); err != nil {
 		return err
 	}
@@ -405,10 +408,14 @@ func (r *KernelCacheRegistryReconciler) ensurePusherIdentityForCapture(ctx conte
 			Labels:          map[string]string{registryauth.ManagedLabel: "true"},
 			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
-		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "system:image-builder"},
+		RoleRef:  kernelCacheRegistryRoleRef(config.Auth.PushRoleRef),
 		Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: serviceAccountName, Namespace: namespace}},
 	}
 	return r.ensureRoleBinding(ctx, binding, registryauth.ManagedLabel)
+}
+
+func kernelCacheRegistryRoleRef(ref *v1beta1.KernelCacheRegistryRoleRef) rbacv1.RoleRef {
+	return rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: ref.Kind, Name: ref.Name}
 }
 
 func captureOwnerReference(capture *v1alpha1.KernelCacheCapture) *metav1.OwnerReference {

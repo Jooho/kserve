@@ -284,6 +284,7 @@ class V1beta1KernelCacheConfig(object):
     def job_ttl_seconds_after_finished(self):
         """Gets the job_ttl_seconds_after_finished of this V1beta1KernelCacheConfig.  # noqa: E501
 
+        JobTTLSecondsAfterFinished controls how long completed preparation Jobs are retained.  # noqa: E501
 
         :return: The job_ttl_seconds_after_finished of this V1beta1KernelCacheConfig.  # noqa: E501
         :rtype: int
@@ -294,6 +295,7 @@ class V1beta1KernelCacheConfig(object):
     def job_ttl_seconds_after_finished(self, job_ttl_seconds_after_finished):
         """Sets the job_ttl_seconds_after_finished of this V1beta1KernelCacheConfig.
 
+        JobTTLSecondsAfterFinished controls how long completed preparation Jobs are retained.  # noqa: E501
 
         :param job_ttl_seconds_after_finished: The job_ttl_seconds_after_finished of this V1beta1KernelCacheConfig.  # noqa: E501
         :type: int
@@ -370,6 +372,7 @@ class V1beta1KernelCacheConfig(object):
     def reconcile_interval_seconds(self):
         """Gets the reconcile_interval_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
 
+        ReconcileIntervalSeconds controls KCN status reconciliation. Periodic Node image validation uses the node agent's internal interval.  # noqa: E501
 
         :return: The reconcile_interval_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
         :rtype: int
@@ -380,6 +383,7 @@ class V1beta1KernelCacheConfig(object):
     def reconcile_interval_seconds(self, reconcile_interval_seconds):
         """Sets the reconcile_interval_seconds of this V1beta1KernelCacheConfig.
 
+        ReconcileIntervalSeconds controls KCN status reconciliation. Periodic Node image validation uses the node agent's internal interval.  # noqa: E501
 
         :param reconcile_interval_seconds: The reconcile_interval_seconds of this V1beta1KernelCacheConfig.  # noqa: E501
         :type: int

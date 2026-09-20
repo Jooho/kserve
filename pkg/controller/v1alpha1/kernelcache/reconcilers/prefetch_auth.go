@@ -18,6 +18,7 @@ package reconcilers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -41,17 +42,19 @@ func (r *KernelCacheReconciler) ensurePrefetchIdentity(
 	kernelCache *v1alpha1.KernelCache,
 	config *v1beta1.KernelCacheConfig,
 ) error {
+	if config.Registry.Auth.Type != v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken {
+		return r.ensurePrefetchServiceAccount(ctx, config.JobNamespace)
+	}
+	if config.Registry.Auth.PullRoleRef == nil {
+		return errors.New("registry pull RoleRef is required for serviceAccountToken authentication")
+	}
 	if err := r.ensurePrefetchServiceAccount(ctx, config.JobNamespace); err != nil {
 		return err
 	}
 
-	if config.Registry.Auth.Type != "openshift" {
-		return nil
-	}
-
 	// The ServiceAccount runs Jobs in JobNamespace, while the RoleBinding must
 	// grant pull access in the KernelCache's image source namespace.
-	return r.ensurePrefetchImagePullBinding(ctx, kernelCache.Namespace, config.JobNamespace)
+	return r.ensurePrefetchImagePullBinding(ctx, kernelCache.Namespace, config.JobNamespace, config.Registry.Auth.PullRoleRef)
 }
 
 func (r *KernelCacheReconciler) ensurePrefetchServiceAccount(ctx context.Context, namespace string) error {
@@ -82,18 +85,14 @@ func (r *KernelCacheReconciler) ensurePrefetchServiceAccount(ctx context.Context
 	return nil
 }
 
-func (r *KernelCacheReconciler) ensurePrefetchImagePullBinding(ctx context.Context, sourceNamespace, jobNamespace string) error {
+func (r *KernelCacheReconciler) ensurePrefetchImagePullBinding(ctx context.Context, sourceNamespace, jobNamespace string, roleRef *v1beta1.KernelCacheRegistryRoleRef) error {
 	desired := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kernelCachePrefetchRoleBinding,
 			Namespace: sourceNamespace,
 			Labels:    map[string]string{kernelCachePrefetchManagedLabel: "true"},
 		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacv1.GroupName,
-			Kind:     "ClusterRole",
-			Name:     "system:image-puller",
-		},
+		RoleRef: kernelCacheRegistryRoleRef(roleRef),
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      kernelCachePrefetchServiceAccount,

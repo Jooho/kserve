@@ -48,8 +48,8 @@ func ApplyCaptureRegistry(pod *corev1.PodSpec, container *corev1.Container, cfg 
 	sources := []corev1.VolumeProjection{}
 	env := []corev1.EnvVar{}
 	switch cfg.Auth.Type {
-	case "", "none":
-	case "openshift":
+	case "", v1beta1.KernelCacheRegistryAuthTypeNone:
+	case v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken:
 		if cfg.Endpoint == "" || strings.ContainsAny(cfg.Endpoint, "/ \t\n") {
 			return errors.New("registry.endpoint must be a registry host with optional port")
 		}

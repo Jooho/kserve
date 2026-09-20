@@ -92,7 +92,9 @@ func (NoAuthProvider) GetCredential(context.Context, CredentialRequest) (*Regist
 	return nil, nil
 }
 
-type OpenShiftAuthProvider struct {
+// ServiceAccountTokenProvider issues short-lived registry credentials through
+// the Kubernetes TokenRequest API.
+type ServiceAccountTokenProvider struct {
 	Client     kubernetes.Interface
 	TTLSeconds int64
 }
@@ -102,20 +104,20 @@ func NewProvider(c kubernetes.Interface, cfg v1beta1.KernelCacheRegistryConfig) 
 		return nil, err
 	}
 	switch cfg.Auth.Type {
-	case "", "none":
+	case "", v1beta1.KernelCacheRegistryAuthTypeNone:
 		return NoAuthProvider{}, nil
-	case "openshift":
-		ttl := int64(600)
-		if cfg.Auth.OpenShift != nil && cfg.Auth.OpenShift.TokenTTLSeconds != 0 {
-			ttl = cfg.Auth.OpenShift.TokenTTLSeconds
+	case v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken:
+		ttl := cfg.Auth.TokenTTLSeconds
+		if ttl == 0 {
+			ttl = v1beta1.DefaultKernelCacheRegistryTokenTTLSeconds
 		}
-		return &OpenShiftAuthProvider{Client: c, TTLSeconds: ttl}, nil
+		return &ServiceAccountTokenProvider{Client: c, TTLSeconds: ttl}, nil
 	default:
 		return nil, fmt.Errorf("unsupported registry authentication provider %q", cfg.Auth.Type)
 	}
 }
 
-func (p *OpenShiftAuthProvider) GetCredential(ctx context.Context, req CredentialRequest) (*RegistryCredential, error) {
+func (p *ServiceAccountTokenProvider) GetCredential(ctx context.Context, req CredentialRequest) (*RegistryCredential, error) {
 	ref := req.Secret
 	if ref.Kind != "Secret" || ref.APIVersion != "v1" || ref.Namespace == "" || ref.Name == "" || ref.UID == "" || req.Registry == "" || req.ServiceAccountName == "" {
 		return nil, errors.New("registry access requires an existing Secret name, namespace and UID")
@@ -127,7 +129,7 @@ func (p *OpenShiftAuthProvider) GetCredential(ctx context.Context, req Credentia
 		},
 	}, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("request registry publishing token: %w", err)
+		return nil, fmt.Errorf("request registry access token: %w", err)
 	}
 	if result.Status.Token == "" {
 		return nil, errors.New("TokenRequest returned empty registry access")

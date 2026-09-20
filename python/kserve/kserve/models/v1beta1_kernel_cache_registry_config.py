@@ -122,6 +122,7 @@ class V1beta1KernelCacheRegistryConfig(object):
     def endpoint(self):
         """Gets the endpoint of this V1beta1KernelCacheRegistryConfig.  # noqa: E501
 
+        Endpoint is the OCI registry host and optional port.  # noqa: E501
 
         :return: The endpoint of this V1beta1KernelCacheRegistryConfig.  # noqa: E501
         :rtype: str
@@ -132,6 +133,7 @@ class V1beta1KernelCacheRegistryConfig(object):
     def endpoint(self, endpoint):
         """Sets the endpoint of this V1beta1KernelCacheRegistryConfig.
 
+        Endpoint is the OCI registry host and optional port.  # noqa: E501
 
         :param endpoint: The endpoint of this V1beta1KernelCacheRegistryConfig.  # noqa: E501
         :type: str

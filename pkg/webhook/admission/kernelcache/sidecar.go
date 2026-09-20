@@ -150,7 +150,7 @@ func (m *PodMutator) injectMCVSidecar(ctx context.Context, pod *corev1.Pod, cfg 
 		)
 	}
 
-	if updatedConfig.Registry.Auth.Type == "openshift" {
+	if updatedConfig.Registry.Auth.Type == v1beta1.KernelCacheRegistryAuthTypeServiceAccountToken {
 		updatedConfig.CredentialSecretName = "mcv-registry-" + captureID
 	}
 	updatedConfig.ReporterSecretName = reporter.SecretName(captureName)

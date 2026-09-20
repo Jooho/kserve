@@ -30,11 +30,11 @@ import unittest
 import datetime
 
 import kserve
-from kserve.models.v1beta1_kernel_cache_open_shift_auth import V1beta1KernelCacheOpenShiftAuth  # noqa: E501
+from kserve.models.v1beta1_kernel_cache_registry_role_ref import V1beta1KernelCacheRegistryRoleRef  # noqa: E501
 from kserve.rest import ApiException
 
-class TestV1beta1KernelCacheOpenShiftAuth(unittest.TestCase):
-    """V1beta1KernelCacheOpenShiftAuth unit test stubs"""
+class TestV1beta1KernelCacheRegistryRoleRef(unittest.TestCase):
+    """V1beta1KernelCacheRegistryRoleRef unit test stubs"""
 
     def setUp(self):
         pass
@@ -43,21 +43,24 @@ class TestV1beta1KernelCacheOpenShiftAuth(unittest.TestCase):
         pass
 
     def make_instance(self, include_optional):
-        """Test V1beta1KernelCacheOpenShiftAuth
+        """Test V1beta1KernelCacheRegistryRoleRef
             include_option is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # model = kserve.models.v1beta1_kernel_cache_open_shift_auth.V1beta1KernelCacheOpenShiftAuth()  # noqa: E501
+        # model = kserve.models.v1beta1_kernel_cache_registry_role_ref.V1beta1KernelCacheRegistryRoleRef()  # noqa: E501
         if include_optional :
-            return V1beta1KernelCacheOpenShiftAuth(
-                token_ttl_seconds = 56
+            return V1beta1KernelCacheRegistryRoleRef(
+                kind = '0', 
+                name = '0'
             )
         else :
-            return V1beta1KernelCacheOpenShiftAuth(
+            return V1beta1KernelCacheRegistryRoleRef(
+                kind = '0',
+                name = '0',
         )
 
-    def testV1beta1KernelCacheOpenShiftAuth(self):
-        """Test V1beta1KernelCacheOpenShiftAuth"""
+    def testV1beta1KernelCacheRegistryRoleRef(self):
+        """Test V1beta1KernelCacheRegistryRoleRef"""
         inst_req_only = self.make_instance(include_optional=False)
         inst_req_and_optional = self.make_instance(include_optional=True)
 

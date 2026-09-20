@@ -50,8 +50,13 @@ class TestV1beta1KernelCacheRegistryAuth(unittest.TestCase):
         # model = kserve.models.v1beta1_kernel_cache_registry_auth.V1beta1KernelCacheRegistryAuth()  # noqa: E501
         if include_optional :
             return V1beta1KernelCacheRegistryAuth(
-                openshift = kserve.models.v1beta1_kernel_cache_open_shift_auth.V1beta1KernelCacheOpenShiftAuth(
-                    token_ttl_seconds = 56, ), 
+                pull_role_ref = kserve.models.v1beta1_kernel_cache_registry_role_ref.V1beta1KernelCacheRegistryRoleRef(
+                    kind = 'ClusterRole',
+                    name = 'registry-puller', ),
+                push_role_ref = kserve.models.v1beta1_kernel_cache_registry_role_ref.V1beta1KernelCacheRegistryRoleRef(
+                    kind = 'ClusterRole',
+                    name = 'registry-pusher', ),
+                token_ttl_seconds = 56,
                 type = '0'
             )
         else :

@@ -88,7 +88,7 @@ func TestKernelCacheBootstrapCanDeleteCaptureServiceAccounts(t *testing.T) {
 	), "kernelcache bootstrap must be able to delete capture ServiceAccounts during cleanup")
 }
 
-func TestKernelCacheBootstrapBindsOnlyPredefinedClusterRoles(t *testing.T) {
+func TestKernelCacheBootstrapBindsOnlyConfiguredClusterRoles(t *testing.T) {
 	role := findKernelCacheClusterRole(t, "kserve-kernelcache-registry-bootstrap")
 
 	resourceNames := make([]string, 0)
@@ -100,8 +100,6 @@ func TestKernelCacheBootstrapBindsOnlyPredefinedClusterRoles(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{
-		"system:image-builder",
-		"system:image-puller",
 		"kserve-kernelcache-token-requester",
 	}, resourceNames)
 }

@@ -56256,17 +56256,40 @@ data:
          # jobNamespace is the pre-created namespace where kernel cache preparation Jobs are created.
          "jobNamespace": "kserve-kernelcache-jobs",
          # mcvImage is the MCV container image used by cache capture and preparation flows.
-         "mcvImage": "quay.io/gkm/mcv:latest",
+         "mcvImage": "quay.io/kserve/kserve-mcv:latest",
          # prefetchImage is the lightweight image used by OCI prefetch Jobs.
          "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
          # registry defines the default capture registry and its access settings.
          "registry": {
-           # OpenShift defaults the internal registry endpoint and service CA.
-           # Explicit endpoint and caConfigMapRef values override those defaults.
+           # endpoint is the OCI registry host and optional port. It is required when
+           # registry.auth.type is serviceAccountToken.
+           "endpoint": "image-registry.openshift-image-registry.svc:5000",
+           # caConfigMapRef optionally references a ConfigMap key containing the
+           # registry CA bundle. The referenced bundle is mounted into capture Pods.
+           "caConfigMapRef": {
+             "name": "openshift-service-ca.crt",
+             "key": "service-ca.crt"
+           },
            "auth": {
-             "type": "openshift",
-             "openshift": {
-               "tokenTTLSeconds": 600
+             # type is none or serviceAccountToken. The default is none.
+             # none does not provision registry credentials.
+             # serviceAccountToken uses the Kubernetes TokenRequest API to issue
+             # short-lived credentials for registry access.
+             "type": "serviceAccountToken",
+             # tokenTTLSeconds controls the lifetime of issued tokens. It defaults
+             # to 600 seconds and must be between 600 and 3600 seconds.
+             "tokenTTLSeconds": 600,
+             # pushRoleRef identifies the Role or ClusterRole bound to the
+             # per-capture ServiceAccount used to publish captured images.
+             "pushRoleRef": {
+               "kind": "ClusterRole",
+               "name": "system:image-builder"
+             },
+             # pullRoleRef identifies the Role or ClusterRole bound to the
+             # prefetch ServiceAccount used to pull cache images.
+             "pullRoleRef": {
+               "kind": "ClusterRole",
+               "name": "system:image-puller"
              }
            }
          },
@@ -56284,7 +56307,8 @@ data:
          "jobTTLSecondsAfterFinished": 600,
          # Maximum time for the MCV capture sidecar to wait for workload readiness.
          "mcvCaptureReadinessTimeoutSeconds": 600,
-         # The interval used for node-local cache reconciliation.
+         # The interval used for KCN status reconciliation. Periodic Node image
+         # validation runs internally at a fixed one-hour interval.
          "reconcileIntervalSeconds": 300
        }
   agent: |-
@@ -56377,10 +56401,7 @@ data:
       "prefetchImage": "registry.access.redhat.com/ubi9/ubi-minimal:latest",
       "registry": {
         "auth": {
-          "type": "openshift",
-          "openshift": {
-            "tokenTTLSeconds": 600
-          }
+          "type": "none"
         }
       },
       "artifactSecurity": {
