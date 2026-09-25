@@ -234,6 +234,7 @@ type KernelCacheConfig struct {
 }
 
 // +kubebuilder:object:generate=false
+// KernelCacheArtifactSecurityConfig configures signing of completed artifacts.
 type KernelCacheArtifactSecurityConfig struct {
 	Mode          string                        `json:"mode,omitempty"`
 	FailurePolicy string                        `json:"failurePolicy,omitempty"`
@@ -241,6 +242,7 @@ type KernelCacheArtifactSecurityConfig struct {
 }
 
 // +kubebuilder:object:generate=false
+// KernelCacheArtifactCertConfig contains certificate signing profile settings.
 type KernelCacheArtifactCertConfig struct {
 	SigningProfileRef string `json:"signingProfileRef,omitempty"`
 	TrustBundle       string `json:"trustBundle,omitempty"`
