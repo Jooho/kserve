@@ -2116,6 +2116,7 @@ spec:
   annotations:
     prometheus.kserve.io/path: /metrics
     prometheus.kserve.io/port: "8080"
+    serving.kserve.io/kernelcache-supported: "true"
   containers:
   - args:
     - --port=8080
@@ -55548,25 +55549,25 @@ data:
     by cache capture and preparation flows.\n     \"mcvImage\": \"kserve/kserve-mcv:latest-minimal\",\n
     \    # prefetchImage is the lightweight image used by OCI prefetch Jobs.\n     \"prefetchImage\":
     \"registry.access.redhat.com/ubi9/ubi-minimal:latest\",\n     # registry defines
-    the default capture registry and its access settings.\n     \"registry\": {\n
-    \      \"auth\": {\n         # type is none or serviceAccountToken. The default
-    is none.\n         # none does not provision registry credentials.\n         #
-    serviceAccountToken uses the Kubernetes TokenRequest API to issue\n         #
-    short-lived credentials for registry access.\n         \"type\": \"none\"\n       }\n
-    \    },\n     # artifactSecurity controls signing after capture and verification
-    before preparation.\n     # none skips both operations. cert requires cert.signingProfileRef,\n
-    \    # cert.trustBundle, and cert.subjectRegexp.\n     \"artifactSecurity\": {\n
-    \      \"mode\": \"none\",\n       \"failurePolicy\": \"reject\"\n     },\n     #
-    abandonedCapturePolicy controls generated captures whose producer Pod disappears\n
-    \    # before completion. retain preserves Failed captures for diagnosis; delete
-    removes them.\n     \"abandonedCapturePolicy\": \"retain\",\n     # jobTTLSecondsAfterFinished
-    controls how long completed preparation Jobs (downloading an OCI image to the
-    node) are retained.\n     \"jobTTLSecondsAfterFinished\": 600,         \n     #
-    mcvCaptureReadinessTimeoutSeconds limits how long MCV waits for runtime readiness
-    before capture. Larger models may require a longer timeout.\n     \"mcvCaptureReadinessTimeoutSeconds\":
-    600,\n     # The interval used for KCN status reconciliation. Periodic Node image\n
-    \    # validation runs internally at a fixed one-hour interval.\n     \"reconcileIntervalSeconds\":
-    300\n   }"
+    the default capture registry and its access settings.\n     # insecure defaults
+    to false. Set it to true only for an HTTP registry.\n     \"registry\": {\n       \"auth\":
+    {\n         # type is none or serviceAccountToken. The default is none.\n         #
+    none does not provision registry credentials.\n         # serviceAccountToken
+    uses the Kubernetes TokenRequest API to issue\n         # short-lived credentials
+    for registry access.\n         \"type\": \"none\"\n       }\n     },\n     # artifactSecurity
+    controls signing after capture and verification before preparation.\n     # none
+    skips both operations. cert requires cert.signingProfileRef,\n     # cert.trustBundle,
+    and cert.subjectRegexp.\n     \"artifactSecurity\": {\n       \"mode\": \"none\",\n
+    \      \"failurePolicy\": \"reject\"\n     },\n     # abandonedCapturePolicy controls
+    generated captures whose producer Pod disappears\n     # before completion. retain
+    preserves Failed captures for diagnosis; delete removes them.\n     \"abandonedCapturePolicy\":
+    \"retain\",\n     # jobTTLSecondsAfterFinished controls how long completed preparation
+    Jobs (downloading an OCI image to the node) are retained.\n     \"jobTTLSecondsAfterFinished\":
+    600,         \n     # mcvCaptureReadinessTimeoutSeconds limits how long MCV waits
+    for runtime readiness before capture. Larger models may require a longer timeout.\n
+    \    \"mcvCaptureReadinessTimeoutSeconds\": 600,\n     # The interval used for
+    KCN status reconciliation. Periodic Node image\n     # validation runs internally
+    at a fixed one-hour interval.\n     \"reconcileIntervalSeconds\": 300\n   }"
   agent: |-
     {
         "image" : "kserve/agent:latest",

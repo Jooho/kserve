@@ -1,5 +1,6 @@
 # V1beta1KernelCacheArtifactSecurityConfig
 
+KernelCacheArtifactSecurityConfig configures signing of completed artifacts.
 ## Properties
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------

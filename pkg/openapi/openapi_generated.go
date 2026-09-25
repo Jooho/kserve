@@ -8487,7 +8487,8 @@ func schema_pkg_apis_serving_v1beta1_KernelCacheArtifactCertConfig(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Type: []string{"object"},
+				Description: "KernelCacheArtifactCertConfig contains certificate signing profile settings.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"signingProfileRef": {
 						SchemaProps: spec.SchemaProps{
@@ -8523,7 +8524,8 @@ func schema_pkg_apis_serving_v1beta1_KernelCacheArtifactSecurityConfig(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Type: []string{"object"},
+				Description: "KernelCacheArtifactSecurityConfig configures signing of completed artifacts.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"mode": {
 						SchemaProps: spec.SchemaProps{
@@ -8735,6 +8737,13 @@ func schema_pkg_apis_serving_v1beta1_KernelCacheRegistryConfig(ref common.Refere
 						SchemaProps: spec.SchemaProps{
 							Description: "Endpoint is the OCI registry host and optional port.",
 							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"insecure": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Insecure allows MCV to use plain HTTP for registry operations. The default is false.",
+							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},

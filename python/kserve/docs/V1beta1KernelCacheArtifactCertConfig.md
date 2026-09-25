@@ -1,5 +1,6 @@
 # V1beta1KernelCacheArtifactCertConfig
 
+KernelCacheArtifactCertConfig contains certificate signing profile settings.
 ## Properties
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------

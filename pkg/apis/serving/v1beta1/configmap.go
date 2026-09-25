@@ -234,6 +234,7 @@ type KernelCacheConfig struct {
 }
 
 // +kubebuilder:object:generate=false
+// KernelCacheArtifactSecurityConfig configures signing of completed artifacts.
 type KernelCacheArtifactSecurityConfig struct {
 	Mode          string                        `json:"mode,omitempty"`
 	FailurePolicy string                        `json:"failurePolicy,omitempty"`
@@ -241,6 +242,7 @@ type KernelCacheArtifactSecurityConfig struct {
 }
 
 // +kubebuilder:object:generate=false
+// KernelCacheArtifactCertConfig contains certificate signing profile settings.
 type KernelCacheArtifactCertConfig struct {
 	SigningProfileRef string `json:"signingProfileRef,omitempty"`
 	TrustBundle       string `json:"trustBundle,omitempty"`
@@ -294,6 +296,8 @@ func (c *KernelCacheConfig) DeepCopy() *KernelCacheConfig {
 type KernelCacheRegistryConfig struct {
 	// Endpoint is the OCI registry host and optional port.
 	Endpoint string `json:"endpoint,omitempty"`
+	// Insecure allows MCV to use plain HTTP for registry operations. The default is false.
+	Insecure bool `json:"insecure,omitempty"`
 	// Auth configures how registry credentials are provisioned.
 	Auth KernelCacheRegistryAuth `json:"auth,omitempty"`
 	// CAConfigMapRef optionally references a ConfigMap key containing the
@@ -599,7 +603,8 @@ func NewKernelCacheConfig(isvcConfigMap *corev1.ConfigMap) (*KernelCacheConfig, 
 			FailurePolicy: string(kernelcachetypes.FailurePolicyReject),
 		},
 		Registry: KernelCacheRegistryConfig{
-			Auth: KernelCacheRegistryAuth{Type: KernelCacheRegistryAuthTypeNone},
+			Insecure: false,
+			Auth:     KernelCacheRegistryAuth{Type: KernelCacheRegistryAuthTypeNone},
 		},
 		AbandonedCapturePolicy: "retain",
 	}
@@ -661,6 +666,9 @@ func NewKernelCacheConfig(isvcConfigMap *corev1.ConfigMap) (*KernelCacheConfig, 
 }
 
 func (c KernelCacheRegistryConfig) Validate() error {
+	if c.CAConfigMapRef != nil && (c.CAConfigMapRef.Name == "" || c.CAConfigMapRef.Key == "") {
+		return errors.New("registry.caConfigMapRef requires name and key")
+	}
 	switch c.Auth.Type {
 	case "", KernelCacheRegistryAuthTypeNone:
 		return nil

@@ -200,9 +200,6 @@ func (r *KernelCacheRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 		if err := r.ensurePusherIdentityForCapture(ctx, capture, cfg.Registry); err != nil {
 			return ctrl.Result{}, err
 		}
-		if r.Clientset == nil {
-			return ctrl.Result{}, errors.New("kernelcache registry access requires a Kubernetes clientset")
-		}
 		if _, err := (&registryauth.Credentials{Client: r.Clientset}).IssueForCapture(ctx, capturePod, capture.Name, cfg.Registry); err != nil {
 			if apierrors.IsNotFound(err) || apierrors.IsGone(err) {
 				return ctrl.Result{}, nil
@@ -522,7 +519,10 @@ func (r *KernelCacheRegistryReconciler) ensureManagedServiceAccountWithOwner(ctx
 }
 
 func (r *KernelCacheRegistryReconciler) ensureRoleBinding(ctx context.Context, desired *rbacv1.RoleBinding, label string) error {
-	desired.Labels = map[string]string{label: "true"}
+	if desired.Labels == nil {
+		desired.Labels = map[string]string{}
+	}
+	desired.Labels[label] = "true"
 	current := &rbacv1.RoleBinding{}
 	if err := r.Reader.Get(ctx, client.ObjectKeyFromObject(desired), current); err != nil {
 		if !apierrors.IsNotFound(err) {

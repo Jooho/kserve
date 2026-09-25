@@ -104,6 +104,7 @@ func TestNewKernelCacheConfigDefaults(t *testing.T) {
 		g.Expect(config.MCVCaptureReadinessTimeoutSeconds).To(gomega.Equal(DefaultKernelCacheMCVCaptureReadinessTimeoutSeconds))
 		g.Expect(config.PrefetchImage).To(gomega.Equal(DefaultKernelCachePrefetchImage))
 		g.Expect(config.Registry.Endpoint).To(gomega.BeEmpty())
+		g.Expect(config.Registry.Insecure).To(gomega.BeFalse())
 		g.Expect(config.Registry.CAConfigMapRef).To(gomega.BeNil())
 		g.Expect(config.Registry.Auth.Type).To(gomega.Equal(KernelCacheRegistryAuthTypeNone))
 		g.Expect(config.Registry.Auth.TokenTTLSeconds).To(gomega.Equal(int64(0)))
@@ -127,7 +128,8 @@ func TestNewKernelCacheConfigUsesConfiguredValues(t *testing.T) {
 			"defaultMountType": "oci",
 			"jobNamespace": "custom-kernelcache-jobs",
 			"jobTTLSecondsAfterFinished": 900,
-			"reconcileIntervalSeconds": 60
+			"reconcileIntervalSeconds": 60,
+			"registry": {"insecure": true}
 		}`,
 	}}
 
@@ -135,6 +137,7 @@ func TestNewKernelCacheConfigUsesConfiguredValues(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(config.DefaultMountType).To(gomega.Equal("oci"))
 	g.Expect(config.JobNamespace).To(gomega.Equal("custom-kernelcache-jobs"))
+	g.Expect(config.Registry.Insecure).To(gomega.BeTrue())
 	g.Expect(*config.JobTTLSecondsAfterFinished).To(gomega.Equal(int32(900)))
 	g.Expect(*config.ReconcileIntervalSeconds).To(gomega.Equal(int64(60)))
 }
@@ -205,6 +208,25 @@ func TestNewKernelCacheConfigDefaultsAnonymousRegistry(t *testing.T) {
 	g.Expect(config.Registry.CAConfigMapRef).To(gomega.BeNil())
 }
 
+func TestKernelCacheRegistryConfigRejectsIncompleteCAConfigMapRef(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  *KernelCacheConfigMapKeyRef
+	}{
+		{name: "missing name", ref: &KernelCacheConfigMapKeyRef{Key: "bundle.pem"}},
+		{name: "missing key", ref: &KernelCacheConfigMapKeyRef{Name: "registry-ca"}},
+		{name: "missing name and key", ref: &KernelCacheConfigMapKeyRef{}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			config := KernelCacheRegistryConfig{CAConfigMapRef: test.ref}
+			g.Expect(config.Validate()).To(gomega.MatchError("registry.caConfigMapRef requires name and key"))
+		})
+	}
+}
+
 func TestNewKernelCacheConfigUsesServiceAccountTokenRegistry(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	configMap := &corev1.ConfigMap{Data: map[string]string{
@@ -241,6 +263,75 @@ func TestNewKernelCacheConfigRejectsUnsupportedAuthType(t *testing.T) {
 
 	_, err := NewKernelCacheConfig(configMap)
 	g.Expect(err).To(gomega.MatchError(`unsupported registry.auth.type "unsupported"`))
+}
+
+func TestKernelCacheRegistryConfigRejectsInvalidServiceAccountTokenSettings(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      KernelCacheRegistryConfig
+		expectedErr string
+	}{
+		{
+			name: "missing pull role reference",
+			config: KernelCacheRegistryConfig{
+				Endpoint: "registry.example:5000",
+				Auth: KernelCacheRegistryAuth{
+					Type:        KernelCacheRegistryAuthTypeServiceAccountToken,
+					PushRoleRef: &KernelCacheRegistryRoleRef{Kind: "Role", Name: "pusher"},
+				},
+			},
+			expectedErr: "registry.auth.pullRoleRef requires kind and name",
+		},
+		{
+			name: "invalid role reference kind",
+			config: KernelCacheRegistryConfig{
+				Endpoint: "registry.example:5000",
+				Auth: KernelCacheRegistryAuth{
+					Type:        KernelCacheRegistryAuthTypeServiceAccountToken,
+					PushRoleRef: &KernelCacheRegistryRoleRef{Kind: "ServiceAccount", Name: "pusher"},
+					PullRoleRef: &KernelCacheRegistryRoleRef{Kind: "Role", Name: "puller"},
+				},
+			},
+			expectedErr: "registry.auth.pushRoleRef.kind must be Role or ClusterRole",
+		},
+		{
+			name: "endpoint contains path",
+			config: KernelCacheRegistryConfig{
+				Endpoint: "registry.example:5000/lib",
+				Auth: KernelCacheRegistryAuth{
+					Type:        KernelCacheRegistryAuthTypeServiceAccountToken,
+					PushRoleRef: &KernelCacheRegistryRoleRef{Kind: "Role", Name: "pusher"},
+					PullRoleRef: &KernelCacheRegistryRoleRef{Kind: "Role", Name: "puller"},
+				},
+			},
+			expectedErr: "registry.endpoint must be a registry host with optional port",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			g.Expect(test.config.Validate()).To(gomega.MatchError(test.expectedErr))
+		})
+	}
+}
+
+func TestKernelCacheRegistryConfigAcceptsTokenTTLBoundaries(t *testing.T) {
+	for _, ttl := range []int64{DefaultKernelCacheRegistryTokenTTLSeconds, 3600} {
+		t.Run(fmt.Sprintf("ttl_%d", ttl), func(t *testing.T) {
+			g := gomega.NewWithT(t)
+			config := KernelCacheRegistryConfig{
+				Endpoint: "registry.example:5000",
+				Auth: KernelCacheRegistryAuth{
+					Type:            KernelCacheRegistryAuthTypeServiceAccountToken,
+					TokenTTLSeconds: ttl,
+					PushRoleRef:     &KernelCacheRegistryRoleRef{Kind: "Role", Name: "pusher"},
+					PullRoleRef:     &KernelCacheRegistryRoleRef{Kind: "Role", Name: "puller"},
+				},
+			}
+			g.Expect(config.Validate()).To(gomega.Succeed())
+		})
+	}
 }
 
 func TestNewMultiNodeConfigWithNoData(t *testing.T) {

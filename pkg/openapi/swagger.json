@@ -4711,6 +4711,7 @@
       }
     },
     "v1beta1.KernelCacheArtifactCertConfig": {
+      "description": "KernelCacheArtifactCertConfig contains certificate signing profile settings.",
       "type": "object",
       "properties": {
         "signingProfileRef": {
@@ -4728,6 +4729,7 @@
       }
     },
     "v1beta1.KernelCacheArtifactSecurityConfig": {
+      "description": "KernelCacheArtifactSecurityConfig configures signing of completed artifacts.",
       "type": "object",
       "properties": {
         "cert": {
@@ -4864,6 +4866,10 @@
         "endpoint": {
           "description": "Endpoint is the OCI registry host and optional port.",
           "type": "string"
+        },
+        "insecure": {
+          "description": "Insecure allows MCV to use plain HTTP for registry operations. The default is false.",
+          "type": "boolean"
         }
       }
     },
